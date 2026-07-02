@@ -1,0 +1,380 @@
+// Prisma schema for Legacy OS — sistema interno da Legacy Digital
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Usuários & Acesso ──────────────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  GERENTE
+  GESTOR_TRAFEGO
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  mustChangePassword Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee         Employee?
+  assignedTasks    Task[]           @relation("TaskAssignee")
+  ownedLeads       Lead[]           @relation("LeadOwner")
+  clientHistories  ClientHistory[]
+  expensesLogged   Expense[]
+
+  @@map("users")
+}
+
+// ─── Clientes ───────────────────────────────────────────────────────────────
+
+enum ClientStatus {
+  ATIVO
+  IMPLANTACAO
+  PAUSADO
+  CANCELADO
+}
+
+model Client {
+  id            String       @id @default(cuid())
+  companyName   String
+  contactName   String
+  phone         String?
+  whatsapp      String?
+  email         String?
+  city          String?
+  state         String?
+  cnpj          String?
+  startDate     DateTime?
+  plan          String?
+  monthlyValue  Decimal      @default(0) @db.Decimal(12, 2)
+  dueDay        Int?
+  status        ClientStatus @default(IMPLANTACAO)
+  internalNotes String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  attachments ClientAttachment[]
+  history     ClientHistory[]
+  revenues    Revenue[]
+  contracts   Contract[]
+  tasks       Task[]
+  campaigns   Campaign[]
+  reports     Report[]
+  contentItems ContentItem[]
+
+  @@map("clients")
+}
+
+model ClientAttachment {
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  fileName   String
+  url        String
+  uploadedAt DateTime @default(now())
+
+  @@map("client_attachments")
+}
+
+model ClientHistory {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  note      String
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@map("client_history")
+}
+
+// ─── Financeiro ─────────────────────────────────────────────────────────────
+
+enum RevenueStatus {
+  PAGO
+  PENDENTE
+  ATRASADO
+}
+
+model Revenue {
+  id          String        @id @default(cuid())
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  description String
+  value       Decimal       @db.Decimal(12, 2)
+  dueDate     DateTime
+  paidDate    DateTime?
+  status      RevenueStatus @default(PENDENTE)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@map("revenues")
+}
+
+model Expense {
+  id            String   @id @default(cuid())
+  description   String
+  category      String
+  value         Decimal  @db.Decimal(12, 2)
+  date          DateTime
+  responsibleId String?
+  responsible   User?    @relation(fields: [responsibleId], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@map("expenses")
+}
+
+// ─── Contratos ──────────────────────────────────────────────────────────────
+
+enum ContractTemplateType {
+  TRAFEGO_PAGO
+  AQUILA_IA
+  SITE
+  GESTAO_COMPLETA
+  OUTRO
+}
+
+model ContractTemplate {
+  id           String               @id @default(cuid())
+  name         String
+  type         ContractTemplateType
+  bodyTemplate String               @db.Text
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  contracts Contract[]
+
+  @@map("contract_templates")
+}
+
+enum ContractStatus {
+  RASCUNHO
+  AGUARDANDO_ASSINATURA
+  ASSINADO
+  CANCELADO
+}
+
+model Contract {
+  id           String           @id @default(cuid())
+  clientId     String
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  templateId   String
+  template     ContractTemplate @relation(fields: [templateId], references: [id])
+  content      String           @db.Text
+  value        Decimal          @db.Decimal(12, 2)
+  status       ContractStatus   @default(RASCUNHO)
+  pdfUrl       String?
+  sentAt       DateTime?
+  signedAt     DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@map("contracts")
+}
+
+// ─── Comercial (Pipeline) ───────────────────────────────────────────────────
+
+enum LeadOrigin {
+  INSTAGRAM
+  FACEBOOK
+  WHATSAPP
+  INDICACAO
+  SITE
+  TRAFEGO_PAGO
+}
+
+enum LeadStage {
+  LEAD
+  CONTATO
+  REUNIAO
+  PROPOSTA
+  NEGOCIACAO
+  FECHADO
+  PERDIDO
+}
+
+model Lead {
+  id          String     @id @default(cuid())
+  companyName String
+  contactName String
+  city        String?
+  phone       String?
+  origin      LeadOrigin
+  stage       LeadStage  @default(LEAD)
+  notes       String?
+  ownerId     String?
+  owner       User?      @relation("LeadOwner", fields: [ownerId], references: [id])
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@map("leads")
+}
+
+// ─── Operações (Tarefas) ────────────────────────────────────────────────────
+
+enum TaskPriority {
+  BAIXA
+  MEDIA
+  ALTA
+  URGENTE
+}
+
+enum TaskStatus {
+  PENDENTE
+  EM_ANDAMENTO
+  AGUARDANDO_CLIENTE
+  FINALIZADO
+}
+
+model Task {
+  id          String       @id @default(cuid())
+  clientId    String?
+  client      Client?      @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  title       String
+  description String?
+  assigneeId  String?
+  assignee    User?        @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  dueDate     DateTime?
+  priority    TaskPriority @default(MEDIA)
+  status      TaskStatus   @default(PENDENTE)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("tasks")
+}
+
+// ─── Tráfego Pago ───────────────────────────────────────────────────────────
+
+model Campaign {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  periodStart DateTime
+  periodEnd   DateTime
+  investment  Decimal  @db.Decimal(12, 2)
+  leads       Int      @default(0)
+  reach       Int      @default(0)
+  impressions Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("campaigns")
+}
+
+// ─── Relatórios ─────────────────────────────────────────────────────────────
+
+model Report {
+  id              String   @id @default(cuid())
+  clientId        String
+  client          Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  periodLabel     String
+  investment      Decimal  @db.Decimal(12, 2)
+  leads           Int      @default(0)
+  reach           Int      @default(0)
+  impressions     Int      @default(0)
+  recommendations String?  @db.Text
+  pdfUrl          String?
+  createdAt       DateTime @default(now())
+
+  @@map("reports")
+}
+
+// ─── RH ─────────────────────────────────────────────────────────────────────
+
+model Employee {
+  id        String   @id @default(cuid())
+  userId    String?  @unique
+  user      User?    @relation(fields: [userId], references: [id])
+  name      String
+  position  String
+  salary    Decimal  @db.Decimal(12, 2)
+  hiredAt   DateTime
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  vacations Vacation[]
+
+  @@map("employees")
+}
+
+model Vacation {
+  id         String   @id @default(cuid())
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  startDate  DateTime
+  endDate    DateTime
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  @@map("vacations")
+}
+
+// ─── Marketing / Conteúdo ───────────────────────────────────────────────────
+
+enum ContentStatus {
+  IDEIA
+  PRODUCAO
+  APROVACAO
+  PUBLICADO
+}
+
+model ContentItem {
+  id            String        @id @default(cuid())
+  clientId      String?
+  client        Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  title         String
+  description   String?
+  platforms     String[]
+  scheduledDate DateTime?
+  status        ContentStatus @default(IDEIA)
+  mediaUrl      String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@map("content_items")
+}
+
+// ─── Áquila IA (métricas agregadas para relatório interno) ─────────────────
+
+model AquilaMetric {
+  id               String   @id @default(cuid())
+  storeName        String
+  periodMonth      String   // YYYY-MM
+  conversations     Int      @default(0)
+  leadsCaptured    Int      @default(0)
+  avgLeadScore     Decimal  @default(0) @db.Decimal(5, 2)
+  visitsGenerated  Int      @default(0)
+  testDrivesGenerated Int   @default(0)
+  conversions      Int      @default(0)
+  topSalesperson   String?
+  createdAt        DateTime @default(now())
+
+  @@unique([storeName, periodMonth])
+  @@map("aquila_metrics")
+}
+
+// ─── Metas da agência ───────────────────────────────────────────────────────
+
+model MonthlyGoal {
+  id            String   @id @default(cuid())
+  month         String   @unique // YYYY-MM
+  targetRevenue Decimal  @db.Decimal(12, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("monthly_goals")
+}

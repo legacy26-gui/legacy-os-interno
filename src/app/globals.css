@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background: #f7f7f8;
+  --surface: #ffffff;
+  --surface-muted: #f1f1f3;
+  --foreground: #18181b;
+  --foreground-muted: #71717a;
+  --border: #e4e4e7;
+  --accent: #4f46e5;
+  --accent-foreground: #ffffff;
+  --sidebar: #0b0b0f;
+  --sidebar-foreground: #d4d4d8;
+}
+
+.dark {
+  --background: #0a0a0c;
+  --surface: #131316;
+  --surface-muted: #1b1b1f;
+  --foreground: #f4f4f5;
+  --foreground-muted: #a1a1aa;
+  --border: #27272a;
+  --accent: #6366f1;
+  --accent-foreground: #ffffff;
+  --sidebar: #000000;
+  --sidebar-foreground: #d4d4d8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-foreground: var(--foreground);
+  --color-foreground-muted: var(--foreground-muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
+
+* {
+  border-color: var(--border);
+}

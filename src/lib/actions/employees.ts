@@ -16,7 +16,7 @@ const EmployeeSchema = z.object({
 export type EmployeeFormState = { error?: string } | undefined;
 
 export async function createEmployee(_prevState: EmployeeFormState, formData: FormData): Promise<EmployeeFormState> {
-  await requireModuleAccess("rh");
+  await requireModuleAccess("equipe");
   const parsed = EmployeeSchema.safeParse({
     name: formData.get("name"),
     position: formData.get("position"),
@@ -28,13 +28,13 @@ export async function createEmployee(_prevState: EmployeeFormState, formData: Fo
 
   const { hiredAt, ...rest } = parsed.data;
   await prisma.employee.create({ data: { ...rest, hiredAt: new Date(hiredAt) } });
-  revalidatePath("/rh");
+  revalidatePath("/equipe");
 }
 
 export async function deleteEmployee(employeeId: string) {
-  await requireModuleAccess("rh");
+  await requireModuleAccess("equipe");
   await prisma.employee.delete({ where: { id: employeeId } });
-  revalidatePath("/rh");
+  revalidatePath("/equipe");
 }
 
 const VacationSchema = z.object({
@@ -50,7 +50,7 @@ export async function addVacation(
   _prevState: VacationFormState,
   formData: FormData
 ): Promise<VacationFormState> {
-  await requireModuleAccess("rh");
+  await requireModuleAccess("equipe");
   const parsed = VacationSchema.safeParse({
     startDate: formData.get("startDate"),
     endDate: formData.get("endDate"),
@@ -66,5 +66,5 @@ export async function addVacation(
       notes: parsed.data.notes,
     },
   });
-  revalidatePath("/rh");
+  revalidatePath("/equipe");
 }

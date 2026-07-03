@@ -9,9 +9,10 @@ export const MODULES = [
   "operacoes",
   "trafego",
   "relatorios",
-  "rh",
+  "equipe",
   "marketing",
-  "aquila",
+  "calendario",
+  "suporte",
   "configuracoes",
 ] as const;
 
@@ -28,9 +29,10 @@ const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   operacoes: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   trafego: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   relatorios: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
-  rh: ["ADMIN"],
+  equipe: ["ADMIN"],
   marketing: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
-  aquila: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
+  calendario: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
+  suporte: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   configuracoes: ["ADMIN"],
 };
 
@@ -42,9 +44,10 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   { prefix: "/operacoes", module: "operacoes" },
   { prefix: "/trafego", module: "trafego" },
   { prefix: "/relatorios", module: "relatorios" },
-  { prefix: "/rh", module: "rh" },
+  { prefix: "/equipe", module: "equipe" },
   { prefix: "/marketing", module: "marketing" },
-  { prefix: "/aquila", module: "aquila" },
+  { prefix: "/calendario", module: "calendario" },
+  { prefix: "/suporte", module: "suporte" },
   { prefix: "/configuracoes", module: "configuracoes" },
 ];
 

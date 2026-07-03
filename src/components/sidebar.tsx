@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
-  TrendingUp, FileBarChart, UserCog, CalendarDays, Bot, Settings,
+  TrendingUp, FileBarChart, UserCog, CalendarDays, CalendarClock, LifeBuoy, Settings,
   Menu, X,
 } from "lucide-react";
 import type { Role } from "@/generated/prisma/enums";
@@ -21,8 +21,9 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof LayoutDashboard; mo
   { href: "/trafego", label: "Tráfego Pago", icon: TrendingUp, module: "trafego" },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart, module: "relatorios" },
   { href: "/marketing", label: "Marketing", icon: CalendarDays, module: "marketing" },
-  { href: "/aquila", label: "Áquila IA", icon: Bot, module: "aquila" },
-  { href: "/rh", label: "RH", icon: UserCog, module: "rh" },
+  { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
+  { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
+  { href: "/equipe", label: "Equipe", icon: UserCog, module: "equipe" },
   { href: "/configuracoes", label: "Configurações", icon: Settings, module: "configuracoes" },
 ];
 

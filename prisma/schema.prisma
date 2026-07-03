@@ -34,6 +34,7 @@ model User {
   ownedLeads       Lead[]           @relation("LeadOwner")
   clientHistories  ClientHistory[]
   expensesLogged   Expense[]
+  assignedTickets  SupportTicket[]  @relation("TicketAssignee")
 
   @@map("users")
 }
@@ -74,6 +75,7 @@ model Client {
   campaigns   Campaign[]
   reports     Report[]
   contentItems ContentItem[]
+  supportTickets SupportTicket[]
 
   @@map("clients")
 }
@@ -141,7 +143,6 @@ model Expense {
 
 enum ContractTemplateType {
   TRAFEGO_PAGO
-  AQUILA_IA
   SITE
   GESTAO_COMPLETA
   OUTRO
@@ -292,7 +293,7 @@ model Report {
   @@map("reports")
 }
 
-// ─── RH ─────────────────────────────────────────────────────────────────────
+// ─── Equipe ─────────────────────────────────────────────────────────────────
 
 model Employee {
   id        String   @id @default(cuid())
@@ -348,23 +349,29 @@ model ContentItem {
   @@map("content_items")
 }
 
-// ─── Áquila IA (métricas agregadas para relatório interno) ─────────────────
+// ─── Suporte aos clientes ───────────────────────────────────────────────────
 
-model AquilaMetric {
-  id               String   @id @default(cuid())
-  storeName        String
-  periodMonth      String   // YYYY-MM
-  conversations     Int      @default(0)
-  leadsCaptured    Int      @default(0)
-  avgLeadScore     Decimal  @default(0) @db.Decimal(5, 2)
-  visitsGenerated  Int      @default(0)
-  testDrivesGenerated Int   @default(0)
-  conversions      Int      @default(0)
-  topSalesperson   String?
-  createdAt        DateTime @default(now())
+enum TicketStatus {
+  ABERTO
+  EM_ANDAMENTO
+  AGUARDANDO_CLIENTE
+  RESOLVIDO
+}
 
-  @@unique([storeName, periodMonth])
-  @@map("aquila_metrics")
+model SupportTicket {
+  id          String       @id @default(cuid())
+  clientId    String
+  client      Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  subject     String
+  description String?
+  priority    TaskPriority @default(MEDIA)
+  status      TicketStatus @default(ABERTO)
+  assigneeId  String?
+  assignee    User?        @relation("TicketAssignee", fields: [assigneeId], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@map("support_tickets")
 }
 
 // ─── Metas da agência ───────────────────────────────────────────────────────

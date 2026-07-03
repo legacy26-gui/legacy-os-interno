@@ -6,8 +6,8 @@ import { deleteEmployee } from "@/lib/actions/employees";
 import { EmployeeForm } from "./employee-form";
 import { VacationForm } from "./vacation-form";
 
-export default async function RHPage() {
-  await requireModuleAccess("rh");
+export default async function EquipePage() {
+  await requireModuleAccess("equipe");
 
   const employees = await prisma.employee.findMany({
     include: { vacations: { orderBy: { startDate: "desc" } } },
@@ -17,8 +17,8 @@ export default async function RHPage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h1 className="text-xl font-semibold">RH</h1>
-        <p className="text-sm text-foreground-muted mt-0.5">Equipe da Legacy Digital</p>
+        <h1 className="text-xl font-semibold">Equipe</h1>
+        <p className="text-sm text-foreground-muted mt-0.5">Colaboradores da Legacy Digital</p>
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5">

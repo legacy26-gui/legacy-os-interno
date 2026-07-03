@@ -80,10 +80,23 @@ export const CONTRACT_STATUS_LABELS = {
 
 export const CONTRACT_TEMPLATE_TYPE_LABELS = {
   TRAFEGO_PAGO: "Tráfego Pago",
-  AQUILA_IA: "Áquila IA",
   SITE: "Site",
   GESTAO_COMPLETA: "Gestão Completa",
   OUTRO: "Outro",
+} as const;
+
+export const TICKET_STATUS_LABELS = {
+  ABERTO: "Aberto",
+  EM_ANDAMENTO: "Em andamento",
+  AGUARDANDO_CLIENTE: "Aguardando cliente",
+  RESOLVIDO: "Resolvido",
+} as const;
+
+export const TICKET_STATUS_COLORS = {
+  ABERTO: "bg-amber-500/15 text-amber-500",
+  EM_ANDAMENTO: "bg-blue-500/15 text-blue-500",
+  AGUARDANDO_CLIENTE: "bg-zinc-500/15 text-zinc-400",
+  RESOLVIDO: "bg-emerald-500/15 text-emerald-500",
 } as const;
 
 export function formatCurrency(value: number | string) {

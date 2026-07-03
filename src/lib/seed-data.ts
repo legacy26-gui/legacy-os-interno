@@ -20,13 +20,6 @@ const TEMPLATES = [
       "CONTRATO DE PRESTAÇÃO DE SERVIÇOS DE TRÁFEGO PAGO\n\nCONTRATANTE: {{clientName}}, CNPJ {{clientCnpj}}, com sede em {{clientCity}}/{{clientState}}.\nCONTRATADA: Legacy Digital.\n\nOBJETO: Gestão de campanhas de tráfego pago (Meta Ads, Google Ads) para o CONTRATANTE.\nVALOR MENSAL: {{value}}\nPLANO: {{plan}}\nDATA DE INÍCIO: {{startDate}}\n\nAs partes firmam o presente contrato nos termos acima.",
   },
   {
-    id: "seed-aquila",
-    name: "Contrato Áquila IA",
-    type: "AQUILA_IA" as const,
-    bodyTemplate:
-      "CONTRATO DE LICENCIAMENTO E SUPORTE — ÁQUILA IA\n\nCONTRATANTE: {{clientName}}, CNPJ {{clientCnpj}}.\nCONTRATADA: Legacy Digital.\n\nOBJETO: Implantação e suporte do assistente de IA Áquila para atendimento via WhatsApp.\nVALOR MENSAL: {{value}}\nDATA DE INÍCIO: {{startDate}}",
-  },
-  {
     id: "seed-site",
     name: "Contrato Site",
     type: "SITE" as const,
@@ -38,7 +31,7 @@ const TEMPLATES = [
     name: "Contrato Gestão Completa",
     type: "GESTAO_COMPLETA" as const,
     bodyTemplate:
-      "CONTRATO DE GESTÃO COMPLETA DE MARKETING DIGITAL\n\nCONTRATANTE: {{clientName}}, CNPJ {{clientCnpj}}.\nCONTRATADA: Legacy Digital.\n\nOBJETO: Gestão completa de marketing digital, incluindo tráfego pago, conteúdo, atendimento via Áquila IA e relatórios mensais.\nVALOR MENSAL: {{value}}\nPLANO: {{plan}}\nDATA DE INÍCIO: {{startDate}}",
+      "CONTRATO DE GESTÃO COMPLETA DE MARKETING DIGITAL\n\nCONTRATANTE: {{clientName}}, CNPJ {{clientCnpj}}.\nCONTRATADA: Legacy Digital.\n\nOBJETO: Gestão completa de marketing digital, incluindo tráfego pago, produção de conteúdo, atendimento ao cliente e relatórios mensais.\nVALOR MENSAL: {{value}}\nPLANO: {{plan}}\nDATA DE INÍCIO: {{startDate}}",
   },
 ];
 

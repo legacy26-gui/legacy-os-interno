@@ -36,6 +36,9 @@ model User {
   expensesLogged   Expense[]
   assignedTickets  SupportTicket[]  @relation("TicketAssignee")
   managedClients   Client[]         @relation("ClientManager")
+  dailyReviews     DailyReview[]    @relation("DailyReviewer")
+  weeklyReviews    WeeklyReview[]   @relation("WeeklyReviewer")
+  campaignChanges  CampaignChange[] @relation("ChangeResponsible")
 
   @@map("users")
 }
@@ -79,6 +82,9 @@ model Client {
   reports     Report[]
   contentItems ContentItem[]
   supportTickets SupportTicket[]
+  dailyReviews    DailyReview[]
+  weeklyReviews   WeeklyReview[]
+  campaignChanges CampaignChange[]
 
   @@map("clients")
 }
@@ -387,4 +393,82 @@ model MonthlyGoal {
   updatedAt     DateTime @updatedAt
 
   @@map("monthly_goals")
+}
+
+// ─── Gestão de Contas (agências de tráfego) ─────────────────────────────────
+
+model DailyReview {
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reviewerId String?
+  reviewer   User?    @relation("DailyReviewer", fields: [reviewerId], references: [id])
+
+  // Meta Ads
+  checkedCpl       Boolean @default(false)
+  checkedBudget    Boolean @default(false)
+  checkedRejected  Boolean @default(false)
+  checkedFrequency Boolean @default(false)
+  checkedComments  Boolean @default(false)
+  checkedLeads     Boolean @default(false)
+
+  // CRM
+  checkedLeadDelivery Boolean @default(false)
+  checkedService      Boolean @default(false)
+  checkedScheduling   Boolean @default(false)
+
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@map("daily_reviews")
+}
+
+model WeeklyReview {
+  id         String   @id @default(cuid())
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  reviewerId String?
+  reviewer   User?    @relation("WeeklyReviewer", fields: [reviewerId], references: [id])
+
+  // Criativos
+  createdCreative Boolean @default(false)
+  createdAd       Boolean @default(false)
+  testedAudience  Boolean @default(false)
+  updatedOffers   Boolean @default(false)
+
+  // Relatório
+  reportSent      Boolean @default(false)
+  clientReplied   Boolean @default(false)
+  adjustmentsDone Boolean @default(false)
+
+  notes     String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([clientId, createdAt])
+  @@map("weekly_reviews")
+}
+
+enum CampaignChangeType {
+  CAMPANHA_CRIADA
+  CAMPANHA_PAUSADA
+  CRIATIVO_ALTERADO
+  CRIATIVO_NOVO
+  PUBLICO_ALTERADO
+  ORCAMENTO_ALTERADO
+  OUTRO
+}
+
+model CampaignChange {
+  id            String             @id @default(cuid())
+  clientId      String
+  client        Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  responsibleId String?
+  responsible   User?              @relation("ChangeResponsible", fields: [responsibleId], references: [id])
+  type          CampaignChangeType
+  description   String?
+  createdAt     DateTime           @default(now())
+
+  @@index([clientId, createdAt])
+  @@map("campaign_changes")
 }

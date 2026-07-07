@@ -99,6 +99,16 @@ export const TICKET_STATUS_COLORS = {
   RESOLVIDO: "bg-emerald-500/15 text-emerald-500",
 } as const;
 
+export const CAMPAIGN_CHANGE_TYPE_LABELS = {
+  CAMPANHA_CRIADA: "Campanha criada",
+  CAMPANHA_PAUSADA: "Campanha pausada",
+  CRIATIVO_ALTERADO: "Criativo alterado",
+  CRIATIVO_NOVO: "Criativo novo",
+  PUBLICO_ALTERADO: "Público alterado",
+  ORCAMENTO_ALTERADO: "Orçamento alterado",
+  OUTRO: "Outro",
+} as const;
+
 export function formatCurrency(value: number | string) {
   const n = typeof value === "string" ? parseFloat(value) : value;
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });

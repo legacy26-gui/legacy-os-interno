@@ -6,7 +6,7 @@ import { useState } from "react";
 import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   TrendingUp, FileBarChart, UserCog, CalendarDays, CalendarClock, LifeBuoy, Settings,
-  Menu, X,
+  Gauge, Menu, X,
 } from "lucide-react";
 import type { Role } from "@/generated/prisma/enums";
 import { canAccessModule, type ModuleKey } from "@/lib/permissions";
@@ -19,6 +19,7 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof LayoutDashboard; mo
   { href: "/comercial", label: "Comercial", icon: Target, module: "comercial" },
   { href: "/operacoes", label: "Operações", icon: ListChecks, module: "operacoes" },
   { href: "/trafego", label: "Tráfego Pago", icon: TrendingUp, module: "trafego" },
+  { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
   { href: "/relatorios", label: "Relatórios", icon: FileBarChart, module: "relatorios" },
   { href: "/marketing", label: "Marketing", icon: CalendarDays, module: "marketing" },
   { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },

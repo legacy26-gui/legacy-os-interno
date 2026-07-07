@@ -35,6 +35,7 @@ model User {
   clientHistories  ClientHistory[]
   expensesLogged   Expense[]
   assignedTickets  SupportTicket[]  @relation("TicketAssignee")
+  managedClients   Client[]         @relation("ClientManager")
 
   @@map("users")
 }
@@ -64,6 +65,8 @@ model Client {
   dueDay        Int?
   status        ClientStatus @default(IMPLANTACAO)
   internalNotes String?
+  managerId     String?
+  manager       User?        @relation("ClientManager", fields: [managerId], references: [id])
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 

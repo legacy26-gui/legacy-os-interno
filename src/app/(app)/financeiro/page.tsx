@@ -4,12 +4,21 @@ import { requireModuleAccess } from "@/lib/dal";
 import { getFinanceOverview, getRevenueByClient, getRevenueByCity } from "@/lib/metrics";
 import { formatCurrency, formatDate, REVENUE_STATUS_LABELS, REVENUE_STATUS_COLORS } from "@/lib/labels";
 import { markRevenuePaid, deleteRevenue, deleteExpense } from "@/lib/actions/financeiro";
+import { ensureMonthlyMrrRevenues, getMonthlyMrrRevenues } from "@/lib/mrr-revenue";
 import { RevenueForm } from "./revenue-form";
 import { ExpenseForm } from "./expense-form";
 import { GoalForm } from "./goal-form";
+import { MrrBoard } from "./mrr-board";
 
 export default async function FinanceiroPage() {
   await requireModuleAccess("financeiro");
+
+  // Gera automaticamente (idempotente) a receita do mês para cada cliente
+  // ativo com mensalidade — o gestor só precisa confirmar o pagamento.
+  const now = new Date();
+  await ensureMonthlyMrrRevenues(now);
+  const mrrBoard = await getMonthlyMrrRevenues(now);
+  const monthLabel = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 
   const overview = await getFinanceOverview();
   const [revenueByClient, revenueByCity, clients, revenues, expenses] = await Promise.all([
@@ -57,6 +66,14 @@ export default async function FinanceiroPage() {
         </div>
         <GoalForm month={overview.month} currentTarget={overview.targetRevenue} />
       </div>
+
+      <MrrBoard
+        monthLabel={monthLabel}
+        groups={mrrBoard.groups}
+        totalMonth={mrrBoard.totalMonth}
+        paidTotal={mrrBoard.paidTotal}
+        pendingTotal={mrrBoard.pendingTotal}
+      />
 
       {(overdue.length > 0 || dueToday.length > 0 || dueSoon.length > 0) && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5">

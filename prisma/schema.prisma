@@ -441,6 +441,7 @@ model WeeklyReview {
   reportSent      Boolean @default(false)
   clientReplied   Boolean @default(false)
   adjustmentsDone Boolean @default(false)
+  reportPhotoUrl  String? @db.Text // foto do relatório (obrigatória no formulário)
 
   notes     String?  @db.Text
   createdAt DateTime @default(now())

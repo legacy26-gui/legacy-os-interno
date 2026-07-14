@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarDays, CalendarClock, Zap, ImageOff, User as UserIcon } from "lucide-react";
+import { ArrowLeft, CalendarDays, CalendarClock, Zap, ImageOff, User as UserIcon, ImageIcon } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { computeMetrics, SCORE_COLORS, BUCKET_LABELS } from "@/lib/account-health";
@@ -37,6 +37,13 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
       select: { id: true, type: true, description: true, createdAt: true, responsible: { select: { name: true } } },
     }),
   ]);
+
+  const weeklyReports = await prisma.weeklyReview.findMany({
+    where: { clientId: id },
+    orderBy: { createdAt: "desc" },
+    take: 12,
+    select: { id: true, createdAt: true, reportPhotoUrl: true, notes: true, reviewer: { select: { name: true } } },
+  });
 
   const metrics = computeMetrics({
     lastDaily: lastDaily?.createdAt ?? null,
@@ -124,6 +131,47 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
                   <p className="text-xs text-foreground-muted">{c.responsible?.name ?? "—"}</p>
                 </div>
               </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Histórico de relatórios semanais (com a foto obrigatória) */}
+      <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4">
+        <div>
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <ImageIcon size={15} className="text-foreground-muted" /> Relatórios semanais enviados
+          </h2>
+          <p className="text-xs text-foreground-muted mt-0.5">
+            Toda revisão semanal exige a foto do relatório — histórico auditável abaixo.
+          </p>
+        </div>
+
+        {weeklyReports.length === 0 ? (
+          <p className="text-sm text-foreground-muted">Nenhum relatório semanal enviado ainda.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {weeklyReports.map((w) => (
+              <a
+                key={w.id}
+                href={w.reportPhotoUrl ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl border border-border overflow-hidden hover:border-accent transition-colors"
+              >
+                {w.reportPhotoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={w.reportPhotoUrl} alt={`Relatório de ${formatDateTime(w.createdAt)}`} className="w-full h-32 object-cover" />
+                ) : (
+                  <div className="w-full h-32 flex items-center justify-center bg-surface-muted text-foreground-muted">
+                    <ImageOff size={20} />
+                  </div>
+                )}
+                <div className="p-2.5">
+                  <p className="text-xs font-medium">{formatDateTime(w.createdAt)}</p>
+                  <p className="text-xs text-foreground-muted">{w.reviewer?.name ?? "—"}</p>
+                </div>
+              </a>
             ))}
           </div>
         )}

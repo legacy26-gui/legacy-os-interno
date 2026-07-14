@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Trash2, Users, Wallet, ListChecks, Sparkles } from "lucide-react";
+import { Trash2, Users, Wallet, ListChecks, Sparkles, ClipboardCheck } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { formatCurrency } from "@/lib/labels";
 import { deleteTask } from "@/lib/actions/tasks";
 import { generateStandardTasks } from "@/lib/actions/operations";
+import { getAccountsHealth, SCORE_COLORS } from "@/lib/account-health";
 import { TaskStatusSelect } from "./task-status-select";
 import { ManagerSelect } from "./manager-select";
 import { ClientTaskAdd } from "./client-task-add";
@@ -24,7 +25,7 @@ export default async function OperacoesPage({
   await requireModuleAccess("operacoes");
   const { op } = await searchParams;
 
-  const [operators, clients] = await Promise.all([
+  const [operators, clients, accountsHealth] = await Promise.all([
     prisma.user.findMany({
       where: { active: true, role: { not: "ADMIN" } },
       select: { id: true, name: true },
@@ -45,7 +46,10 @@ export default async function OperacoesPage({
       },
       orderBy: { companyName: "asc" },
     }),
+    getAccountsHealth(),
   ]);
+
+  const healthByClient = new Map(accountsHealth.map((a) => [a.id, a.metrics]));
 
   const unassignedCount = clients.filter((c) => !c.managerId).length;
 
@@ -133,11 +137,22 @@ export default async function OperacoesPage({
           </p>
         )}
 
-        {visibleClients.map((c) => (
+        {visibleClients.map((c) => {
+          const health = healthByClient.get(c.id);
+          return (
           <div key={c.id} className="rounded-2xl border border-border bg-surface overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-5 border-b border-border">
               <div>
-                <p className="font-medium">{c.companyName}</p>
+                <div className="flex items-center gap-2">
+                  <Link href={`/gestao-contas/${c.id}`} className="font-medium hover:text-accent">
+                    {c.companyName}
+                  </Link>
+                  {health && (
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${SCORE_COLORS[health.bucket]}`}>
+                      {health.score}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-foreground-muted mt-0.5">
                   {formatCurrency(Number(c.monthlyValue))} / mês
                   {c.dueDay ? ` · vence dia ${c.dueDay}` : ""}
@@ -145,6 +160,14 @@ export default async function OperacoesPage({
               </div>
               <div className="flex items-center gap-2">
                 <ManagerSelect clientId={c.id} managerId={c.managerId} operators={operators} />
+                <Link
+                  href={`/gestao-contas/${c.id}`}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-accent text-accent-foreground rounded-lg text-xs font-medium hover:opacity-90"
+                  title="Checklist diário, semanal e relatório com foto"
+                >
+                  <ClipboardCheck size={13} />
+                  Checklist
+                </Link>
                 <form action={generateStandardTasks.bind(null, c.id)}>
                   <button
                     type="submit"
@@ -188,7 +211,8 @@ export default async function OperacoesPage({
               </div>
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useActionState, useEffect, useRef } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { submitDailyReview } from "@/lib/actions/account-management";
 
@@ -30,19 +30,14 @@ function Check({ name, label }: { name: string; label: string }) {
 
 export function DailyReviewForm({ clientId }: { clientId: string }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [saving, setSaving] = useState(false);
+  const [state, formAction, saving] = useActionState(submitDailyReview.bind(null, clientId), undefined);
+
+  useEffect(() => {
+    if (state && !state.error) formRef.current?.reset();
+  }, [state]);
 
   return (
-    <form
-      ref={formRef}
-      action={async (fd) => {
-        setSaving(true);
-        await submitDailyReview(clientId, fd);
-        formRef.current?.reset();
-        setSaving(false);
-      }}
-      className="flex flex-col gap-4"
-    >
+    <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       <div className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">Meta Ads</p>
@@ -66,6 +61,7 @@ export function DailyReviewForm({ clientId }: { clientId: string }) {
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent/40"
         />
       </div>
+      {state?.error && <p className="text-xs text-red-500">{state.error}</p>}
       <button
         type="submit"
         disabled={saving}

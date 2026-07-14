@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { CheckCircle2 } from "lucide-react";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { CheckCircle2, Camera, X } from "lucide-react";
 import { submitWeeklyReview } from "@/lib/actions/account-management";
 
 const CRIATIVOS = [
@@ -28,19 +28,19 @@ function Check({ name, label }: { name: string; label: string }) {
 
 export function WeeklyReviewForm({ clientId }: { clientId: string }) {
   const formRef = useRef<HTMLFormElement>(null);
-  const [saving, setSaving] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [state, formAction, saving] = useActionState(submitWeeklyReview.bind(null, clientId), undefined);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (state && !state.error) {
+      formRef.current?.reset();
+      setPreview(null);
+    }
+  }, [state]);
 
   return (
-    <form
-      ref={formRef}
-      action={async (fd) => {
-        setSaving(true);
-        await submitWeeklyReview(clientId, fd);
-        formRef.current?.reset();
-        setSaving(false);
-      }}
-      className="flex flex-col gap-4"
-    >
+    <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       <div className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">Criativos</p>
@@ -55,6 +55,60 @@ export function WeeklyReviewForm({ clientId }: { clientId: string }) {
           ))}
         </div>
       </div>
+
+      <div>
+        <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1.5">
+          Foto do relatório <span className="text-red-500">*</span>
+        </p>
+        <p className="text-xs text-foreground-muted mb-2">Obrigatório — sem a foto a revisão semanal não é salva.</p>
+
+        {/* O input fica sempre montado (só visualmente oculto) para não perder o
+            arquivo selecionado quando a prévia é exibida. */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          name="reportPhoto"
+          accept="image/*"
+          capture="environment"
+          required
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return setPreview(null);
+            const reader = new FileReader();
+            reader.onload = () => setPreview(reader.result as string);
+            reader.readAsDataURL(file);
+          }}
+        />
+
+        {preview ? (
+          <div className="relative inline-block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={preview} alt="Pré-visualização do relatório" className="max-h-40 rounded-lg border border-border" />
+            <button
+              type="button"
+              onClick={() => {
+                setPreview(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+              className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:opacity-90"
+              aria-label="Remover foto"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="flex items-center gap-2 w-fit px-3.5 py-2.5 rounded-lg border border-dashed border-border bg-surface text-sm text-foreground-muted cursor-pointer hover:bg-surface-muted"
+          >
+            <Camera size={16} />
+            Selecionar foto do relatório
+          </button>
+        )}
+      </div>
+
       <div>
         <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1.5">Observações</p>
         <textarea
@@ -64,6 +118,9 @@ export function WeeklyReviewForm({ clientId }: { clientId: string }) {
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent/40"
         />
       </div>
+
+      {state?.error && <p className="text-xs text-red-500">{state.error}</p>}
+
       <button
         type="submit"
         disabled={saving}

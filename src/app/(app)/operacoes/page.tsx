@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { Trash2, Users, Wallet, ListChecks, Sparkles, ClipboardCheck } from "lucide-react";
+import { Trash2, Users, Gauge, ListChecks, Sparkles, ClipboardCheck } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
-import { formatCurrency } from "@/lib/labels";
 import { deleteTask } from "@/lib/actions/tasks";
 import { generateStandardTasks } from "@/lib/actions/operations";
-import { getAccountsHealth, SCORE_COLORS } from "@/lib/account-health";
+import { getAccountsHealth, SCORE_COLORS, bucketForScore } from "@/lib/account-health";
 import { TaskStatusSelect } from "./task-status-select";
 import { ManagerSelect } from "./manager-select";
 import { ClientTaskAdd } from "./client-task-add";
@@ -36,8 +35,6 @@ export default async function OperacoesPage({
       select: {
         id: true,
         companyName: true,
-        monthlyValue: true,
-        dueDay: true,
         managerId: true,
         tasks: {
           orderBy: [{ status: "asc" }, { createdAt: "asc" }],
@@ -62,7 +59,8 @@ export default async function OperacoesPage({
       ? clients.filter((c) => !c.managerId)
       : clients.filter((c) => c.managerId === selected);
 
-  const faturamento = visibleClients.reduce((sum, c) => sum + Number(c.monthlyValue), 0);
+  const scored = visibleClients.map((c) => healthByClient.get(c.id)?.score).filter((s): s is number => s !== undefined);
+  const avgScore = scored.length > 0 ? Math.round(scored.reduce((s, v) => s + v, 0) / scored.length) : null;
   const selectedOperator = operators.find((o) => o.id === selected);
 
   return (
@@ -116,10 +114,16 @@ export default async function OperacoesPage({
         </div>
         <div className="rounded-2xl border border-border bg-surface p-5">
           <div className="flex items-center gap-2 text-foreground-muted mb-2">
-            <Wallet size={15} />
-            <span className="text-xs font-medium uppercase tracking-wide">Faturamento mensal da carteira</span>
+            <Gauge size={15} />
+            <span className="text-xs font-medium uppercase tracking-wide">Score médio da carteira</span>
           </div>
-          <p className="text-xl font-semibold">{formatCurrency(faturamento)}</p>
+          {avgScore !== null ? (
+            <span className={`inline-flex items-center text-xl font-semibold px-3 py-1 rounded-full ${SCORE_COLORS[bucketForScore(avgScore)]}`}>
+              {avgScore}
+            </span>
+          ) : (
+            <p className="text-xl font-semibold text-foreground-muted">—</p>
+          )}
         </div>
       </div>
 
@@ -142,21 +146,15 @@ export default async function OperacoesPage({
           return (
           <div key={c.id} className="rounded-2xl border border-border bg-surface overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-5 border-b border-border">
-              <div>
-                <div className="flex items-center gap-2">
-                  <Link href={`/gestao-contas/${c.id}`} className="font-medium hover:text-accent">
-                    {c.companyName}
-                  </Link>
-                  {health && (
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${SCORE_COLORS[health.bucket]}`}>
-                      {health.score}
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-foreground-muted mt-0.5">
-                  {formatCurrency(Number(c.monthlyValue))} / mês
-                  {c.dueDay ? ` · vence dia ${c.dueDay}` : ""}
-                </p>
+              <div className="flex items-center gap-2">
+                <Link href={`/gestao-contas/${c.id}`} className="font-medium hover:text-accent">
+                  {c.companyName}
+                </Link>
+                {health && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${SCORE_COLORS[health.bucket]}`}>
+                    {health.score}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <ManagerSelect clientId={c.id} managerId={c.managerId} operators={operators} />

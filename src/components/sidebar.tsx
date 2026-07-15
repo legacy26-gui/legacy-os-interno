@@ -6,13 +6,14 @@ import { useState } from "react";
 import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   TrendingUp, FileBarChart, UserCog, CalendarDays, CalendarClock, LifeBuoy, Settings,
-  Gauge, Menu, X,
+  Gauge, ClipboardList, Menu, X,
 } from "lucide-react";
 import type { Role } from "@/generated/prisma/enums";
 import { canAccessModule, type ModuleKey } from "@/lib/permissions";
 
 const NAV_ITEMS: { href: string; label: string; icon: typeof LayoutDashboard; module: ModuleKey | null }[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: null },
+  { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: null },
   { href: "/clientes", label: "Clientes", icon: Users, module: "clientes" },
   { href: "/financeiro", label: "Financeiro", icon: Wallet, module: "financeiro" },
   { href: "/contratos", label: "Contratos", icon: FileText, module: "contratos" },

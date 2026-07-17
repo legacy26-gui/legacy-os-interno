@@ -1,8 +1,10 @@
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Pencil } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency } from "@/lib/labels";
+import { deleteClient } from "@/lib/actions/clients";
+import { DeleteClientButton } from "./delete-client-button";
 import type { ClientStatus } from "@/generated/prisma/enums";
 
 export default async function ClientesPage({
@@ -92,6 +94,7 @@ export default async function ClientesPage({
                 <th className="px-5 py-3 font-medium hidden sm:table-cell">Plano</th>
                 <th className="px-5 py-3 font-medium text-right">Mensalidade</th>
                 <th className="px-5 py-3 font-medium">Status</th>
+                <th className="px-5 py-3 font-medium text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -112,6 +115,18 @@ export default async function ClientesPage({
                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${CLIENT_STATUS_COLORS[c.status]}`}>
                       {CLIENT_STATUS_LABELS[c.status]}
                     </span>
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-center justify-end gap-1">
+                      <Link
+                        href={`/clientes/${c.id}/editar`}
+                        title="Editar cliente"
+                        className="p-1.5 rounded-lg hover:bg-surface-muted text-foreground-muted hover:text-foreground"
+                      >
+                        <Pencil size={14} />
+                      </Link>
+                      <DeleteClientButton action={deleteClient.bind(null, c.id)} companyName={c.companyName} compact />
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, Trash2, ExternalLink, Building2, Phone, Mail, MapPin, CreditCard } from "lucide-react";
+import { Pencil, ExternalLink, Building2, Phone, Mail, MapPin, CreditCard } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate, formatDateTime } from "@/lib/labels";
 import { deleteClient } from "@/lib/actions/clients";
 import { HistoryForm } from "./history-form";
 import { AttachmentForm } from "./attachment-form";
+import { DeleteClientButton } from "../delete-client-button";
 
 export default async function ClienteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireModuleAccess("clientes");
@@ -49,14 +50,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
           >
             <Pencil size={14} /> Editar
           </Link>
-          <form action={boundDelete}>
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-red-500/30 text-red-500 bg-red-500/5 rounded-lg text-sm hover:bg-red-500/10"
-            >
-              <Trash2 size={14} /> Excluir
-            </button>
-          </form>
+          <DeleteClientButton action={boundDelete} companyName={client.companyName} />
         </div>
       </div>
 

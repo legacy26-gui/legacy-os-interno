@@ -16,6 +16,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
   const client = await prisma.client.findUnique({
     where: { id },
     include: {
+      manager: { select: { name: true } },
       history: { orderBy: { createdAt: "desc" }, include: { author: { select: { name: true } } } },
       attachments: { orderBy: { uploadedAt: "desc" } },
       revenues: { orderBy: { dueDate: "desc" }, take: 5 },
@@ -37,7 +38,9 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
           </div>
           <div>
             <h1 className="text-xl font-semibold">{client.companyName}</h1>
-            <p className="text-sm text-foreground-muted">{client.contactName}</p>
+            <p className="text-sm text-foreground-muted">
+              {client.contactName} · Gestor: {client.manager?.name ?? "sem gestor"}
+            </p>
           </div>
           <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${CLIENT_STATUS_COLORS[client.status]}`}>
             {CLIENT_STATUS_LABELS[client.status]}

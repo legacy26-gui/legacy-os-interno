@@ -24,12 +24,7 @@ const TOP_ITEMS: NavLeaf[] = [
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Comercial",
-    items: [
-      { href: "/clientes", label: "Clientes", icon: Users, module: "clientes" },
-      { href: "/comercial", label: "Comercial", icon: Target, module: "comercial" },
-      { href: "/contratos", label: "Contratos", icon: FileText, module: "contratos" },
-      { href: "/financeiro", label: "Financeiro", icon: Wallet, module: "financeiro" },
-    ],
+    items: [{ href: "/comercial", label: "Comercial", icon: Target, module: "comercial" }],
   },
   {
     label: "Operacional",
@@ -41,8 +36,13 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    label: "RH",
-    items: [{ href: "/equipe", label: "Equipe", icon: UserCog, module: "equipe" }],
+    label: "RH & Administrativo",
+    items: [
+      { href: "/clientes", label: "Clientes", icon: Users, module: "clientes" },
+      { href: "/contratos", label: "Contratos", icon: FileText, module: "contratos" },
+      { href: "/financeiro", label: "Financeiro", icon: Wallet, module: "financeiro" },
+      { href: "/equipe", label: "Equipe", icon: UserCog, module: "equipe" },
+    ],
   },
   {
     label: "Sistema",
@@ -104,7 +104,7 @@ export function Sidebar({ role }: { role: Role }) {
       <aside
         className={`fixed top-0 left-0 h-full w-64 bg-sidebar text-sidebar-foreground z-40 flex flex-col border-r border-black/40
           transform transition-transform duration-300
-          ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:static md:flex`}
+          ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:sticky md:top-0 md:h-screen md:flex`}
       >
         <div className="px-6 py-5 border-b border-white/10 flex flex-col min-h-[76px] justify-center">
           <span className="text-white font-black text-lg tracking-tight leading-none">

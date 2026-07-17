@@ -30,6 +30,7 @@ export default async function ClientesPage({
         status ? { status: status as ClientStatus } : {},
       ],
     },
+    include: { manager: { select: { name: true } } },
     orderBy: { companyName: "asc" },
   });
 
@@ -104,6 +105,9 @@ export default async function ClientesPage({
                     <Link href={`/clientes/${c.id}`} className="font-medium hover:text-accent">
                       {c.companyName}
                     </Link>
+                    <p className="text-xs text-foreground-muted mt-0.5">
+                      Gestor: {c.manager?.name ?? "sem gestor"}
+                    </p>
                   </td>
                   <td className="px-5 py-3.5 text-foreground-muted hidden md:table-cell">{c.contactName}</td>
                   <td className="px-5 py-3.5 text-foreground-muted hidden lg:table-cell">

@@ -41,7 +41,7 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
   if (user.mustChangePassword) {
     redirect("/trocar-senha");
   }
-  redirect("/dashboard");
+  redirect(user.role === "GESTOR_TRAFEGO" ? "/meu-dia" : "/dashboard");
 }
 
 export async function logout() {
@@ -86,5 +86,5 @@ export async function changePassword(
     data: { passwordHash, mustChangePassword: false },
   });
 
-  redirect("/dashboard");
+  redirect(user.role === "GESTOR_TRAFEGO" ? "/meu-dia" : "/dashboard");
 }

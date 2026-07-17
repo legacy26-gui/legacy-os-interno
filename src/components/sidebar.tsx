@@ -5,39 +5,88 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
-  TrendingUp, FileBarChart, UserCog, CalendarDays, CalendarClock, LifeBuoy, Settings,
-  Gauge, ClipboardList, Menu, X,
+  UserCog, CalendarClock, LifeBuoy, Settings,
+  Gauge, ClipboardList, ChevronDown, Menu, X,
 } from "lucide-react";
 import type { Role } from "@/generated/prisma/enums";
 import { canAccessModule, type ModuleKey } from "@/lib/permissions";
 
-const NAV_ITEMS: { href: string; label: string; icon: typeof LayoutDashboard; module: ModuleKey | null }[] = [
+type NavLeaf = { href: string; label: string; icon: typeof LayoutDashboard; module: ModuleKey | null };
+type NavGroup = { label: string; items: NavLeaf[] };
+
+// Itens soltos no topo, sempre visíveis (sujeitos à permissão do módulo).
+const TOP_ITEMS: NavLeaf[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: null },
   { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: null },
-  { href: "/clientes", label: "Clientes", icon: Users, module: "clientes" },
-  { href: "/financeiro", label: "Financeiro", icon: Wallet, module: "financeiro" },
-  { href: "/contratos", label: "Contratos", icon: FileText, module: "contratos" },
-  { href: "/comercial", label: "Comercial", icon: Target, module: "comercial" },
-  { href: "/operacoes", label: "Operações", icon: ListChecks, module: "operacoes" },
-  { href: "/trafego", label: "Tráfego Pago", icon: TrendingUp, module: "trafego" },
-  { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
-  { href: "/relatorios", label: "Relatórios", icon: FileBarChart, module: "relatorios" },
-  { href: "/marketing", label: "Marketing", icon: CalendarDays, module: "marketing" },
-  { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
-  { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
-  { href: "/equipe", label: "Equipe", icon: UserCog, module: "equipe" },
-  { href: "/configuracoes", label: "Configurações", icon: Settings, module: "configuracoes" },
 ];
+
+// Menu completo (Admin/Gerente), organizado em pastas.
+const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "Comercial",
+    items: [
+      { href: "/clientes", label: "Clientes", icon: Users, module: "clientes" },
+      { href: "/comercial", label: "Comercial", icon: Target, module: "comercial" },
+      { href: "/contratos", label: "Contratos", icon: FileText, module: "contratos" },
+      { href: "/financeiro", label: "Financeiro", icon: Wallet, module: "financeiro" },
+    ],
+  },
+  {
+    label: "Operacional",
+    items: [
+      { href: "/operacoes", label: "Operações", icon: ListChecks, module: "operacoes" },
+      { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
+      { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
+      { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
+    ],
+  },
+  {
+    label: "RH",
+    items: [{ href: "/equipe", label: "Equipe", icon: UserCog, module: "equipe" }],
+  },
+  {
+    label: "Sistema",
+    items: [{ href: "/configuracoes", label: "Configurações", icon: Settings, module: "configuracoes" }],
+  },
+];
+
+// Menu mínimo do Gestor de Tráfego: só o essencial pra trabalhar no dia a dia.
+const EMPLOYEE_ITEMS: NavLeaf[] = [
+  { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: null },
+  { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
+  { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
+];
+
+function NavLink({ href, label, icon: Icon, active, onClick }: NavLeaf & { active: boolean; onClick: () => void }) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all font-medium text-sm
+        ${active ? "bg-accent text-white" : "text-zinc-400 hover:text-white hover:bg-white/5"}`}
+    >
+      <Icon size={17} />
+      {label}
+    </Link>
+  );
+}
 
 export function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
-  const items = NAV_ITEMS.filter((item) => !item.module || canAccessModule(role, item.module));
-
   function isActive(href: string) {
     return href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
   }
+
+  const isEmployee = role === "GESTOR_TRAFEGO";
+
+  const topItems = TOP_ITEMS.filter((item) => !isEmployee && (!item.module || canAccessModule(role, item.module)));
+  const employeeItems = EMPLOYEE_ITEMS.filter((item) => !item.module || canAccessModule(role, item.module));
+  const groups = NAV_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((item) => !item.module || canAccessModule(role, item.module)),
+  })).filter((g) => g.items.length > 0);
 
   return (
     <>
@@ -65,21 +114,22 @@ export function Sidebar({ role }: { role: Role }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-0.5">
-          {items.map(({ href, label, icon: Icon }) => {
-            const active = isActive(href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all font-medium text-sm
-                  ${active ? "bg-accent text-white" : "text-zinc-400 hover:text-white hover:bg-white/5"}`}
-              >
-                <Icon size={17} />
-                {label}
-              </Link>
-            );
-          })}
+          {isEmployee
+            ? employeeItems.map((item) => (
+                <NavLink key={item.href} {...item} active={isActive(item.href)} onClick={() => setOpen(false)} />
+              ))
+            : (
+              <>
+                {topItems.map((item) => (
+                  <NavLink key={item.href} {...item} active={isActive(item.href)} onClick={() => setOpen(false)} />
+                ))}
+                <div className="mt-2 flex flex-col gap-0.5">
+                  {groups.map((group) => (
+                    <NavFolder key={group.label} group={group} isActive={isActive} onNavigate={() => setOpen(false)} />
+                  ))}
+                </div>
+              </>
+            )}
         </nav>
 
         <div className="p-4 border-t border-white/10">
@@ -87,5 +137,38 @@ export function Sidebar({ role }: { role: Role }) {
         </div>
       </aside>
     </>
+  );
+}
+
+function NavFolder({
+  group,
+  isActive,
+  onNavigate,
+}: {
+  group: NavGroup;
+  isActive: (href: string) => boolean;
+  onNavigate: () => void;
+}) {
+  const hasActiveChild = group.items.some((item) => isActive(item.href));
+  const [expanded, setExpanded] = useState(hasActiveChild);
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition-colors"
+      >
+        {group.label}
+        <ChevronDown size={14} className={`transition-transform ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      {expanded && (
+        <div className="flex flex-col gap-0.5 mb-1">
+          {group.items.map((item) => (
+            <NavLink key={item.href} {...item} active={isActive(item.href)} onClick={onNavigate} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

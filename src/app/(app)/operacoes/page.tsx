@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Trash2, Users, Gauge, ListChecks, Sparkles, ClipboardCheck } from "lucide-react";
+import { Trash2, Users, Gauge, ListChecks, Sparkles, ClipboardCheck, Lightbulb } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { deleteTask } from "@/lib/actions/tasks";
 import { generateStandardTasks } from "@/lib/actions/operations";
 import { getAccountsHealth, SCORE_COLORS, bucketForScore } from "@/lib/account-health";
+import { TASK_TAGS } from "@/lib/playbooks";
 import { TaskStatusSelect } from "./task-status-select";
 import { ManagerSelect } from "./manager-select";
 import { ClientTaskAdd } from "./client-task-add";
@@ -24,7 +25,7 @@ export default async function OperacoesPage({
   await requireModuleAccess("operacoes");
   const { op } = await searchParams;
 
-  const [operators, clients, accountsHealth] = await Promise.all([
+  const [operators, clients, accountsHealth, playbooksForTasks] = await Promise.all([
     prisma.user.findMany({
       where: { active: true, role: { not: "ADMIN" } },
       select: { id: true, name: true },
@@ -44,9 +45,19 @@ export default async function OperacoesPage({
       orderBy: { companyName: "asc" },
     }),
     getAccountsHealth(),
+    prisma.playbook.findMany({
+      where: { tags: { hasSome: Array.from(new Set(Object.values(TASK_TAGS).flat())) } },
+      select: { id: true, title: true, tags: true },
+    }),
   ]);
 
   const healthByClient = new Map(accountsHealth.map((a) => [a.id, a.metrics]));
+
+  function playbookForTask(title: string) {
+    const tags = TASK_TAGS[title.toLowerCase()];
+    if (!tags) return null;
+    return playbooksForTasks.find((p) => p.tags.some((t) => tags.includes(t))) ?? null;
+  }
 
   const unassignedCount = clients.filter((c) => !c.managerId).length;
 
@@ -186,11 +197,22 @@ export default async function OperacoesPage({
                 </p>
               ) : (
                 <div className="flex flex-col divide-y divide-border">
-                  {c.tasks.map((t) => (
+                  {c.tasks.map((t) => {
+                    const playbook = playbookForTask(t.title);
+                    return (
                     <div key={t.id} className="flex items-center justify-between gap-3 py-2">
                       <span className="flex items-center gap-2 text-sm">
                         <span className={`w-1.5 h-1.5 rounded-full ${STATUS_DOT[t.status] ?? "bg-zinc-400"}`} />
                         {t.title}
+                        {playbook && (
+                          <Link
+                            href={`/playbooks/${playbook.id}`}
+                            title={`Playbook: ${playbook.title}`}
+                            className="text-accent hover:opacity-75"
+                          >
+                            <Lightbulb size={13} />
+                          </Link>
+                        )}
                       </span>
                       <div className="flex items-center gap-2">
                         <TaskStatusSelect taskId={t.id} status={t.status} />
@@ -201,7 +223,8 @@ export default async function OperacoesPage({
                         </form>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               <div className="pt-2">

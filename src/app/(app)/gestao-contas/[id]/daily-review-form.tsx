@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import { CheckCircle2 } from "lucide-react";
 import { submitDailyReview } from "@/lib/actions/account-management";
+import { PlaybookHint } from "@/components/playbook-hint";
 
 const META_ADS = [
   ["checkedCpl", "Verificou CPL"],
@@ -28,7 +29,13 @@ function Check({ name, label }: { name: string; label: string }) {
   );
 }
 
-export function DailyReviewForm({ clientId }: { clientId: string }) {
+export function DailyReviewForm({
+  clientId,
+  suggestions = [],
+}: {
+  clientId: string;
+  suggestions?: { id: string; title: string }[];
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const [state, formAction, saving] = useActionState(submitDailyReview.bind(null, clientId), undefined);
 
@@ -38,6 +45,7 @@ export function DailyReviewForm({ clientId }: { clientId: string }) {
 
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
+      <PlaybookHint playbooks={suggestions} />
       <div className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">Meta Ads</p>

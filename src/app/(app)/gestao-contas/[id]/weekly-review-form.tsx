@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Camera, X } from "lucide-react";
 import { submitWeeklyReview } from "@/lib/actions/account-management";
+import { PlaybookHint } from "@/components/playbook-hint";
 
 const CRIATIVOS = [
   ["createdCreative", "Criou criativo novo"],
@@ -26,7 +27,13 @@ function Check({ name, label }: { name: string; label: string }) {
   );
 }
 
-export function WeeklyReviewForm({ clientId }: { clientId: string }) {
+export function WeeklyReviewForm({
+  clientId,
+  suggestions = [],
+}: {
+  clientId: string;
+  suggestions?: { id: string; title: string }[];
+}) {
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [state, formAction, saving] = useActionState(submitWeeklyReview.bind(null, clientId), undefined);
@@ -41,6 +48,7 @@ export function WeeklyReviewForm({ clientId }: { clientId: string }) {
 
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
+      <PlaybookHint playbooks={suggestions} />
       <div className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
         <div>
           <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">Criativos</p>

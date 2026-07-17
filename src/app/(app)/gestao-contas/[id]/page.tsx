@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { computeMetrics, SCORE_COLORS, BUCKET_LABELS } from "@/lib/account-health";
 import { formatDate, formatDateTime, CAMPAIGN_CHANGE_TYPE_LABELS } from "@/lib/labels";
+import { getSuggestedPlaybooks, DAILY_REVIEW_TAGS, WEEKLY_REVIEW_TAGS } from "@/lib/playbooks";
 import { DailyReviewForm } from "./daily-review-form";
 import { WeeklyReviewForm } from "./weekly-review-form";
 import { ChangeLogForm } from "./change-log-form";
@@ -44,6 +45,11 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
     take: 12,
     select: { id: true, createdAt: true, reportPhotoUrl: true, notes: true, reviewer: { select: { name: true } } },
   });
+
+  const [dailySuggestions, weeklySuggestions] = await Promise.all([
+    getSuggestedPlaybooks(DAILY_REVIEW_TAGS),
+    getSuggestedPlaybooks(WEEKLY_REVIEW_TAGS),
+  ]);
 
   const metrics = computeMetrics({
     lastDaily: lastDaily?.createdAt ?? null,
@@ -96,11 +102,11 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="rounded-2xl border border-border bg-surface p-5">
           <h2 className="text-sm font-semibold mb-4">Checklist diário</h2>
-          <DailyReviewForm clientId={client.id} />
+          <DailyReviewForm clientId={client.id} suggestions={dailySuggestions} />
         </div>
         <div className="rounded-2xl border border-border bg-surface p-5">
           <h2 className="text-sm font-semibold mb-4">Checklist semanal</h2>
-          <WeeklyReviewForm clientId={client.id} />
+          <WeeklyReviewForm clientId={client.id} suggestions={weeklySuggestions} />
         </div>
       </div>
 

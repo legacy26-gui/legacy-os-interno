@@ -3,6 +3,7 @@ import { ClipboardList, PartyPopper, ExternalLink } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { computeMetrics, SCORE_COLORS } from "@/lib/account-health";
+import { getSuggestedPlaybooks, DAILY_REVIEW_TAGS } from "@/lib/playbooks";
 import { ClientChecklistRow } from "./client-checklist-row";
 
 function startOfToday() {
@@ -17,17 +18,20 @@ function startOfWeekAgo() {
 export default async function MeuDiaPage() {
   const user = await getCurrentUser();
 
-  const clients = await prisma.client.findMany({
-    where: { managerId: user.id, status: { not: "CANCELADO" } },
-    select: {
-      id: true,
-      companyName: true,
-      dailyReviews: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
-      weeklyReviews: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
-      campaignChanges: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
-    },
-    orderBy: { companyName: "asc" },
-  });
+  const [clients, dailySuggestions] = await Promise.all([
+    prisma.client.findMany({
+      where: { managerId: user.id, status: { not: "CANCELADO" } },
+      select: {
+        id: true,
+        companyName: true,
+        dailyReviews: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+        weeklyReviews: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+        campaignChanges: { orderBy: { createdAt: "desc" }, take: 1, select: { createdAt: true } },
+      },
+      orderBy: { companyName: "asc" },
+    }),
+    getSuggestedPlaybooks(DAILY_REVIEW_TAGS),
+  ]);
 
   const todayStart = startOfToday();
   const weekAgo = startOfWeekAgo();
@@ -104,6 +108,7 @@ export default async function MeuDiaPage() {
             scoreClass={SCORE_COLORS[r.bucket]}
             dailyDoneToday={r.dailyDoneToday}
             weeklyDoneThisWeek={r.weeklyDoneThisWeek}
+            suggestions={dailySuggestions}
           />
         ))}
       </div>

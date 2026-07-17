@@ -14,6 +14,7 @@ export const MODULES = [
   "calendario",
   "suporte",
   "gestao-contas",
+  "playbooks",
   "configuracoes",
 ] as const;
 
@@ -35,6 +36,7 @@ const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   calendario: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   suporte: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   "gestao-contas": ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
+  playbooks: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   configuracoes: ["ADMIN"],
 };
 
@@ -51,6 +53,7 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   { prefix: "/calendario", module: "calendario" },
   { prefix: "/suporte", module: "suporte" },
   { prefix: "/gestao-contas", module: "gestao-contas" },
+  { prefix: "/playbooks", module: "playbooks" },
   { prefix: "/configuracoes", module: "configuracoes" },
 ];
 

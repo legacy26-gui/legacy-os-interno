@@ -11,6 +11,7 @@ export function ClientChecklistRow({
   scoreClass,
   dailyDoneToday,
   weeklyDoneThisWeek,
+  suggestions = [],
 }: {
   clientId: string;
   companyName: string;
@@ -18,6 +19,7 @@ export function ClientChecklistRow({
   scoreClass: string;
   dailyDoneToday: boolean;
   weeklyDoneThisWeek: boolean;
+  suggestions?: { id: string; title: string }[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -58,7 +60,7 @@ export function ClientChecklistRow({
 
       {open && (
         <div className="p-4 border-t border-border">
-          <DailyReviewForm clientId={clientId} />
+          <DailyReviewForm clientId={clientId} suggestions={suggestions} />
         </div>
       )}
     </div>

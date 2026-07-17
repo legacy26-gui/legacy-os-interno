@@ -39,6 +39,7 @@ model User {
   dailyReviews     DailyReview[]    @relation("DailyReviewer")
   weeklyReviews    WeeklyReview[]   @relation("WeeklyReviewer")
   campaignChanges  CampaignChange[] @relation("ChangeResponsible")
+  playbooks        Playbook[]
 
   @@map("users")
 }
@@ -472,4 +473,20 @@ model CampaignChange {
 
   @@index([clientId, createdAt])
   @@map("campaign_changes")
+}
+
+// ─── Playbooks (base de conhecimento interna) ───────────────────────────────
+
+model Playbook {
+  id        String   @id @default(cuid())
+  title     String
+  tags      String[] @default([])
+  content   String   @db.Text
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tags])
+  @@map("playbooks")
 }

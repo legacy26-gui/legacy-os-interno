@@ -6,7 +6,7 @@ import { useState } from "react";
 import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
-  Gauge, ClipboardList, ChevronDown, Menu, X,
+  Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X,
 } from "lucide-react";
 import type { Role } from "@/generated/prisma/enums";
 import { canAccessModule, type ModuleKey } from "@/lib/permissions";
@@ -18,6 +18,7 @@ type NavGroup = { label: string; items: NavLeaf[] };
 const TOP_ITEMS: NavLeaf[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: null },
   { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: null },
+  { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
 ];
 
 // Menu completo (Admin/Gerente), organizado em pastas.
@@ -53,6 +54,7 @@ const NAV_GROUPS: NavGroup[] = [
 // Menu mínimo do Gestor de Tráfego: só o essencial pra trabalhar no dia a dia.
 const EMPLOYEE_ITEMS: NavLeaf[] = [
   { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: null },
+  { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
   { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
   { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
 ];

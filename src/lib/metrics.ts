@@ -18,13 +18,14 @@ export async function getFinanceOverview(refDate = new Date()) {
   const { start: monthStart, end: monthEnd } = monthRange(month);
   const { start: yearStart, end: yearEnd } = yearRange(year);
 
-  const [activeClients, revenuesThisMonth, revenuesThisYear, expensesThisMonth, goal, overdue, dueToday, dueSoon] =
+  const [activeClients, revenuesThisMonth, revenuesThisYear, expensesThisMonth, goal, pendingRevenues, overdue, dueToday, dueSoon] =
     await Promise.all([
       prisma.client.findMany({ where: { status: "ATIVO" } }),
       prisma.revenue.findMany({ where: { status: "PAGO", paidDate: { gte: monthStart, lt: monthEnd } } }),
       prisma.revenue.findMany({ where: { status: "PAGO", paidDate: { gte: yearStart, lt: yearEnd } } }),
       prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } } }),
       prisma.monthlyGoal.findUnique({ where: { month } }),
+      prisma.revenue.findMany({ where: { status: { in: ["PENDENTE", "ATRASADO"] } } }),
       prisma.revenue.findMany({
         where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: new Date(new Date().toDateString()) } },
         include: { client: { select: { companyName: true } } },
@@ -50,6 +51,7 @@ export async function getFinanceOverview(refDate = new Date()) {
   const faturamentoAnual = revenuesThisYear.reduce((s, r) => s + Number(r.value), 0);
   const despesasMes = expensesThisMonth.reduce((s, e) => s + Number(e.value), 0);
   const lucroEstimado = faturamentoMensal - despesasMes;
+  const aReceber = pendingRevenues.reduce((s, r) => s + Number(r.value), 0);
   const ticketMedio = activeClients.length > 0 ? mrr / activeClients.length : 0;
   const targetRevenue = goal ? Number(goal.targetRevenue) : 0;
   const percentAtingido = targetRevenue > 0 ? Math.min(999, (faturamentoMensal / targetRevenue) * 100) : 0;
@@ -63,6 +65,7 @@ export async function getFinanceOverview(refDate = new Date()) {
     faturamentoAnual,
     despesasMes,
     lucroEstimado,
+    aReceber,
     ticketMedio,
     clientesAtivos: activeClients.length,
     clientesInadimplentes,

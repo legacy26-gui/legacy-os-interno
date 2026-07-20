@@ -50,6 +50,13 @@ export async function deleteRevenue(revenueId: string) {
   revalidatePath("/financeiro");
 }
 
+export async function updateRevenueDueDate(revenueId: string, dueDate: string) {
+  await requireModuleAccess("financeiro");
+  if (!dueDate) return;
+  await prisma.revenue.update({ where: { id: revenueId }, data: { dueDate: new Date(dueDate) } });
+  revalidatePath("/financeiro");
+}
+
 const ExpenseSchema = z.object({
   description: z.string().min(2, "Informe uma descrição."),
   category: z.string().min(1, "Informe a categoria."),

@@ -1,4 +1,4 @@
-import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { getFinanceOverview, getRevenueByClient, getRevenueByCity } from "@/lib/metrics";
@@ -9,6 +9,7 @@ import { RevenueForm } from "./revenue-form";
 import { ExpenseForm } from "./expense-form";
 import { GoalForm } from "./goal-form";
 import { MrrBoard } from "./mrr-board";
+import { DueDateInput } from "./due-date-input";
 
 export default async function FinanceiroPage() {
   await requireModuleAccess("financeiro");
@@ -38,7 +39,7 @@ export default async function FinanceiroPage() {
         <p className="text-sm text-foreground-muted mt-0.5">Receitas, despesas e indicadores da agência</p>
       </div>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard icon={TrendingUp} label="Receita recorrente (MRR)" value={formatCurrency(overview.mrr)} />
         <MetricCard icon={Wallet} label="Faturamento do mês" value={formatCurrency(overview.faturamentoMensal)} />
         <MetricCard icon={Wallet} label="Faturamento anual" value={formatCurrency(overview.faturamentoAnual)} />
@@ -47,6 +48,7 @@ export default async function FinanceiroPage() {
           label="Lucro estimado (mês)"
           value={formatCurrency(overview.lucroEstimado)}
         />
+        <MetricCard icon={Clock} label="A receber" value={formatCurrency(overview.aReceber)} alert={overview.aReceber > 0} />
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
@@ -129,7 +131,9 @@ export default async function FinanceiroPage() {
               <tr key={r.id} className="hover:bg-surface-muted transition-colors">
                 <td className="px-5 py-3">{r.client.companyName}</td>
                 <td className="px-5 py-3 text-foreground-muted">{r.description}</td>
-                <td className="px-5 py-3 text-foreground-muted">{formatDate(r.dueDate)}</td>
+                <td className="px-5 py-3 text-foreground-muted">
+                  <DueDateInput revenueId={r.id} dueDate={r.dueDate} />
+                </td>
                 <td className="px-5 py-3 text-right font-medium">{formatCurrency(r.value.toString())}</td>
                 <td className="px-5 py-3">
                   <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${REVENUE_STATUS_COLORS[r.status]}`}>
@@ -222,14 +226,24 @@ export default async function FinanceiroPage() {
   );
 }
 
-function MetricCard({ icon: Icon, label, value }: { icon: typeof TrendingUp; label: string; value: string }) {
+function MetricCard({
+  icon: Icon,
+  label,
+  value,
+  alert,
+}: {
+  icon: typeof TrendingUp;
+  label: string;
+  value: string;
+  alert?: boolean;
+}) {
   return (
     <div className="rounded-2xl border border-border bg-surface p-5">
-      <div className="flex items-center gap-2 text-foreground-muted mb-2">
+      <div className={`flex items-center gap-2 mb-2 ${alert ? "text-amber-500" : "text-foreground-muted"}`}>
         <Icon size={15} />
         <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
       </div>
-      <p className="text-xl font-semibold">{value}</p>
+      <p className={`text-xl font-semibold ${alert ? "text-amber-500" : ""}`}>{value}</p>
     </div>
   );
 }

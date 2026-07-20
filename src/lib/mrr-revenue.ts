@@ -82,9 +82,12 @@ export async function getMonthlyMrrRevenues(ref: Date = new Date()): Promise<{
     byDay.get(day)!.push(r);
   }
 
-  const groups: MrrRevenueGroup[] = Array.from(byDay.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([day, items]) => ({ day, items }));
+  // Sempre mostra as colunas do dia 5 ao 30, mesmo vazias — são os alvos
+  // pra arrastar o card do cliente pro dia de recebimento certo.
+  const groups: MrrRevenueGroup[] = Array.from({ length: 26 }, (_, i) => i + 5).map((day) => ({
+    day,
+    items: byDay.get(day) ?? [],
+  }));
 
   const totalMonth = revenues.reduce((s, r) => s + Number(r.value), 0);
   const paidTotal = revenues.filter((r) => r.status === "PAGO").reduce((s, r) => s + Number(r.value), 0);

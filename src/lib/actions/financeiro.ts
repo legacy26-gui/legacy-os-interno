@@ -44,6 +44,13 @@ export async function markRevenuePaid(revenueId: string) {
   revalidatePath("/financeiro");
 }
 
+// Desfaz um "marcar como pago" feito por engano — volta pra pendente.
+export async function markRevenueUnpaid(revenueId: string) {
+  await requireModuleAccess("financeiro");
+  await prisma.revenue.update({ where: { id: revenueId }, data: { status: "PENDENTE", paidDate: null } });
+  revalidatePath("/financeiro");
+}
+
 export async function deleteRevenue(revenueId: string) {
   await requireModuleAccess("financeiro");
   await prisma.revenue.delete({ where: { id: revenueId } });
@@ -54,6 +61,22 @@ export async function updateRevenueDueDate(revenueId: string, dueDate: string) {
   await requireModuleAccess("financeiro");
   if (!dueDate) return;
   await prisma.revenue.update({ where: { id: revenueId }, data: { dueDate: new Date(dueDate) } });
+  revalidatePath("/financeiro");
+}
+
+// Move o card do quadro de MRR pra outro dia de recebimento — mantém mês/ano,
+// só troca o dia (com clamp pro último dia do mês, ex: dia 30 em fevereiro).
+export async function moveMrrRevenueToDay(revenueId: string, day: number) {
+  await requireModuleAccess("financeiro");
+  const revenue = await prisma.revenue.findUnique({ where: { id: revenueId }, select: { dueDate: true } });
+  if (!revenue) return;
+
+  const year = revenue.dueDate.getUTCFullYear();
+  const month = revenue.dueDate.getUTCMonth();
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const newDueDate = new Date(Date.UTC(year, month, Math.min(day, lastDay)));
+
+  await prisma.revenue.update({ where: { id: revenueId }, data: { dueDate: newDueDate } });
   revalidatePath("/financeiro");
 }
 

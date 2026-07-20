@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { BR_STATES } from "@/lib/br-states";
-import { CLIENT_STATUS_LABELS } from "@/lib/labels";
+import { CLIENT_STATUS_LABELS, PAYMENT_DAYS } from "@/lib/labels";
 import type { ClientModel as Client } from "@/generated/prisma/models";
 import type { ClientFormState } from "@/lib/actions/clients";
 
@@ -88,14 +88,14 @@ export function ClientForm({
         </div>
         <div>
           <label className={labelClass}>Dia de vencimento</label>
-          <input
-            name="dueDay"
-            type="number"
-            min="1"
-            max="31"
-            defaultValue={client?.dueDay ?? ""}
-            className={inputClass}
-          />
+          <select name="dueDay" defaultValue={client?.dueDay ?? ""} className={inputClass}>
+            <option value="">Sem dia definido</option>
+            {PAYMENT_DAYS.map((day) => (
+              <option key={day} value={day}>
+                Dia {day}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className={labelClass}>Status *</label>

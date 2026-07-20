@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { PAYMENT_DAYS } from "@/lib/labels";
 import type { RevenueModel } from "@/generated/prisma/models";
 
 // Marca as receitas geradas automaticamente a partir do MRR, para diferenciar
@@ -82,9 +83,14 @@ export async function getMonthlyMrrRevenues(ref: Date = new Date()): Promise<{
     byDay.get(day)!.push(r);
   }
 
-  // Sempre mostra as colunas do dia 5 ao 30, mesmo vazias — são os alvos
-  // pra arrastar o card do cliente pro dia de recebimento certo.
-  const groups: MrrRevenueGroup[] = Array.from({ length: 26 }, (_, i) => i + 5).map((day) => ({
+  // Sempre mostra as colunas dos dias de pagamento válidos, mesmo vazias —
+  // são os alvos pra arrastar o card do cliente pro dia de recebimento certo.
+  // Dias fora da lista (dado antigo/editado manualmente) ainda aparecem,
+  // como coluna extra, pra nenhum cliente ficar escondido do quadro.
+  const validDays = new Set<number>(PAYMENT_DAYS);
+  const extraDays = Array.from(byDay.keys()).filter((d) => !validDays.has(d)).sort((a, b) => a - b);
+
+  const groups: MrrRevenueGroup[] = [...PAYMENT_DAYS, ...extraDays].map((day) => ({
     day,
     items: byDay.get(day) ?? [],
   }));

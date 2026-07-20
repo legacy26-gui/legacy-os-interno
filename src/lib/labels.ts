@@ -1,3 +1,6 @@
+// Únicos dias de vencimento/pagamento aceitos no sistema.
+export const PAYMENT_DAYS = [5, 10, 15, 20, 25, 30] as const;
+
 export const CLIENT_STATUS_LABELS = {
   ATIVO: "Ativo",
   IMPLANTACAO: "Em implantação",

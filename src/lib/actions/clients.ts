@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess, getCurrentUser } from "@/lib/dal";
+import { PAYMENT_DAYS } from "@/lib/labels";
 
 const ClientSchema = z.object({
   companyName: z.string().min(2, "Informe o nome da empresa."),
@@ -18,7 +19,11 @@ const ClientSchema = z.object({
   startDate: z.string().optional(),
   plan: z.string().optional(),
   monthlyValue: z.coerce.number().min(0, "Valor inválido."),
-  dueDay: z.coerce.number().int().min(1).max(31).optional(),
+  dueDay: z.coerce
+    .number()
+    .int()
+    .refine((v) => (PAYMENT_DAYS as readonly number[]).includes(v), "Dia de vencimento inválido.")
+    .optional(),
   status: z.enum(["ATIVO", "IMPLANTACAO", "PAUSADO", "CANCELADO"]),
   internalNotes: z.string().optional(),
 });

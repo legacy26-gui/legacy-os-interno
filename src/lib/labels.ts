@@ -1,6 +1,16 @@
 // Únicos dias de vencimento/pagamento aceitos no sistema.
 export const PAYMENT_DAYS = [5, 10, 15, 20, 25, 30] as const;
 
+// Planos contratados disponíveis no cadastro de cliente.
+export const PLAN_OPTIONS = [
+  "Gestão Completa",
+  "Gestão Completa + Áquila IA",
+  "Tráfego Pago",
+  "Site",
+  "Áquila IA",
+  "Outro",
+] as const;
+
 export const CLIENT_STATUS_LABELS = {
   ATIVO: "Ativo",
   IMPLANTACAO: "Em implantação",

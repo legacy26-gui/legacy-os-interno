@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess, getCurrentUser } from "@/lib/dal";
 import { PAYMENT_DAYS } from "@/lib/labels";
+import { ensureMonthlyMrrRevenues } from "@/lib/mrr-revenue";
 
 const ClientSchema = z.object({
   companyName: z.string().min(2, "Informe o nome da empresa."),
@@ -66,7 +67,14 @@ export async function createClient(_prevState: ClientFormState, formData: FormDa
     },
   });
 
+  // Cliente ativo com mensalidade já entra automaticamente no Financeiro,
+  // lançado no dia de pagamento escolhido — sem precisar esperar o mês virar.
+  if (client.status === "ATIVO" && Number(client.monthlyValue) > 0) {
+    await ensureMonthlyMrrRevenues();
+  }
+
   revalidatePath("/clientes");
+  revalidatePath("/financeiro");
   redirect(`/clientes/${client.id}`);
 }
 
@@ -83,7 +91,7 @@ export async function updateClient(
   }
   const data = parsed.data;
 
-  await prisma.client.update({
+  const client = await prisma.client.update({
     where: { id: clientId },
     data: {
       ...data,
@@ -92,8 +100,13 @@ export async function updateClient(
     },
   });
 
+  if (client.status === "ATIVO" && Number(client.monthlyValue) > 0) {
+    await ensureMonthlyMrrRevenues();
+  }
+
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${clientId}`);
+  revalidatePath("/financeiro");
   redirect(`/clientes/${clientId}`);
 }
 

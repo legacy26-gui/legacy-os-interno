@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { BR_STATES } from "@/lib/br-states";
-import { CLIENT_STATUS_LABELS, PAYMENT_DAYS } from "@/lib/labels";
+import { CLIENT_STATUS_LABELS, PAYMENT_DAYS, PLAN_OPTIONS } from "@/lib/labels";
 import type { ClientModel as Client } from "@/generated/prisma/models";
 import type { ClientFormState } from "@/lib/actions/clients";
 
@@ -72,7 +72,17 @@ export function ClientForm({
         </div>
         <div>
           <label className={labelClass}>Plano contratado</label>
-          <input name="plan" defaultValue={client?.plan ?? ""} placeholder="Ex: Gestão Completa" className={inputClass} />
+          <select name="plan" defaultValue={client?.plan ?? ""} className={inputClass}>
+            <option value="">Sem plano definido</option>
+            {client?.plan && !(PLAN_OPTIONS as readonly string[]).includes(client.plan) && (
+              <option value={client.plan}>{client.plan} (atual)</option>
+            )}
+            {PLAN_OPTIONS.map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
         </div>
         <div>
           <label className={labelClass}>Valor mensal (R$) *</label>

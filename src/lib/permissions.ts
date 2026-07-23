@@ -25,7 +25,7 @@ export type ModuleKey = (typeof MODULES)[number];
 const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   dashboard: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   clientes: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
-  financeiro: ["ADMIN", "GERENTE"],
+  financeiro: ["ADMIN"],
   contratos: ["ADMIN", "GERENTE"],
   comercial: ["ADMIN", "GERENTE"],
   operacoes: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus, Search, Pencil } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { canAccessModule } from "@/lib/permissions";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency } from "@/lib/labels";
 import { deleteClient } from "@/lib/actions/clients";
 import { DeleteClientButton } from "./delete-client-button";
@@ -12,7 +13,8 @@ export default async function ClientesPage({
 }: {
   searchParams: Promise<{ q?: string; status?: string }>;
 }) {
-  await requireModuleAccess("clientes");
+  const user = await requireModuleAccess("clientes");
+  const canSeeValues = canAccessModule(user.role, "financeiro");
   const { q, status } = await searchParams;
 
   const clients = await prisma.client.findMany({
@@ -93,7 +95,7 @@ export default async function ClientesPage({
                 <th className="px-5 py-3 font-medium hidden md:table-cell">Contato</th>
                 <th className="px-5 py-3 font-medium hidden lg:table-cell">Cidade/UF</th>
                 <th className="px-5 py-3 font-medium hidden sm:table-cell">Plano</th>
-                <th className="px-5 py-3 font-medium text-right">Mensalidade</th>
+                {canSeeValues && <th className="px-5 py-3 font-medium text-right">Mensalidade</th>}
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium text-right">Ações</th>
               </tr>
@@ -114,7 +116,9 @@ export default async function ClientesPage({
                     {c.city ? `${c.city}${c.state ? "/" + c.state : ""}` : "—"}
                   </td>
                   <td className="px-5 py-3.5 text-foreground-muted hidden sm:table-cell">{c.plan || "—"}</td>
-                  <td className="px-5 py-3.5 text-right font-medium">{formatCurrency(c.monthlyValue.toString())}</td>
+                  {canSeeValues && (
+                    <td className="px-5 py-3.5 text-right font-medium">{formatCurrency(c.monthlyValue.toString())}</td>
+                  )}
                   <td className="px-5 py-3.5">
                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${CLIENT_STATUS_COLORS[c.status]}`}>
                       {CLIENT_STATUS_LABELS[c.status]}

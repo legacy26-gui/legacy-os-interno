@@ -13,9 +13,11 @@ const labelClass = "text-sm font-medium text-foreground-muted mb-1.5 block";
 export function ClientForm({
   client,
   action,
+  canSeeValues = true,
 }: {
   client?: Client;
   action: (state: ClientFormState, formData: FormData) => Promise<ClientFormState>;
+  canSeeValues?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, undefined);
 
@@ -84,18 +86,22 @@ export function ClientForm({
             ))}
           </select>
         </div>
-        <div>
-          <label className={labelClass}>Valor mensal (R$) *</label>
-          <input
-            name="monthlyValue"
-            type="number"
-            step="0.01"
-            min="0"
-            defaultValue={client ? client.monthlyValue.toString() : ""}
-            required
-            className={inputClass}
-          />
-        </div>
+        {canSeeValues ? (
+          <div>
+            <label className={labelClass}>Valor mensal (R$) *</label>
+            <input
+              name="monthlyValue"
+              type="number"
+              step="0.01"
+              min="0"
+              defaultValue={client ? client.monthlyValue.toString() : ""}
+              required
+              className={inputClass}
+            />
+          </div>
+        ) : (
+          <input type="hidden" name="monthlyValue" value={client ? client.monthlyValue.toString() : "0"} />
+        )}
         <div>
           <label className={labelClass}>Dia de vencimento</label>
           <select name="dueDay" defaultValue={client?.dueDay ?? ""} className={inputClass}>

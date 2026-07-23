@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Pencil, ExternalLink, Building2, Phone, Mail, MapPin, CreditCard } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { canAccessModule } from "@/lib/permissions";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate, formatDateTime } from "@/lib/labels";
 import { deleteClient } from "@/lib/actions/clients";
 import { HistoryForm } from "./history-form";
@@ -10,7 +11,8 @@ import { AttachmentForm } from "./attachment-form";
 import { DeleteClientButton } from "../delete-client-button";
 
 export default async function ClienteDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  await requireModuleAccess("clientes");
+  const user = await requireModuleAccess("clientes");
+  const canSeeValues = canAccessModule(user.role, "financeiro");
   const { id } = await params;
 
   const client = await prisma.client.findUnique({
@@ -70,7 +72,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
           <p className="text-xs uppercase text-foreground-muted tracking-wide mb-3 font-medium">Contrato</p>
           <div className="flex flex-col gap-2 text-sm">
             <span className="flex items-center gap-2"><CreditCard size={14} className="text-foreground-muted" /> {client.plan || "Sem plano definido"}</span>
-            <span className="font-semibold text-base">{formatCurrency(client.monthlyValue.toString())}/mês</span>
+            {canSeeValues && <span className="font-semibold text-base">{formatCurrency(client.monthlyValue.toString())}/mês</span>}
             <span className="text-foreground-muted">Vencimento dia {client.dueDay ?? "—"} · Início {formatDate(client.startDate)}</span>
           </div>
         </div>
@@ -130,22 +132,24 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
         </div>
       </div>
 
-      <div className="rounded-2xl border border-border bg-surface p-5">
-        <p className="text-xs uppercase text-foreground-muted tracking-wide mb-3 font-medium">Últimas receitas</p>
-        {client.revenues.length === 0 ? (
-          <p className="text-sm text-foreground-muted">Nenhuma receita lançada.</p>
-        ) : (
-          <div className="flex flex-col divide-y divide-border">
-            {client.revenues.map((r) => (
-              <div key={r.id} className="flex items-center justify-between py-2 text-sm">
-                <span>{r.description}</span>
-                <span className="text-foreground-muted">{formatDate(r.dueDate)}</span>
-                <span className="font-medium">{formatCurrency(r.value.toString())}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {canSeeValues && (
+        <div className="rounded-2xl border border-border bg-surface p-5">
+          <p className="text-xs uppercase text-foreground-muted tracking-wide mb-3 font-medium">Últimas receitas</p>
+          {client.revenues.length === 0 ? (
+            <p className="text-sm text-foreground-muted">Nenhuma receita lançada.</p>
+          ) : (
+            <div className="flex flex-col divide-y divide-border">
+              {client.revenues.map((r) => (
+                <div key={r.id} className="flex items-center justify-between py-2 text-sm">
+                  <span>{r.description}</span>
+                  <span className="text-foreground-muted">{formatDate(r.dueDate)}</span>
+                  <span className="font-medium">{formatCurrency(r.value.toString())}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

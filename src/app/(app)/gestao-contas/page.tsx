@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Gauge, ShieldCheck, AlertTriangle, Flame, Trophy, CalendarX, CalendarClock, Zap, ImageOff } from "lucide-react";
+import { Gauge, ShieldCheck, AlertTriangle, Flame, Trophy, CalendarX, CalendarClock, Zap, ImageOff, ClipboardCheck } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
 import { getAccountsHealth, SCORE_COLORS, BUCKET_LABELS, type AccountHealth } from "@/lib/account-health";
 import { formatDate } from "@/lib/labels";
@@ -34,12 +34,20 @@ export default async function GestaoContasPage() {
           </h1>
           <p className="text-sm text-foreground-muted mt-0.5">Saúde das contas de tráfego e acompanhamento dos gestores</p>
         </div>
-        <Link
-          href="/gestao-contas/ranking"
-          className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted self-start"
-        >
-          <Trophy size={16} /> Ranking de gestores
-        </Link>
+        <div className="flex gap-2 self-start">
+          <Link
+            href="/gestao-contas/hoje"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted"
+          >
+            <ClipboardCheck size={16} /> Checklist de hoje
+          </Link>
+          <Link
+            href="/gestao-contas/ranking"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted"
+          >
+            <Trophy size={16} /> Ranking de gestores
+          </Link>
+        </div>
       </div>
 
       {/* Cards de saúde */}

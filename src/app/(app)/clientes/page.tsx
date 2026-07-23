@@ -6,6 +6,7 @@ import { canAccessModule } from "@/lib/permissions";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency } from "@/lib/labels";
 import { deleteClient } from "@/lib/actions/clients";
 import { DeleteClientButton } from "./delete-client-button";
+import { ManagerSelect } from "../operacoes/manager-select";
 import type { ClientStatus } from "@/generated/prisma/enums";
 
 export default async function ClientesPage({
@@ -15,28 +16,35 @@ export default async function ClientesPage({
 }) {
   const user = await requireModuleAccess("clientes");
   const canSeeValues = canAccessModule(user.role, "financeiro");
+  const canManageOperators = canAccessModule(user.role, "operacoes");
   const { q, status } = await searchParams;
 
-  const clients = await prisma.client.findMany({
-    where: {
-      AND: [
-        q
-          ? {
-              OR: [
-                { companyName: { contains: q, mode: "insensitive" } },
-                { contactName: { contains: q, mode: "insensitive" } },
-                { city: { contains: q, mode: "insensitive" } },
-              ],
-            }
-          : {},
-        status ? { status: status as ClientStatus } : {},
-      ],
-    },
-    include: { manager: { select: { name: true } } },
-    orderBy: { companyName: "asc" },
-  });
-
-  const statusCounts = await prisma.client.groupBy({ by: ["status"], _count: true });
+  const [clients, operators, statusCounts] = await Promise.all([
+    prisma.client.findMany({
+      where: {
+        AND: [
+          q
+            ? {
+                OR: [
+                  { companyName: { contains: q, mode: "insensitive" } },
+                  { contactName: { contains: q, mode: "insensitive" } },
+                  { city: { contains: q, mode: "insensitive" } },
+                ],
+              }
+            : {},
+          status ? { status: status as ClientStatus } : {},
+        ],
+      },
+      include: { manager: { select: { name: true } } },
+      orderBy: { companyName: "asc" },
+    }),
+    prisma.user.findMany({
+      where: { active: true, role: { not: "ADMIN" } },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+    }),
+    prisma.client.groupBy({ by: ["status"], _count: true }),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -95,6 +103,7 @@ export default async function ClientesPage({
                 <th className="px-5 py-3 font-medium hidden md:table-cell">Contato</th>
                 <th className="px-5 py-3 font-medium hidden lg:table-cell">Cidade/UF</th>
                 <th className="px-5 py-3 font-medium hidden sm:table-cell">Plano</th>
+                <th className="px-5 py-3 font-medium">Gestor</th>
                 {canSeeValues && <th className="px-5 py-3 font-medium text-right">Mensalidade</th>}
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium text-right">Ações</th>
@@ -107,15 +116,19 @@ export default async function ClientesPage({
                     <Link href={`/clientes/${c.id}`} className="font-medium hover:text-accent">
                       {c.companyName}
                     </Link>
-                    <p className="text-xs text-foreground-muted mt-0.5">
-                      Gestor: {c.manager?.name ?? "sem gestor"}
-                    </p>
                   </td>
                   <td className="px-5 py-3.5 text-foreground-muted hidden md:table-cell">{c.contactName}</td>
                   <td className="px-5 py-3.5 text-foreground-muted hidden lg:table-cell">
                     {c.city ? `${c.city}${c.state ? "/" + c.state : ""}` : "—"}
                   </td>
                   <td className="px-5 py-3.5 text-foreground-muted hidden sm:table-cell">{c.plan || "—"}</td>
+                  <td className="px-5 py-3.5">
+                    {canManageOperators ? (
+                      <ManagerSelect clientId={c.id} managerId={c.managerId} operators={operators} />
+                    ) : (
+                      <span className="text-foreground-muted">{c.manager?.name ?? "Sem gestor"}</span>
+                    )}
+                  </td>
                   {canSeeValues && (
                     <td className="px-5 py-3.5 text-right font-medium">{formatCurrency(c.monthlyValue.toString())}</td>
                   )}

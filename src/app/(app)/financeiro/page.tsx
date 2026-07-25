@@ -41,7 +41,7 @@ export default async function FinanceiroPage() {
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard icon={TrendingUp} label="Receita recorrente (MRR)" value={formatCurrency(overview.mrr)} />
-        <MetricCard icon={Wallet} label="Faturamento do mês" value={formatCurrency(overview.faturamentoMensal)} />
+        <MetricCard icon={Wallet} label="Faturado/Mês" value={formatCurrency(overview.faturamentoMensal)} />
         <MetricCard icon={Wallet} label="Faturamento anual" value={formatCurrency(overview.faturamentoAnual)} />
         <MetricCard
           icon={overview.lucroEstimado >= 0 ? TrendingUp : TrendingDown}

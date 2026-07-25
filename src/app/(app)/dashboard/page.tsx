@@ -52,7 +52,7 @@ export default async function DashboardPage() {
 
       {finance && (
         <Section title="Financeiro">
-          <Card icon={Wallet} label="Faturamento mensal" value={formatCurrency(finance.faturamentoMensal)} />
+          <Card icon={Wallet} label="Faturado/Mês" value={formatCurrency(finance.faturamentoMensal)} />
           <Card icon={Wallet} label="Faturamento anual" value={formatCurrency(finance.faturamentoAnual)} />
           <Card icon={TrendingUp} label="Receita recorrente (MRR)" value={formatCurrency(finance.mrr)} />
           <Card icon={Users} label="Clientes ativos" value={finance.clientesAtivos.toString()} />

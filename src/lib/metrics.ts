@@ -8,21 +8,14 @@ function monthRange(month: string) {
   return { start, end };
 }
 
-function yearRange(year: number) {
-  return { start: new Date(Date.UTC(year, 0, 1)), end: new Date(Date.UTC(year + 1, 0, 1)) };
-}
-
 export async function getFinanceOverview(refDate = new Date()) {
   const month = refDate.toISOString().slice(0, 7);
-  const year = refDate.getUTCFullYear();
   const { start: monthStart, end: monthEnd } = monthRange(month);
-  const { start: yearStart, end: yearEnd } = yearRange(year);
 
-  const [activeClients, revenuesThisMonth, revenuesThisYear, expensesThisMonth, goal, pendingRevenues, overdue, dueToday, dueSoon] =
+  const [activeClients, revenuesThisMonth, expensesThisMonth, goal, pendingRevenues, overdue, dueToday, dueSoon] =
     await Promise.all([
       prisma.client.findMany({ where: { status: "ATIVO" } }),
       prisma.revenue.findMany({ where: { status: "PAGO", paidDate: { gte: monthStart, lt: monthEnd } } }),
-      prisma.revenue.findMany({ where: { status: "PAGO", paidDate: { gte: yearStart, lt: yearEnd } } }),
       prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } } }),
       prisma.monthlyGoal.findUnique({ where: { month } }),
       prisma.revenue.findMany({ where: { status: { in: ["PENDENTE", "ATRASADO"] } } }),
@@ -48,7 +41,8 @@ export async function getFinanceOverview(refDate = new Date()) {
 
   const mrr = activeClients.reduce((s, c) => s + Number(c.monthlyValue), 0);
   const faturamentoMensal = revenuesThisMonth.reduce((s, r) => s + Number(r.value), 0);
-  const faturamentoAnual = revenuesThisYear.reduce((s, r) => s + Number(r.value), 0);
+  // Projeção anual = MRR atual × 12 (não soma histórico do ano).
+  const faturamentoAnual = mrr * 12;
   const despesasMes = expensesThisMonth.reduce((s, e) => s + Number(e.value), 0);
   const lucroEstimado = faturamentoMensal - despesasMes;
   const aReceber = pendingRevenues.reduce((s, r) => s + Number(r.value), 0);
@@ -142,18 +136,21 @@ export async function getCommercialOverview() {
 // Painel de números do Comercial — vendas e churn, atualizado automaticamente
 // a cada cliente adicionado, cancelado ou excluído (ver src/lib/actions/clients.ts).
 export async function getCommercialPanel() {
-  const monthStart = new Date(new Date().toISOString().slice(0, 7) + "-01");
+  const month = new Date().toISOString().slice(0, 7);
+  const monthStart = new Date(month + "-01");
 
-  const [vendasMes, churnMes, vendasTotal, churnTotal] = await Promise.all([
+  const [vendasMes, churnMes, vendasTotal, churnTotal, goal] = await Promise.all([
     prisma.commercialEvent.findMany({ where: { type: "VENDA", createdAt: { gte: monthStart } } }),
     prisma.commercialEvent.findMany({ where: { type: "CHURN", createdAt: { gte: monthStart } } }),
     prisma.commercialEvent.findMany({ where: { type: "VENDA" } }),
     prisma.commercialEvent.findMany({ where: { type: "CHURN" } }),
+    prisma.monthlyGoal.findUnique({ where: { month } }),
   ]);
 
   const sum = (events: { value: unknown }[]) => events.reduce((s, e) => s + Number(e.value), 0);
 
   return {
+    month,
     mes: {
       vendasQtd: vendasMes.length,
       vendasValor: sum(vendasMes),
@@ -165,6 +162,10 @@ export async function getCommercialPanel() {
       vendasValor: sum(vendasTotal),
       churnQtd: churnTotal.length,
       churnValor: sum(churnTotal),
+    },
+    goal: {
+      targetSalesQty: goal?.targetSalesQty ?? 0,
+      targetSalesValue: goal ? Number(goal.targetSalesValue ?? 0) : 0,
     },
   };
 }

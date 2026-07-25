@@ -79,3 +79,36 @@ export async function deleteCommercialEvent(eventId: string) {
   await prisma.commercialEvent.delete({ where: { id: eventId } });
   revalidatePath("/comercial");
 }
+
+const SalesGoalSchema = z.object({
+  month: z.string().min(1),
+  targetSalesQty: z.coerce.number().int().min(0, "Quantidade inválida.").optional(),
+  targetSalesValue: z.coerce.number().min(0, "Valor inválido.").optional(),
+});
+
+export type SalesGoalFormState = { error?: string } | undefined;
+
+export async function setSalesGoal(_prevState: SalesGoalFormState, formData: FormData): Promise<SalesGoalFormState> {
+  await requireModuleAccess("comercial");
+
+  const parsed = SalesGoalSchema.safeParse({
+    month: formData.get("month"),
+    targetSalesQty: formData.get("targetSalesQty") || undefined,
+    targetSalesValue: formData.get("targetSalesValue") || undefined,
+  });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+  }
+
+  await prisma.monthlyGoal.upsert({
+    where: { month: parsed.data.month },
+    update: { targetSalesQty: parsed.data.targetSalesQty, targetSalesValue: parsed.data.targetSalesValue },
+    create: {
+      month: parsed.data.month,
+      targetRevenue: 0,
+      targetSalesQty: parsed.data.targetSalesQty,
+      targetSalesValue: parsed.data.targetSalesValue,
+    },
+  });
+  revalidatePath("/comercial");
+}

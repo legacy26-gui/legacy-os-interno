@@ -9,6 +9,7 @@ import { deleteCommercialEvent } from "@/lib/actions/commercial";
 import { LeadForm } from "./lead-form";
 import { LeadStageSelect } from "./lead-stage-select";
 import { DeleteEventoButton } from "./delete-evento-button";
+import { SalesGoalForm } from "./sales-goal-form";
 import type { LeadStage } from "@/generated/prisma/enums";
 
 const STAGES = Object.keys(LEAD_STAGE_LABELS) as LeadStage[];
@@ -49,6 +50,29 @@ export default async function ComercialPage() {
           Desde o início: {panel.total.vendasQtd} venda(s) · {formatCurrency(panel.total.vendasValor)} vendido ·{" "}
           {panel.total.churnQtd} churn · {formatCurrency(panel.total.churnValor)} perdido
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4">
+        <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Meta de vendas do mês</p>
+        <div className="grid sm:grid-cols-2 gap-4">
+          <GoalProgress
+            label="Quantidade de vendas"
+            current={panel.mes.vendasQtd}
+            target={panel.goal.targetSalesQty}
+            format={(n) => n.toString()}
+          />
+          <GoalProgress
+            label="Valor vendido"
+            current={panel.mes.vendasValor}
+            target={panel.goal.targetSalesValue}
+            format={formatCurrency}
+          />
+        </div>
+        <SalesGoalForm
+          month={panel.month}
+          currentQty={panel.goal.targetSalesQty}
+          currentValue={panel.goal.targetSalesValue}
+        />
       </div>
 
       <div className="rounded-2xl border border-border bg-surface overflow-hidden">
@@ -127,6 +151,36 @@ export default async function ComercialPage() {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+function GoalProgress({
+  label,
+  current,
+  target,
+  format,
+}: {
+  label: string;
+  current: number;
+  target: number;
+  format: (n: number) => string;
+}) {
+  const percent = target > 0 ? Math.min(100, (current / target) * 100) : 0;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-foreground-muted">{label}</span>
+        <span className="font-medium">
+          {format(current)} {target > 0 ? `de ${format(target)}` : "(sem meta definida)"}
+        </span>
+      </div>
+      <div className="h-2 rounded-full bg-surface-muted overflow-hidden">
+        <div
+          className={`h-full transition-all ${percent >= 100 ? "bg-emerald-500" : "bg-accent"}`}
+          style={{ width: `${percent}%` }}
+        />
       </div>
     </div>
   );

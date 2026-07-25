@@ -27,7 +27,7 @@ const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   clientes: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   financeiro: ["ADMIN"],
   contratos: ["ADMIN", "GERENTE"],
-  comercial: ["ADMIN", "GERENTE"],
+  comercial: ["ADMIN"],
   operacoes: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   trafego: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   relatorios: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],

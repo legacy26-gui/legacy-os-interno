@@ -67,6 +67,12 @@ export async function createClient(_prevState: ClientFormState, formData: FormDa
     },
   });
 
+  // Cada cliente adicionado é uma venda — alimenta o painel de números do
+  // Comercial automaticamente.
+  await prisma.commercialEvent.create({
+    data: { type: "VENDA", companyName: client.companyName, value: client.monthlyValue },
+  });
+
   // Cliente ativo com mensalidade já entra automaticamente no Financeiro,
   // lançado no dia de pagamento escolhido — sem precisar esperar o mês virar.
   if (client.status === "ATIVO" && Number(client.monthlyValue) > 0) {
@@ -75,6 +81,7 @@ export async function createClient(_prevState: ClientFormState, formData: FormDa
 
   revalidatePath("/clientes");
   revalidatePath("/financeiro");
+  revalidatePath("/comercial");
   redirect(`/clientes/${client.id}`);
 }
 
@@ -91,6 +98,8 @@ export async function updateClient(
   }
   const data = parsed.data;
 
+  const previous = await prisma.client.findUnique({ where: { id: clientId }, select: { status: true } });
+
   const client = await prisma.client.update({
     where: { id: clientId },
     data: {
@@ -99,6 +108,15 @@ export async function updateClient(
       startDate: data.startDate ? new Date(data.startDate) : null,
     },
   });
+
+  // Virou Cancelado agora — é um churn, alimenta o painel de números do
+  // Comercial automaticamente.
+  if (previous?.status !== "CANCELADO" && client.status === "CANCELADO") {
+    await prisma.commercialEvent.create({
+      data: { type: "CHURN", companyName: client.companyName, value: client.monthlyValue },
+    });
+    revalidatePath("/comercial");
+  }
 
   if (client.status === "ATIVO" && Number(client.monthlyValue) > 0) {
     await ensureMonthlyMrrRevenues();
@@ -112,7 +130,23 @@ export async function updateClient(
 
 export async function deleteClient(clientId: string) {
   await requireModuleAccess("clientes");
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { companyName: true, monthlyValue: true, status: true },
+  });
+
   await prisma.client.delete({ where: { id: clientId } });
+
+  // Cliente removido é um churn — só não duplica se ele já tinha virado
+  // Cancelado antes (aí o churn já foi contado na hora do cancelamento).
+  if (client && client.status !== "CANCELADO") {
+    await prisma.commercialEvent.create({
+      data: { type: "CHURN", companyName: client.companyName, value: client.monthlyValue },
+    });
+    revalidatePath("/comercial");
+  }
+
   revalidatePath("/clientes");
   redirect("/clientes");
 }

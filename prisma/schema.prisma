@@ -490,3 +490,24 @@ model Playbook {
   @@index([tags])
   @@map("playbooks")
 }
+
+// ─── Painel Comercial (vendas e churn) ──────────────────────────────────────
+
+enum CommercialEventType {
+  VENDA
+  CHURN
+}
+
+// Registro histórico de venda/churn, gerado automaticamente ao criar,
+// cancelar ou excluir um cliente — não depende do registro do Client
+// continuar existindo (guarda o nome e valor no momento do evento).
+model CommercialEvent {
+  id          String              @id @default(cuid())
+  type        CommercialEventType
+  companyName String
+  value       Decimal             @db.Decimal(12, 2)
+  createdAt   DateTime            @default(now())
+
+  @@index([type, createdAt])
+  @@map("commercial_events")
+}

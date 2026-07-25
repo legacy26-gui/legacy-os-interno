@@ -139,6 +139,36 @@ export async function getCommercialOverview() {
   return { newLeads, meetings, proposals, contractsAwaitingSignature, closedDeals };
 }
 
+// Painel de números do Comercial — vendas e churn, atualizado automaticamente
+// a cada cliente adicionado, cancelado ou excluído (ver src/lib/actions/clients.ts).
+export async function getCommercialPanel() {
+  const monthStart = new Date(new Date().toISOString().slice(0, 7) + "-01");
+
+  const [vendasMes, churnMes, vendasTotal, churnTotal] = await Promise.all([
+    prisma.commercialEvent.findMany({ where: { type: "VENDA", createdAt: { gte: monthStart } } }),
+    prisma.commercialEvent.findMany({ where: { type: "CHURN", createdAt: { gte: monthStart } } }),
+    prisma.commercialEvent.findMany({ where: { type: "VENDA" } }),
+    prisma.commercialEvent.findMany({ where: { type: "CHURN" } }),
+  ]);
+
+  const sum = (events: { value: unknown }[]) => events.reduce((s, e) => s + Number(e.value), 0);
+
+  return {
+    mes: {
+      vendasQtd: vendasMes.length,
+      vendasValor: sum(vendasMes),
+      churnQtd: churnMes.length,
+      churnValor: sum(churnMes),
+    },
+    total: {
+      vendasQtd: vendasTotal.length,
+      vendasValor: sum(vendasTotal),
+      churnQtd: churnTotal.length,
+      churnValor: sum(churnTotal),
+    },
+  };
+}
+
 export interface AutomationAlert {
   type: "vencimento" | "inadimplencia" | "contrato" | "campanha" | "relatorio";
   message: string;

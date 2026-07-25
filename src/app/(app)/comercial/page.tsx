@@ -1,7 +1,8 @@
-import { Trash2 } from "lucide-react";
+import { Trash2, TrendingUp, TrendingDown, ShoppingCart, UserX } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
-import { LEAD_STAGE_LABELS, LEAD_ORIGIN_LABELS } from "@/lib/labels";
+import { LEAD_STAGE_LABELS, LEAD_ORIGIN_LABELS, formatCurrency } from "@/lib/labels";
+import { getCommercialPanel } from "@/lib/metrics";
 import { deleteLead } from "@/lib/actions/leads";
 import { LeadForm } from "./lead-form";
 import { LeadStageSelect } from "./lead-stage-select";
@@ -12,13 +13,30 @@ const STAGES = Object.keys(LEAD_STAGE_LABELS) as LeadStage[];
 export default async function ComercialPage() {
   await requireModuleAccess("comercial");
 
-  const leads = await prisma.lead.findMany({ orderBy: { createdAt: "desc" } });
+  const [leads, panel] = await Promise.all([
+    prisma.lead.findMany({ orderBy: { createdAt: "desc" } }),
+    getCommercialPanel(),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold">Comercial</h1>
         <p className="text-sm text-foreground-muted mt-0.5">Pipeline de vendas da agência</p>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Este mês</p>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <PanelCard icon={ShoppingCart} label="Vendas" value={panel.mes.vendasQtd.toString()} />
+          <PanelCard icon={TrendingUp} label="Valor vendido" value={formatCurrency(panel.mes.vendasValor)} tone="emerald" />
+          <PanelCard icon={UserX} label="Churn" value={panel.mes.churnQtd.toString()} />
+          <PanelCard icon={TrendingDown} label="Valor de churn" value={formatCurrency(panel.mes.churnValor)} tone="red" />
+        </div>
+        <p className="text-xs text-foreground-muted">
+          Desde o início: {panel.total.vendasQtd} venda(s) · {formatCurrency(panel.total.vendasValor)} vendido ·{" "}
+          {panel.total.churnQtd} churn · {formatCurrency(panel.total.churnValor)} perdido
+        </p>
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5">
@@ -60,6 +78,29 @@ export default async function ComercialPage() {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function PanelCard({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: typeof ShoppingCart;
+  label: string;
+  value: string;
+  tone?: "emerald" | "red";
+}) {
+  const toneClass = tone === "emerald" ? "text-emerald-500" : tone === "red" ? "text-red-500" : "text-foreground-muted";
+  return (
+    <div className="rounded-2xl border border-border bg-surface p-5">
+      <div className={`flex items-center gap-2 mb-2 ${toneClass}`}>
+        <Icon size={15} />
+        <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
+      </div>
+      <p className={`text-xl font-semibold ${tone ? toneClass : ""}`}>{value}</p>
     </div>
   );
 }

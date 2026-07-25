@@ -1,11 +1,14 @@
-import { Trash2, TrendingUp, TrendingDown, ShoppingCart, UserX } from "lucide-react";
+import Link from "next/link";
+import { Trash2, TrendingUp, TrendingDown, ShoppingCart, UserX, Plus, Pencil } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
-import { LEAD_STAGE_LABELS, LEAD_ORIGIN_LABELS, formatCurrency } from "@/lib/labels";
+import { LEAD_STAGE_LABELS, LEAD_ORIGIN_LABELS, formatCurrency, formatDate } from "@/lib/labels";
 import { getCommercialPanel } from "@/lib/metrics";
 import { deleteLead } from "@/lib/actions/leads";
+import { deleteCommercialEvent } from "@/lib/actions/commercial";
 import { LeadForm } from "./lead-form";
 import { LeadStageSelect } from "./lead-stage-select";
+import { DeleteEventoButton } from "./delete-evento-button";
 import type { LeadStage } from "@/generated/prisma/enums";
 
 const STAGES = Object.keys(LEAD_STAGE_LABELS) as LeadStage[];
@@ -13,9 +16,10 @@ const STAGES = Object.keys(LEAD_STAGE_LABELS) as LeadStage[];
 export default async function ComercialPage() {
   await requireModuleAccess("comercial");
 
-  const [leads, panel] = await Promise.all([
+  const [leads, panel, events] = await Promise.all([
     prisma.lead.findMany({ orderBy: { createdAt: "desc" } }),
     getCommercialPanel(),
+    prisma.commercialEvent.findMany({ orderBy: { createdAt: "desc" }, take: 20 }),
   ]);
 
   return (
@@ -26,7 +30,15 @@ export default async function ComercialPage() {
       </div>
 
       <div className="flex flex-col gap-3">
-        <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Este mês</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Este mês</p>
+          <Link
+            href="/comercial/eventos/novo"
+            className="inline-flex items-center gap-1.5 text-sm text-accent hover:underline"
+          >
+            <Plus size={14} /> Adicionar venda/churn manualmente
+          </Link>
+        </div>
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <PanelCard icon={ShoppingCart} label="Vendas" value={panel.mes.vendasQtd.toString()} />
           <PanelCard icon={TrendingUp} label="Valor vendido" value={formatCurrency(panel.mes.vendasValor)} tone="emerald" />
@@ -37,6 +49,44 @@ export default async function ComercialPage() {
           Desde o início: {panel.total.vendasQtd} venda(s) · {formatCurrency(panel.total.vendasValor)} vendido ·{" "}
           {panel.total.churnQtd} churn · {formatCurrency(panel.total.churnValor)} perdido
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-surface overflow-hidden">
+        <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium px-5 pt-5 pb-2">
+          Eventos recentes (vendas e churn)
+        </p>
+        {events.length === 0 ? (
+          <p className="text-sm text-foreground-muted px-5 pb-5">Nenhum evento registrado ainda.</p>
+        ) : (
+          <div className="flex flex-col divide-y divide-border">
+            {events.map((e) => (
+              <div key={e.id} className="flex items-center justify-between gap-3 px-5 py-2.5">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span
+                    className={`text-xs font-medium px-2 py-0.5 rounded-full shrink-0 ${
+                      e.type === "VENDA" ? "bg-emerald-500/15 text-emerald-500" : "bg-red-500/15 text-red-500"
+                    }`}
+                  >
+                    {e.type === "VENDA" ? "Venda" : "Churn"}
+                  </span>
+                  <span className="text-sm truncate">{e.companyName}</span>
+                  <span className="text-xs text-foreground-muted shrink-0">{formatDate(e.createdAt)}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-sm font-medium">{formatCurrency(e.value.toString())}</span>
+                  <Link
+                    href={`/comercial/eventos/${e.id}/editar`}
+                    title="Editar"
+                    className="p-1.5 rounded-lg hover:bg-surface-muted text-foreground-muted hover:text-foreground"
+                  >
+                    <Pencil size={14} />
+                  </Link>
+                  <DeleteEventoButton action={deleteCommercialEvent.bind(null, e.id)} label={e.companyName} />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5">

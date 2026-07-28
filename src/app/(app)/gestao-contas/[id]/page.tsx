@@ -39,12 +39,20 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
     }),
   ]);
 
-  const weeklyReports = await prisma.weeklyReview.findMany({
-    where: { clientId: id },
-    orderBy: { createdAt: "desc" },
-    take: 12,
-    select: { id: true, createdAt: true, reportPhotoUrl: true, notes: true, reviewer: { select: { name: true } } },
-  });
+  const [weeklyReports, dailyReports] = await Promise.all([
+    prisma.weeklyReview.findMany({
+      where: { clientId: id },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+      select: { id: true, createdAt: true, reportPhotoUrl: true, notes: true, reviewer: { select: { name: true } } },
+    }),
+    prisma.dailyReview.findMany({
+      where: { clientId: id },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+      select: { id: true, createdAt: true, photoUrl: true, notes: true, reviewer: { select: { name: true } } },
+    }),
+  ]);
 
   const [dailySuggestions, weeklySuggestions] = await Promise.all([
     getSuggestedPlaybooks(DAILY_REVIEW_TAGS),
@@ -176,6 +184,47 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
                 <div className="p-2.5">
                   <p className="text-xs font-medium">{formatDateTime(w.createdAt)}</p>
                   <p className="text-xs text-foreground-muted">{w.reviewer?.name ?? "—"}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Histórico de fotos de campanha (revisão diária, com foto obrigatória) */}
+      <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4">
+        <div>
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <ImageIcon size={15} className="text-foreground-muted" /> Fotos de campanha enviadas
+          </h2>
+          <p className="text-xs text-foreground-muted mt-0.5">
+            Toda revisão diária exige a foto da campanha — histórico auditável abaixo.
+          </p>
+        </div>
+
+        {dailyReports.length === 0 ? (
+          <p className="text-sm text-foreground-muted">Nenhuma revisão diária enviada ainda.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {dailyReports.map((d) => (
+              <a
+                key={d.id}
+                href={d.photoUrl ?? undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl border border-border overflow-hidden hover:border-accent transition-colors"
+              >
+                {d.photoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={d.photoUrl} alt={`Campanha de ${formatDateTime(d.createdAt)}`} className="w-full h-32 object-cover" />
+                ) : (
+                  <div className="w-full h-32 flex items-center justify-center bg-surface-muted text-foreground-muted">
+                    <ImageOff size={20} />
+                  </div>
+                )}
+                <div className="p-2.5">
+                  <p className="text-xs font-medium">{formatDateTime(d.createdAt)}</p>
+                  <p className="text-xs text-foreground-muted">{d.reviewer?.name ?? "—"}</p>
                 </div>
               </a>
             ))}

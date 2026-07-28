@@ -420,6 +420,8 @@ model DailyReview {
   checkedService      Boolean @default(false)
   checkedScheduling   Boolean @default(false)
 
+  photoUrl String? @db.Text // foto da campanha (obrigatória no formulário)
+
   notes     String?  @db.Text
   createdAt DateTime @default(now())
 

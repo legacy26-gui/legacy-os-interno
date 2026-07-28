@@ -22,12 +22,29 @@ function bool(fd: FormData, name: string) {
 
 export type ReviewFormState = { error?: string } | undefined;
 
+// A foto da campanha é obrigatória: sem ela a revisão diária não é
+// salva e não conta como concluída.
 export async function submitDailyReview(
   clientId: string,
   _prevState: ReviewFormState,
   formData: FormData
 ): Promise<ReviewFormState> {
   const user = await requireModuleAccess("gestao-contas");
+
+  const photo = formData.get("photo");
+  if (!(photo instanceof File) || photo.size === 0) {
+    return { error: "Anexe a foto da campanha para concluir a revisão diária." };
+  }
+  if (!photo.type.startsWith("image/")) {
+    return { error: "A foto precisa ser uma imagem (foto ou print)." };
+  }
+  if (photo.size > MAX_PHOTO_BYTES) {
+    return { error: "Foto muito grande (máx. 5MB). Tire uma foto com menos resolução ou comprima." };
+  }
+
+  const buffer = Buffer.from(await photo.arrayBuffer());
+  const photoUrl = `data:${photo.type};base64,${buffer.toString("base64")}`;
+
   await prisma.dailyReview.create({
     data: {
       clientId,
@@ -41,6 +58,7 @@ export async function submitDailyReview(
       checkedLeadDelivery: bool(formData, "checkedLeadDelivery"),
       checkedService: bool(formData, "checkedService"),
       checkedScheduling: bool(formData, "checkedScheduling"),
+      photoUrl,
       notes: (formData.get("notes") as string)?.trim() || null,
     },
   });

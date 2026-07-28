@@ -19,12 +19,18 @@ export async function GET(request: NextRequest) {
     `SELECT pid, granted FROM pg_locks WHERE locktype = 'advisory'`
   );
 
+  const activity = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(
+    `SELECT pid, state, query, query_start, backend_start, backend_type
+     FROM pg_stat_activity
+     WHERE pid = ANY(SELECT pid FROM pg_locks WHERE locktype = 'advisory')`
+  );
+
   const terminated = await prisma.$queryRawUnsafe<{ pid: number; terminated: boolean }[]>(
     `SELECT pid, pg_terminate_backend(pid) AS terminated
      FROM pg_stat_activity
-     WHERE pid IN (SELECT pid FROM pg_locks WHERE locktype = 'advisory')
+     WHERE pid = ANY(SELECT pid FROM pg_locks WHERE locktype = 'advisory')
        AND pid <> pg_backend_pid()`
   );
 
-  return NextResponse.json({ locksBefore: locks, terminated });
+  return NextResponse.json({ locksBefore: locks, activity, terminated });
 }

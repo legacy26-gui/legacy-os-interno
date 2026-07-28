@@ -19,7 +19,10 @@ export async function assignClientManager(clientId: string, managerId: string) {
     where: { id: clientId },
     data: { managerId: managerId || null },
   });
+  // Usado tanto em Operações quanto na coluna Gestor de Clientes — revalida
+  // os dois, senão a tela que não foi revalidada mostra o valor antigo.
   revalidatePath("/operacoes");
+  revalidatePath("/clientes");
 }
 
 export async function generateStandardTasks(clientId: string) {

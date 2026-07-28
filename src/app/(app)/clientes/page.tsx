@@ -39,7 +39,7 @@ export default async function ClientesPage({
       orderBy: { companyName: "asc" },
     }),
     prisma.user.findMany({
-      where: { active: true, role: { not: "ADMIN" } },
+      where: { active: true },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

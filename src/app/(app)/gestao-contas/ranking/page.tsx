@@ -10,7 +10,7 @@ export default async function RankingGestoresPage() {
   const [accounts, operators] = await Promise.all([
     getAccountsHealth(),
     prisma.user.findMany({
-      where: { active: true, role: { not: "ADMIN" } },
+      where: { active: true },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

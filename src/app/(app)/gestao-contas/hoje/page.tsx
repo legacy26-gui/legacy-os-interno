@@ -13,7 +13,7 @@ export default async function ChecklistHojePage() {
   const todayStart = startOfToday();
 
   const operators = await prisma.user.findMany({
-    where: { active: true, role: { not: "ADMIN" } },
+    where: { active: true },
     select: {
       id: true,
       name: true,

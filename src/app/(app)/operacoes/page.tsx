@@ -27,7 +27,7 @@ export default async function OperacoesPage({
 
   const [operators, clients, accountsHealth, playbooksForTasks] = await Promise.all([
     prisma.user.findMany({
-      where: { active: true, role: { not: "ADMIN" } },
+      where: { active: true },
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),

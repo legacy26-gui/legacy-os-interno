@@ -90,7 +90,11 @@ export default async function ChecklistHojePage() {
             ) : (
               <div className="flex flex-col divide-y divide-border">
                 {r.clients.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                  <Link
+                    key={c.id}
+                    href={`/gestao-contas/${c.id}`}
+                    className="flex items-center justify-between gap-2 py-2 text-sm hover:text-accent"
+                  >
                     <span className="flex items-center gap-2">
                       {c.doneToday ? (
                         <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
@@ -102,7 +106,7 @@ export default async function ChecklistHojePage() {
                     <span className={c.doneToday ? "text-emerald-500 text-xs" : "text-red-500 text-xs"}>
                       {c.doneToday ? "Feito hoje" : "Pendente"}
                     </span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

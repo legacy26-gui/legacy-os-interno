@@ -4,21 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Camera, X } from "lucide-react";
 import { submitDailyReview } from "@/lib/actions/account-management";
 import { PlaybookHint } from "@/components/playbook-hint";
-
-const META_ADS = [
-  ["checkedCpl", "Verificou CPL"],
-  ["checkedBudget", "Verificou orçamento"],
-  ["checkedRejected", "Verificou campanhas rejeitadas"],
-  ["checkedFrequency", "Verificou frequência"],
-  ["checkedComments", "Verificou comentários"],
-  ["checkedLeads", "Verificou leads"],
-] as const;
-
-const CRM = [
-  ["checkedLeadDelivery", "Conferiu entrega de leads"],
-  ["checkedService", "Conferiu atendimento"],
-  ["checkedScheduling", "Conferiu agendamentos"],
-] as const;
+import { DAILY_REVIEW_META_ADS as META_ADS, DAILY_REVIEW_CRM as CRM } from "@/lib/labels";
 
 function Check({ name, label }: { name: string; label: string }) {
   return (

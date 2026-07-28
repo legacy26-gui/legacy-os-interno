@@ -1,16 +1,39 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CalendarDays, CalendarClock, Zap, ImageOff, User as UserIcon, ImageIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  CalendarClock,
+  Zap,
+  ImageOff,
+  User as UserIcon,
+  ImageIcon,
+  ClipboardCheck,
+  CheckCircle2,
+  Circle,
+  AlertCircle,
+} from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { computeMetrics, SCORE_COLORS, BUCKET_LABELS } from "@/lib/account-health";
-import { formatDate, formatDateTime, CAMPAIGN_CHANGE_TYPE_LABELS } from "@/lib/labels";
+import {
+  formatDate,
+  formatDateTime,
+  CAMPAIGN_CHANGE_TYPE_LABELS,
+  DAILY_REVIEW_META_ADS,
+  DAILY_REVIEW_CRM,
+} from "@/lib/labels";
 import { getSuggestedPlaybooks, DAILY_REVIEW_TAGS, WEEKLY_REVIEW_TAGS } from "@/lib/playbooks";
 import { DailyReviewForm } from "./daily-review-form";
 import { WeeklyReviewForm } from "./weekly-review-form";
 import { ChangeLogForm } from "./change-log-form";
 
 const CREATIVE_TYPES = ["CRIATIVO_NOVO", "CRIATIVO_ALTERADO"];
+
+function startOfToday() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
 
 export default async function ContaDetailPage({ params }: { params: Promise<{ id: string }> }) {
   await requireModuleAccess("gestao-contas");
@@ -22,7 +45,7 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
   });
   if (!client) notFound();
 
-  const [lastDaily, lastWeekly, lastChange, lastCreative, changes] = await Promise.all([
+  const [lastDaily, lastWeekly, lastChange, lastCreative, changes, todayDaily] = await Promise.all([
     prisma.dailyReview.findFirst({ where: { clientId: id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.weeklyReview.findFirst({ where: { clientId: id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.campaignChange.findFirst({ where: { clientId: id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
@@ -36,6 +59,25 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
       orderBy: { createdAt: "desc" },
       take: 20,
       select: { id: true, type: true, description: true, createdAt: true, responsible: { select: { name: true } } },
+    }),
+    prisma.dailyReview.findFirst({
+      where: { clientId: id, createdAt: { gte: startOfToday() } },
+      orderBy: { createdAt: "desc" },
+      select: {
+        createdAt: true,
+        checkedCpl: true,
+        checkedBudget: true,
+        checkedRejected: true,
+        checkedFrequency: true,
+        checkedComments: true,
+        checkedLeads: true,
+        checkedLeadDelivery: true,
+        checkedService: true,
+        checkedScheduling: true,
+        photoUrl: true,
+        notes: true,
+        reviewer: { select: { name: true } },
+      },
     }),
   ]);
 
@@ -104,6 +146,49 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
           value={metrics.daysSinceCreative !== null ? `${metrics.daysSinceCreative} dias` : "—"}
           alert={metrics.creativeOverdue}
         />
+      </div>
+
+      {/* Status do checklist diário de hoje — visão de acompanhamento, sem precisar preencher de novo */}
+      <div className="rounded-2xl border border-border bg-surface p-5">
+        <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
+          <ClipboardCheck size={15} className="text-foreground-muted" /> Checklist de hoje
+        </h2>
+        {todayDaily ? (
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-foreground-muted">
+              Preenchido por {todayDaily.reviewer?.name ?? "—"} às {formatDateTime(todayDaily.createdAt)}
+            </p>
+            <div className="grid sm:grid-cols-2 gap-x-8 gap-y-1">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">Meta Ads</p>
+                {DAILY_REVIEW_META_ADS.map(([key, label]) => (
+                  <CheckRow key={key} checked={todayDaily[key]} label={label} />
+                ))}
+              </div>
+              <div>
+                <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">CRM</p>
+                {DAILY_REVIEW_CRM.map(([key, label]) => (
+                  <CheckRow key={key} checked={todayDaily[key]} label={label} />
+                ))}
+              </div>
+            </div>
+            {todayDaily.notes && <p className="text-xs text-foreground-muted">Obs: {todayDaily.notes}</p>}
+            {todayDaily.photoUrl ? (
+              <a href={todayDaily.photoUrl} target="_blank" rel="noreferrer" className="inline-block w-fit">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={todayDaily.photoUrl} alt="Foto da campanha de hoje" className="max-h-40 rounded-lg border border-border" />
+              </a>
+            ) : (
+              <p className="text-xs text-foreground-muted flex items-center gap-1.5">
+                <ImageOff size={13} /> Sem foto registrada
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-sm text-foreground-muted flex items-center gap-1.5">
+            <AlertCircle size={15} className="text-red-500 shrink-0" /> Ainda não preenchido hoje.
+          </p>
+        )}
       </div>
 
       {/* Checklists */}
@@ -232,6 +317,19 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
         )}
       </div>
     </div>
+  );
+}
+
+function CheckRow({ checked, label }: { checked: boolean; label: string }) {
+  return (
+    <p className={`flex items-center gap-2 py-0.5 text-sm ${checked ? "" : "text-foreground-muted"}`}>
+      {checked ? (
+        <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
+      ) : (
+        <Circle size={14} className="shrink-0" />
+      )}
+      {label}
+    </p>
   );
 }
 

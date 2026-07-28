@@ -112,6 +112,21 @@ export const TICKET_STATUS_COLORS = {
   RESOLVIDO: "bg-emerald-500/15 text-emerald-500",
 } as const;
 
+export const DAILY_REVIEW_META_ADS = [
+  ["checkedCpl", "Verificou CPL"],
+  ["checkedBudget", "Verificou orçamento"],
+  ["checkedRejected", "Verificou campanhas rejeitadas"],
+  ["checkedFrequency", "Verificou frequência"],
+  ["checkedComments", "Verificou comentários"],
+  ["checkedLeads", "Verificou leads"],
+] as const;
+
+export const DAILY_REVIEW_CRM = [
+  ["checkedLeadDelivery", "Conferiu entrega de leads"],
+  ["checkedService", "Conferiu atendimento"],
+  ["checkedScheduling", "Conferiu agendamentos"],
+] as const;
+
 export const CAMPAIGN_CHANGE_TYPE_LABELS = {
   CAMPANHA_CRIADA: "Campanha criada",
   CAMPANHA_PAUSADA: "Campanha pausada",

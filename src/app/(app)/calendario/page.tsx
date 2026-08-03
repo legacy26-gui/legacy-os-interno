@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ListChecks, Wallet, FileSignature, Palmtree } from "lucide-react";
+import { ChevronLeft, ChevronRight, ListChecks, Wallet, FileSignature, Palmtree, CalendarClock, Trash2, Users } from "lucide-react";
 import {
   startOfMonth,
   endOfMonth,
@@ -16,11 +16,19 @@ import {
 import { ptBR } from "date-fns/locale";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { deleteAgendaItem } from "@/lib/actions/agenda";
+import { AgendaForm } from "./agenda-form";
+
+const AGENDA_TYPE_LABELS: Record<string, string> = {
+  AGENDAMENTO: "Agendamento",
+  REUNIAO: "Reunião",
+  TEMPO: "Bloqueio de tempo",
+};
 
 type CalendarEvent = {
   date: Date;
   label: string;
-  type: "tarefa" | "financeiro" | "contrato" | "ferias";
+  type: "tarefa" | "financeiro" | "contrato" | "ferias" | "agenda";
 };
 
 const EVENT_STYLES: Record<CalendarEvent["type"], { icon: typeof ListChecks; className: string }> = {
@@ -28,6 +36,7 @@ const EVENT_STYLES: Record<CalendarEvent["type"], { icon: typeof ListChecks; cla
   financeiro: { icon: Wallet, className: "bg-amber-500/15 text-amber-500" },
   contrato: { icon: FileSignature, className: "bg-violet-500/15 text-violet-500" },
   ferias: { icon: Palmtree, className: "bg-emerald-500/15 text-emerald-500" },
+  agenda: { icon: CalendarClock, className: "bg-rose-500/15 text-rose-500" },
 };
 
 export default async function CalendarioPage({
@@ -35,7 +44,7 @@ export default async function CalendarioPage({
 }: {
   searchParams: Promise<{ month?: string }>;
 }) {
-  await requireModuleAccess("calendario");
+  const user = await requireModuleAccess("calendario");
   const { month } = await searchParams;
 
   const refDate = month && /^\d{4}-\d{2}$/.test(month) ? new Date(`${month}-01T00:00:00`) : new Date();
@@ -45,7 +54,7 @@ export default async function CalendarioPage({
   const gridEnd = endOfWeek(monthEnd);
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
-  const [tasks, revenues, contracts, vacations] = await Promise.all([
+  const [tasks, revenues, contracts, vacations, agendaItems] = await Promise.all([
     prisma.task.findMany({
       where: { dueDate: { gte: gridStart, lte: gridEnd } },
       include: { client: { select: { companyName: true } } },
@@ -61,6 +70,11 @@ export default async function CalendarioPage({
     prisma.vacation.findMany({
       where: { startDate: { lte: gridEnd }, endDate: { gte: gridStart } },
       include: { employee: { select: { name: true } } },
+    }),
+    prisma.agendaItem.findMany({
+      where: { startAt: { gte: gridStart, lte: gridEnd } },
+      include: { owner: { select: { name: true } } },
+      orderBy: { startAt: "asc" },
     }),
   ]);
 
@@ -80,7 +94,20 @@ export default async function CalendarioPage({
       label: `Contrato ${c.client.companyName} aguardando assinatura`,
       type: "contrato" as const,
     })),
+    ...agendaItems.map((a) => ({
+      date: a.startAt,
+      label: `${format(a.startAt, "HH:mm")} ${AGENDA_TYPE_LABELS[a.type]} — ${a.title} (${a.owner.name})`,
+      type: "agenda" as const,
+    })),
   ];
+
+  // Agrupado por pessoa — pra ficar fácil ver "a agenda da Andriele", "a do Igor" etc.
+  const agendaByOwner = new Map<string, typeof agendaItems>();
+  for (const item of agendaItems) {
+    const list = agendaByOwner.get(item.owner.name) ?? [];
+    list.push(item);
+    agendaByOwner.set(item.owner.name, list);
+  }
 
   const vacationDays = days.filter((day) =>
     vacations.some((v) => isWithinInterval(day, { start: v.startDate, end: v.endDate }))
@@ -177,6 +204,54 @@ export default async function CalendarioPage({
             );
           })}
         </div>
+      </div>
+
+      {/* Agenda pessoal — cada um adiciona os próprios agendamentos, reuniões e
+          bloqueios de tempo, e tudo fica visível pra equipe agrupado por pessoa. */}
+      <div className="rounded-2xl border border-border bg-surface p-5">
+        <h2 className="text-sm font-semibold mb-4">Adicionar à minha agenda</h2>
+        <AgendaForm />
+      </div>
+
+      <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4">
+        <div>
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <Users size={15} className="text-foreground-muted" /> Agenda da equipe neste mês
+          </h2>
+          <p className="text-xs text-foreground-muted mt-0.5">Agendamentos, reuniões e bloqueios de tempo, por pessoa.</p>
+        </div>
+
+        {agendaByOwner.size === 0 ? (
+          <p className="text-sm text-foreground-muted">Nenhum item na agenda neste mês ainda.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 gap-4">
+            {[...agendaByOwner.entries()].map(([ownerName, items]) => (
+              <div key={ownerName} className="rounded-xl border border-border p-4">
+                <p className="text-sm font-semibold mb-2">{ownerName}</p>
+                <div className="flex flex-col divide-y divide-border">
+                  {items.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between gap-2 py-2">
+                      <div>
+                        <p className="text-sm">
+                          <span className="text-foreground-muted">{format(item.startAt, "dd/MM HH:mm")}</span>{" "}
+                          <span className="text-rose-500 font-medium">{AGENDA_TYPE_LABELS[item.type]}</span> — {item.title}
+                        </p>
+                        {item.notes && <p className="text-xs text-foreground-muted mt-0.5">{item.notes}</p>}
+                      </div>
+                      {(item.ownerId === user.id || user.role === "ADMIN") && (
+                        <form action={deleteAgendaItem.bind(null, item.id)}>
+                          <button type="submit" className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500 shrink-0">
+                            <Trash2 size={13} />
+                          </button>
+                        </form>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

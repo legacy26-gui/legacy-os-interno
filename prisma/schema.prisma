@@ -40,8 +40,31 @@ model User {
   weeklyReviews    WeeklyReview[]   @relation("WeeklyReviewer")
   campaignChanges  CampaignChange[] @relation("ChangeResponsible")
   playbooks        Playbook[]
+  agendaItems      AgendaItem[]     @relation("AgendaOwner")
 
   @@map("users")
+}
+
+enum AgendaItemType {
+  AGENDAMENTO
+  REUNIAO
+  TEMPO
+}
+
+model AgendaItem {
+  id      String         @id @default(cuid())
+  ownerId String
+  owner   User           @relation("AgendaOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  type    AgendaItemType
+  title   String
+  startAt DateTime
+  endAt   DateTime?
+  notes   String?        @db.Text
+
+  createdAt DateTime @default(now())
+
+  @@index([ownerId, startAt])
+  @@map("agenda_items")
 }
 
 // ─── Clientes ───────────────────────────────────────────────────────────────

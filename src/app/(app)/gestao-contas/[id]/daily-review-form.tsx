@@ -4,7 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Camera, X } from "lucide-react";
 import { submitDailyReview } from "@/lib/actions/account-management";
 import { PlaybookHint } from "@/components/playbook-hint";
-import { DAILY_REVIEW_META_ADS as META_ADS, DAILY_REVIEW_CRM as CRM } from "@/lib/labels";
+import { DAILY_REVIEW_CHECKS } from "@/lib/labels";
 
 function Check({ name, label }: { name: string; label: string }) {
   return (
@@ -37,19 +37,10 @@ export function DailyReviewForm({
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       <PlaybookHint playbooks={suggestions} />
-      <div className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">Meta Ads</p>
-          {META_ADS.map(([name, label]) => (
-            <Check key={name} name={name} label={label} />
-          ))}
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">CRM</p>
-          {CRM.map(([name, label]) => (
-            <Check key={name} name={name} label={label} />
-          ))}
-        </div>
+      <div>
+        {DAILY_REVIEW_CHECKS.map(([name, label]) => (
+          <Check key={name} name={name} label={label} />
+        ))}
       </div>
       <div>
         <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1.5">

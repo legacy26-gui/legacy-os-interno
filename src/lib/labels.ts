@@ -112,19 +112,22 @@ export const TICKET_STATUS_COLORS = {
   RESOLVIDO: "bg-emerald-500/15 text-emerald-500",
 } as const;
 
-export const DAILY_REVIEW_META_ADS = [
-  ["checkedCpl", "Verificou CPL"],
-  ["checkedBudget", "Verificou orçamento"],
-  ["checkedRejected", "Verificou campanhas rejeitadas"],
-  ["checkedFrequency", "Verificou frequência"],
-  ["checkedComments", "Verificou comentários"],
-  ["checkedLeads", "Verificou leads"],
+export const DAILY_REVIEW_CHECKS = [
+  ["checkedBalance", "Verificou saldo da conta"],
+  ["checkedDailyBudget", "Verificou orçamento diário"],
+  ["checkedTodaySpend", "Verificou gasto de hoje"],
+  ["checkedBillingLimit", "Verificou limite de cobrança"],
+  ["checkedPendingPayments", "Verificou pagamentos pendentes"],
+  ["checkedWhatsappResolved", "WhatsApp resolvido?"],
 ] as const;
 
-export const DAILY_REVIEW_CRM = [
-  ["checkedLeadDelivery", "Conferiu entrega de leads"],
-  ["checkedService", "Conferiu atendimento"],
-  ["checkedScheduling", "Conferiu agendamentos"],
+export const WEEKLY_REVIEW_CHECKS = [
+  ["paymentCleared", "Pagamento compensado"],
+  ["reportGenerated", "Relatório semanal gerado"],
+  ["checkedBestCampaigns", "Conferiu campanhas com melhor desempenho"],
+  ["checkedWeeklyCost", "Conferiu custo total da semana"],
+  ["definedNewCreatives", "Definiu novos criativos"],
+  ["definedNewCampaigns", "Definiu novas campanhas"],
 ] as const;
 
 export const CAMPAIGN_CHANGE_TYPE_LABELS = {

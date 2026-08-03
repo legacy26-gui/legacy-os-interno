@@ -20,8 +20,7 @@ import {
   formatDate,
   formatDateTime,
   CAMPAIGN_CHANGE_TYPE_LABELS,
-  DAILY_REVIEW_META_ADS,
-  DAILY_REVIEW_CRM,
+  DAILY_REVIEW_CHECKS,
 } from "@/lib/labels";
 import { getSuggestedPlaybooks, DAILY_REVIEW_TAGS, WEEKLY_REVIEW_TAGS } from "@/lib/playbooks";
 import { DailyReviewForm } from "./daily-review-form";
@@ -65,15 +64,12 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
       orderBy: { createdAt: "desc" },
       select: {
         createdAt: true,
-        checkedCpl: true,
-        checkedBudget: true,
-        checkedRejected: true,
-        checkedFrequency: true,
-        checkedComments: true,
-        checkedLeads: true,
-        checkedLeadDelivery: true,
-        checkedService: true,
-        checkedScheduling: true,
+        checkedBalance: true,
+        checkedDailyBudget: true,
+        checkedTodaySpend: true,
+        checkedBillingLimit: true,
+        checkedPendingPayments: true,
+        checkedWhatsappResolved: true,
         photoUrl: true,
         notes: true,
         reviewer: { select: { name: true } },
@@ -158,19 +154,10 @@ export default async function ContaDetailPage({ params }: { params: Promise<{ id
             <p className="text-xs text-foreground-muted">
               Preenchido por {todayDaily.reviewer?.name ?? "—"} às {formatDateTime(todayDaily.createdAt)}
             </p>
-            <div className="grid sm:grid-cols-2 gap-x-8 gap-y-1">
-              <div>
-                <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">Meta Ads</p>
-                {DAILY_REVIEW_META_ADS.map(([key, label]) => (
-                  <CheckRow key={key} checked={todayDaily[key]} label={label} />
-                ))}
-              </div>
-              <div>
-                <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">CRM</p>
-                {DAILY_REVIEW_CRM.map(([key, label]) => (
-                  <CheckRow key={key} checked={todayDaily[key]} label={label} />
-                ))}
-              </div>
+            <div>
+              {DAILY_REVIEW_CHECKS.map(([key, label]) => (
+                <CheckRow key={key} checked={todayDaily[key]} label={label} />
+              ))}
             </div>
             {todayDaily.notes && <p className="text-xs text-foreground-muted">Obs: {todayDaily.notes}</p>}
             {todayDaily.photoUrl ? (

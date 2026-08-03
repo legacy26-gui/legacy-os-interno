@@ -4,19 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { CheckCircle2, Camera, X } from "lucide-react";
 import { submitWeeklyReview } from "@/lib/actions/account-management";
 import { PlaybookHint } from "@/components/playbook-hint";
-
-const CRIATIVOS = [
-  ["createdCreative", "Criou criativo novo"],
-  ["createdAd", "Criou anúncio novo"],
-  ["testedAudience", "Testou público novo"],
-  ["updatedOffers", "Atualizou ofertas"],
-] as const;
-
-const RELATORIO = [
-  ["reportSent", "Relatório enviado"],
-  ["clientReplied", "Cliente respondeu"],
-  ["adjustmentsDone", "Ajustes realizados"],
-] as const;
+import { WEEKLY_REVIEW_CHECKS } from "@/lib/labels";
 
 function Check({ name, label }: { name: string; label: string }) {
   return (
@@ -49,19 +37,10 @@ export function WeeklyReviewForm({
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       <PlaybookHint playbooks={suggestions} />
-      <div className="grid sm:grid-cols-2 gap-x-8 gap-y-4">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">Criativos</p>
-          {CRIATIVOS.map(([name, label]) => (
-            <Check key={name} name={name} label={label} />
-          ))}
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1">Relatório</p>
-          {RELATORIO.map(([name, label]) => (
-            <Check key={name} name={name} label={label} />
-          ))}
-        </div>
+      <div>
+        {WEEKLY_REVIEW_CHECKS.map(([name, label]) => (
+          <Check key={name} name={name} label={label} />
+        ))}
       </div>
 
       <div>

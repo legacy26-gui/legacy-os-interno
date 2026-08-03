@@ -407,18 +407,12 @@ model DailyReview {
   reviewerId String?
   reviewer   User?    @relation("DailyReviewer", fields: [reviewerId], references: [id])
 
-  // Meta Ads
-  checkedCpl       Boolean @default(false)
-  checkedBudget    Boolean @default(false)
-  checkedRejected  Boolean @default(false)
-  checkedFrequency Boolean @default(false)
-  checkedComments  Boolean @default(false)
-  checkedLeads     Boolean @default(false)
-
-  // CRM
-  checkedLeadDelivery Boolean @default(false)
-  checkedService      Boolean @default(false)
-  checkedScheduling   Boolean @default(false)
+  checkedBalance          Boolean @default(false)
+  checkedDailyBudget      Boolean @default(false)
+  checkedTodaySpend       Boolean @default(false)
+  checkedBillingLimit     Boolean @default(false)
+  checkedPendingPayments  Boolean @default(false)
+  checkedWhatsappResolved Boolean @default(false)
 
   photoUrl String? @db.Text // foto da campanha (obrigatória no formulário)
 
@@ -436,16 +430,13 @@ model WeeklyReview {
   reviewerId String?
   reviewer   User?    @relation("WeeklyReviewer", fields: [reviewerId], references: [id])
 
-  // Criativos
-  createdCreative Boolean @default(false)
-  createdAd       Boolean @default(false)
-  testedAudience  Boolean @default(false)
-  updatedOffers   Boolean @default(false)
+  paymentCleared        Boolean @default(false)
+  reportGenerated       Boolean @default(false)
+  checkedBestCampaigns  Boolean @default(false)
+  checkedWeeklyCost     Boolean @default(false)
+  definedNewCreatives   Boolean @default(false)
+  definedNewCampaigns   Boolean @default(false)
 
-  // Relatório
-  reportSent      Boolean @default(false)
-  clientReplied   Boolean @default(false)
-  adjustmentsDone Boolean @default(false)
   reportPhotoUrl  String? @db.Text // foto do relatório (obrigatória no formulário)
 
   notes     String?  @db.Text

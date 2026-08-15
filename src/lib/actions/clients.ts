@@ -98,7 +98,7 @@ export async function updateClient(
   }
   const data = parsed.data;
 
-  const previous = await prisma.client.findUnique({ where: { id: clientId }, select: { status: true } });
+  const previous = await prisma.client.findUnique({ where: { id: clientId }, select: { status: true, monthlyValue: true } });
 
   const client = await prisma.client.update({
     where: { id: clientId },
@@ -126,6 +126,28 @@ export async function updateClient(
     const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
     await prisma.revenue.deleteMany({
       where: { clientId, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart } },
+    });
+  }
+
+  // Mensalidade mudou com o cliente continuando Ativo — atualiza a cobrança
+  // deste mês (se ainda não foi paga) pro valor novo, senão ela fica com o
+  // preço velho pra sempre e o MRR do topo não bate mais com o quadro/lista
+  // de receitas (que somam o que já foi lançado, no preço antigo).
+  if (
+    previous?.status === "ATIVO" &&
+    client.status === "ATIVO" &&
+    Number(previous.monthlyValue) !== Number(client.monthlyValue)
+  ) {
+    const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+    const monthEnd = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1));
+    await prisma.revenue.updateMany({
+      where: {
+        clientId,
+        status: { in: ["PENDENTE", "ATRASADO"] },
+        dueDate: { gte: monthStart, lt: monthEnd },
+        description: { startsWith: "[MRR]" },
+      },
+      data: { value: client.monthlyValue },
     });
   }
 

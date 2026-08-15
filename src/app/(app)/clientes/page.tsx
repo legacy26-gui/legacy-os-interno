@@ -96,6 +96,7 @@ export default async function ClientesPage({
             <p className="font-medium">Nenhum cliente encontrado</p>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-left text-foreground-muted text-xs uppercase tracking-wide">
@@ -153,6 +154,7 @@ export default async function ClientesPage({
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

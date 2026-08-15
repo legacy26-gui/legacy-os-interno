@@ -1,4 +1,5 @@
-import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { getFinanceOverview, getRevenueByClient, getRevenueByCity } from "@/lib/metrics";
@@ -11,32 +12,84 @@ import { GoalForm } from "./goal-form";
 import { MrrBoard } from "./mrr-board";
 import { DueDateInput } from "./due-date-input";
 
-export default async function FinanceiroPage() {
+function monthParam(d: Date) {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+export default async function FinanceiroPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ month?: string }>;
+}) {
   await requireModuleAccess("financeiro");
+  const { month } = await searchParams;
 
   // Gera automaticamente (idempotente) a receita do mês para cada cliente
-  // ativo com mensalidade — o gestor só precisa confirmar o pagamento.
+  // ativo com mensalidade — sempre pro mês real de hoje, independente de
+  // qual mês está sendo visualizado abaixo.
   const now = new Date();
   await ensureMonthlyMrrRevenues(now);
-  const mrrBoard = await getMonthlyMrrRevenues(now);
-  const monthLabel = now.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 
-  const overview = await getFinanceOverview();
+  const refDate = month && /^\d{4}-\d{2}$/.test(month) ? new Date(`${month}-01T00:00:00Z`) : now;
+  const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));
+  const monthEnd = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
+  const prevMonth = monthParam(new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() - 1, 1)));
+  const nextMonth = monthParam(new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1)));
+  const isCurrentMonth = monthParam(refDate) === monthParam(now);
+
+  const mrrBoard = await getMonthlyMrrRevenues(refDate);
+  const monthLabelRaw = refDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+  const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1);
+
+  const overview = await getFinanceOverview(refDate);
   const [revenueByClient, revenueByCity, clients, revenues, expenses] = await Promise.all([
     getRevenueByClient(),
     getRevenueByCity(),
     prisma.client.findMany({ select: { id: true, companyName: true }, orderBy: { companyName: "asc" } }),
-    prisma.revenue.findMany({ include: { client: { select: { companyName: true } } }, orderBy: { dueDate: "desc" }, take: 30 }),
-    prisma.expense.findMany({ orderBy: { date: "desc" }, take: 30 }),
+    prisma.revenue.findMany({
+      where: { dueDate: { gte: monthStart, lt: monthEnd } },
+      include: { client: { select: { companyName: true } } },
+      orderBy: { dueDate: "asc" },
+    }),
+    prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } }, orderBy: { date: "asc" } }),
   ]);
 
   const { overdue, dueToday, dueSoon } = overview.alerts;
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-semibold">Financeiro</h1>
-        <p className="text-sm text-foreground-muted mt-0.5">Receitas, despesas e indicadores da agência</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Financeiro</h1>
+          <p className="text-sm text-foreground-muted mt-0.5">Receitas, despesas e indicadores da agência</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/financeiro?month=${prevMonth}`}
+            className="p-2 rounded-lg border border-border bg-surface hover:bg-surface-muted transition-colors"
+            title="Mês anterior"
+          >
+            <ChevronLeft size={16} />
+          </Link>
+          <span className="px-3 py-2 rounded-lg border border-border bg-surface text-sm font-medium min-w-[9rem] text-center">
+            {monthLabel}
+          </span>
+          {!isCurrentMonth && (
+            <Link
+              href="/financeiro"
+              className="px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-muted transition-colors text-sm font-medium"
+            >
+              Hoje
+            </Link>
+          )}
+          <Link
+            href={`/financeiro?month=${nextMonth}`}
+            className="p-2 rounded-lg border border-border bg-surface hover:bg-surface-muted transition-colors"
+            title="Próximo mês"
+          >
+            <ChevronRight size={16} />
+          </Link>
+        </div>
       </div>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -114,7 +167,13 @@ export default async function FinanceiroPage() {
       </div>
 
       <div className="rounded-2xl border border-border bg-surface overflow-hidden">
-        <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium px-5 pt-5 pb-2">Receitas</p>
+        <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium px-5 pt-5 pb-2">
+          Receitas — {monthLabel}
+        </p>
+        {revenues.length === 0 ? (
+          <p className="text-sm text-foreground-muted px-5 pb-5">Nenhuma receita neste mês.</p>
+        ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-foreground-muted text-xs uppercase tracking-wide">
@@ -160,10 +219,18 @@ export default async function FinanceiroPage() {
             ))}
           </tbody>
         </table>
+        </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-border bg-surface overflow-hidden">
-        <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium px-5 pt-5 pb-2">Despesas</p>
+        <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium px-5 pt-5 pb-2">
+          Despesas — {monthLabel}
+        </p>
+        {expenses.length === 0 ? (
+          <p className="text-sm text-foreground-muted px-5 pb-5">Nenhuma despesa neste mês.</p>
+        ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-foreground-muted text-xs uppercase tracking-wide">
@@ -194,6 +261,8 @@ export default async function FinanceiroPage() {
             ))}
           </tbody>
         </table>
+        </div>
+        )}
       </div>
 
       <div className="grid lg:grid-cols-2 gap-4">

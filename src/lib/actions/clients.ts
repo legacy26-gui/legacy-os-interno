@@ -118,6 +118,17 @@ export async function updateClient(
     revalidatePath("/comercial");
   }
 
+  // Saiu de Ativo (cancelado, pausado, etc.) — some do Financeiro: apaga as
+  // cobranças deste mês em diante que ainda não foram pagas, pra não ficar
+  // cobrança fantasma de cliente que não é mais ativo. Meses anteriores não
+  // pagos continuam intactos, como pendência a resolver.
+  if (previous?.status === "ATIVO" && client.status !== "ATIVO") {
+    const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+    await prisma.revenue.deleteMany({
+      where: { clientId, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart } },
+    });
+  }
+
   if (client.status === "ATIVO" && Number(client.monthlyValue) > 0) {
     await ensureMonthlyMrrRevenues();
   }

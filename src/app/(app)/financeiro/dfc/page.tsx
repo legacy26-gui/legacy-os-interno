@@ -13,6 +13,11 @@ import { requireModuleAccess } from "@/lib/dal";
 import { getCashFlow } from "@/lib/metrics";
 import { formatCurrency } from "@/lib/labels";
 import { FinanceTabs } from "../finance-tabs";
+import { CashOpeningForm } from "../cash-opening-form";
+
+function money(v: number | null) {
+  return v === null ? "—" : formatCurrency(v === 0 ? 0 : v);
+}
 
 function monthParam(d: Date) {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -88,10 +93,16 @@ export default async function DfcPage({
               <Wallet size={15} />
               <span className="text-xs font-semibold uppercase tracking-wide">Saldo inicial</span>
             </div>
-            <p className={`text-xl font-bold ${atual.saldoInicial < 0 ? "text-red-500" : ""}`}>
-              {formatCurrency(atual.saldoInicial)}
+            <p className={`text-xl font-bold ${(atual.saldoInicial ?? 0) < 0 ? "text-red-500" : ""}`}>
+              {money(atual.saldoInicial)}
             </p>
-            <p className="text-xs text-foreground-muted mt-1">Acumulado até o mês anterior</p>
+            <p className="text-xs text-foreground-muted mt-1">
+              {atual.saldoInicial === null
+                ? "Informe o saldo em banco abaixo"
+                : cf.opening?.month === atual.month
+                  ? "Saldo em banco que você informou"
+                  : "Acumulado até o mês anterior"}
+            </p>
           </div>
 
           <div className="p-5">
@@ -114,13 +125,15 @@ export default async function DfcPage({
             <p className="text-xs text-foreground-muted mt-1">Tudo que foi pago no mês</p>
           </div>
 
-          <div className={`p-5 ${atual.saldoFinal >= 0 ? "bg-accent/5" : "bg-red-500/10"}`}>
-            <div className={`flex items-center gap-2 mb-2 ${atual.saldoFinal >= 0 ? "text-accent" : "text-red-500"}`}>
+          <div className={`p-5 ${(atual.saldoFinal ?? 0) >= 0 ? "bg-accent/5" : "bg-red-500/10"}`}>
+            <div
+              className={`flex items-center gap-2 mb-2 ${(atual.saldoFinal ?? 0) >= 0 ? "text-accent" : "text-red-500"}`}
+            >
               <Scale size={15} />
               <span className="text-xs font-semibold uppercase tracking-wide">(=) Saldo final</span>
             </div>
-            <p className={`text-xl font-bold ${atual.saldoFinal < 0 ? "text-red-500" : ""}`}>
-              {formatCurrency(atual.saldoFinal)}
+            <p className={`text-xl font-bold ${(atual.saldoFinal ?? 0) < 0 ? "text-red-500" : ""}`}>
+              {money(atual.saldoFinal)}
             </p>
             <p className={`text-xs mt-1 ${atual.fluxoLiquido >= 0 ? "text-emerald-500" : "text-red-500"}`}>
               {atual.fluxoLiquido >= 0 ? "Gerou" : "Consumiu"} {formatCurrency(Math.abs(atual.fluxoLiquido))} de caixa
@@ -144,7 +157,10 @@ export default async function DfcPage({
                 </span>
                 <span className={m.fluxoLiquido >= 0 ? "text-emerald-500" : "text-red-500"}>
                   {m.fluxoLiquido >= 0 ? "+" : "−"}
-                  {formatCurrency(Math.abs(m.fluxoLiquido))} · saldo {formatCurrency(m.saldoFinal)}
+                  {formatCurrency(Math.abs(m.fluxoLiquido))}
+                  {m.saldoFinal !== null && (
+                    <span className="text-foreground-muted"> · saldo {formatCurrency(m.saldoFinal)}</span>
+                  )}
                 </span>
               </div>
 
@@ -256,10 +272,18 @@ export default async function DfcPage({
         </div>
       </div>
 
-      <p className="text-xs text-foreground-muted">
-        O saldo acumulado começa do primeiro lançamento registrado no sistema — não inclui saldo bancário anterior ao
-        uso do Legacy OS.
-      </p>
+      {/* Saldo em banco informado manualmente */}
+      <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3">
+        <div>
+          <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Saldo em banco</p>
+          <p className="text-xs text-foreground-muted mt-0.5">
+            {cf.opening
+              ? `Partindo de ${formatCurrency(cf.opening.balance)} no dia 1º de ${cf.opening.label.toLowerCase()}. As entradas e saídas lançadas depois disso ajustam o saldo automaticamente.`
+              : "O sistema não lê o extrato do Itaú. Informe o saldo em banco pra que o acumulado abaixo fique fiel — depois basta ir lançando entradas e saídas."}
+          </p>
+        </div>
+        <CashOpeningForm currentBalance={cf.opening?.balance} currentMonth={cf.opening?.month} />
+      </div>
     </div>
   );
 }

@@ -169,6 +169,32 @@ export async function deleteExpense(expenseId: string) {
   revalidatePath("/financeiro", "layout");
 }
 
+const CashOpeningSchema = z.object({
+  openingBalance: z.coerce.number("Informe um valor válido."),
+  openingMonth: z.string().regex(/^\d{4}-\d{2}$/, "Informe o mês no formato AAAA-MM."),
+});
+
+// Saldo de caixa em banco no dia 1º do mês informado. É o ponto de partida do
+// acumulado no DFC — o sistema não lê o extrato, então esse número vem de você.
+export async function setCashOpeningBalance(
+  _prevState: FinanceFormState,
+  formData: FormData
+): Promise<FinanceFormState> {
+  await requireModuleAccess("financeiro");
+  const parsed = CashOpeningSchema.safeParse({
+    openingBalance: formData.get("openingBalance"),
+    openingMonth: formData.get("openingMonth"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  await prisma.cashSetting.upsert({
+    where: { id: "default" },
+    update: parsed.data,
+    create: { id: "default", ...parsed.data },
+  });
+  revalidatePath("/financeiro", "layout");
+}
+
 const GoalSchema = z.object({
   month: z.string().min(1),
   targetRevenue: z.coerce.number().positive("Meta deve ser maior que zero."),

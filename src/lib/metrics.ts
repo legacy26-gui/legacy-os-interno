@@ -219,8 +219,10 @@ export interface CashFlowMonth {
   entradas: number;
   saidas: number;
   fluxoLiquido: number;
-  saldoInicial: number;
-  saldoFinal: number;
+  // null nos meses anteriores ao saldo de caixa informado — ali o sistema não
+  // tem como saber quanto havia em banco, então não inventa um acumulado.
+  saldoInicial: number | null;
+  saldoFinal: number | null;
 }
 
 export interface CashFlow {
@@ -229,6 +231,7 @@ export interface CashFlow {
   entradasPorOrigem: { label: string; value: number }[];
   saidasPorCategoria: { label: string; value: number; fixo: boolean }[];
   aReceberNoMes: number;
+  opening: { balance: number; month: string; label: string } | null;
 }
 
 // DFC (fluxo de caixa): entradas confirmadas menos saídas pagas, mês a mês,
@@ -240,7 +243,7 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
   const monthEnd = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
   const windowStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() - (monthsBack - 1), 1));
 
-  const [paid, expenses, pendingThisMonth] = await Promise.all([
+  const [paid, expenses, pendingThisMonth, cashSetting] = await Promise.all([
     prisma.revenue.findMany({
       where: { status: "PAGO", dueDate: { lt: monthEnd } },
       select: { value: true, dueDate: true, description: true },
@@ -253,6 +256,7 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
       where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
       select: { value: true },
     }),
+    prisma.cashSetting.findUnique({ where: { id: "default" } }),
   ]);
 
   const key = (d: Date) => d.toISOString().slice(0, 7);
@@ -268,10 +272,21 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
     saidasPorMes.set(k, (saidasPorMes.get(k) ?? 0) + Number(e.value));
   }
 
-  // Saldo acumulado antes da janela exibida.
-  let saldo = 0;
-  for (const r of paid) if (r.dueDate < windowStart) saldo += Number(r.value);
-  for (const e of expenses) if (e.date < windowStart) saldo -= Number(e.value);
+  // O acumulado parte do saldo de caixa informado no mês de abertura. Antes
+  // disso o sistema não sabe quanto havia em banco, então o saldo fica nulo.
+  const openingMonth = cashSetting?.openingMonth ?? null;
+  const openingBalance = cashSetting ? Number(cashSetting.openingBalance) : 0;
+
+  let saldo: number | null = null;
+  if (openingMonth) {
+    if (openingMonth <= key(windowStart)) {
+      // Abertura antes da janela: acumula do mês de abertura até a janela.
+      saldo = openingBalance;
+      const openingStart = new Date(`${openingMonth}-01T00:00:00Z`);
+      for (const r of paid) if (r.dueDate >= openingStart && r.dueDate < windowStart) saldo += Number(r.value);
+      for (const e of expenses) if (e.date >= openingStart && e.date < windowStart) saldo -= Number(e.value);
+    }
+  }
 
   const months: CashFlowMonth[] = [];
   for (let i = 0; i < monthsBack; i++) {
@@ -279,9 +294,14 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
     const k = key(d);
     const entradas = entradasPorMes.get(k) ?? 0;
     const saidas = saidasPorMes.get(k) ?? 0;
-    const saldoInicial = saldo;
     const fluxoLiquido = entradas - saidas;
-    saldo = saldoInicial + fluxoLiquido;
+
+    // Mês em que o saldo informado passa a valer.
+    if (openingMonth && k === openingMonth) saldo = openingBalance;
+
+    const saldoInicial = saldo;
+    const saldoFinal = saldoInicial === null ? null : saldoInicial + fluxoLiquido;
+    saldo = saldoFinal;
 
     const labelRaw = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
     months.push({
@@ -292,7 +312,7 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
       saidas,
       fluxoLiquido,
       saldoInicial,
-      saldoFinal: saldo,
+      saldoFinal,
     });
   }
 
@@ -328,6 +348,20 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
       .map(([label, v]) => ({ label, ...v }))
       .sort((a, b) => b.value - a.value),
     aReceberNoMes: pendingThisMonth.reduce((s, r) => s + Number(r.value), 0),
+    opening: openingMonth
+      ? {
+          balance: openingBalance,
+          month: openingMonth,
+          label: (() => {
+            const raw = new Date(`${openingMonth}-01T00:00:00Z`).toLocaleDateString("pt-BR", {
+              month: "long",
+              year: "numeric",
+              timeZone: "UTC",
+            });
+            return raw.charAt(0).toUpperCase() + raw.slice(1);
+          })(),
+        }
+      : null,
   };
 }
 

@@ -8,10 +8,12 @@ import {
   Scale,
   Trash2,
   Repeat,
+  Landmark,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/labels";
+import { getCashFlow } from "@/lib/metrics";
 import { deleteRevenue, deleteExpense } from "@/lib/actions/financeiro";
 import { ensureMonthlyMrrRevenues } from "@/lib/mrr-revenue";
 import { ensureMonthlyFixedExpenses } from "@/lib/fixed-expenses";
@@ -43,7 +45,8 @@ export default async function FinanceiroPage({
   const monthLabelRaw = refDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
   const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1);
 
-  const [entradas, pendentes, saidas, clients] = await Promise.all([
+  const [cashFlow, entradas, pendentes, saidas, clients] = await Promise.all([
+    getCashFlow(refDate, 1),
     // Entrada = dinheiro que entrou de verdade (cobrança confirmada).
     prisma.revenue.findMany({
       where: { status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } },
@@ -65,6 +68,7 @@ export default async function FinanceiroPage({
   const totalSaidas = saidas.reduce((s, e) => s + Number(e.value), 0);
   const aReceber = pendentes.reduce((s, r) => s + Number(r.value), 0);
   const saldo = totalEntradas - totalSaidas;
+  const saldoEmCaixa = cashFlow.months[0]?.saldoFinal ?? null;
 
   // Barras proporcionais ao maior dos dois, pra dar leitura visual imediata.
   const maior = Math.max(totalEntradas, totalSaidas, 1);
@@ -107,8 +111,8 @@ export default async function FinanceiroPage({
 
       <FinanceTabs month={monthParam(refDate)} />
 
-      {/* Resumo visual: entrou, saiu, sobrou */}
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* Resumo visual: entrou, saiu, sobrou, quanto tem em banco */}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-5">
           <div className="flex items-center gap-2 text-emerald-500 mb-2">
             <ArrowUpCircle size={17} />
@@ -146,6 +150,28 @@ export default async function FinanceiroPage({
           <p className="text-xs text-foreground-muted mt-3 flex items-center gap-1.5">
             <Clock size={12} /> Ainda a receber neste mês: {formatCurrency(aReceber)}
           </p>
+        </div>
+
+        <div className="rounded-2xl border border-border bg-surface p-5">
+          <div className="flex items-center gap-2 text-foreground-muted mb-2">
+            <Landmark size={17} />
+            <span className="text-xs font-semibold uppercase tracking-wide">Saldo em caixa</span>
+          </div>
+          {saldoEmCaixa === null ? (
+            <>
+              <p className="text-2xl font-bold text-foreground-muted">—</p>
+              <Link href="/financeiro/dfc" className="text-xs text-accent hover:underline mt-3 inline-block">
+                Informar saldo do banco
+              </Link>
+            </>
+          ) : (
+            <>
+              <p className={`text-2xl font-bold ${saldoEmCaixa < 0 ? "text-red-500" : ""}`}>
+                {formatCurrency(saldoEmCaixa)}
+              </p>
+              <p className="text-xs text-foreground-muted mt-3">Saldo informado + entradas − saídas</p>
+            </>
+          )}
         </div>
       </div>
 

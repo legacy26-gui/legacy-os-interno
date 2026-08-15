@@ -33,7 +33,14 @@ export async function GET(request: NextRequest) {
     }),
     prisma.revenue.findMany({
       where: { dueDate: { gte: monthStart, lt: monthEnd }, description: { startsWith: MRR_TAG } },
-      select: { id: true, clientId: true, value: true, status: true, client: { select: { companyName: true, status: true } } },
+      select: {
+        id: true,
+        clientId: true,
+        value: true,
+        status: true,
+        paidDate: true,
+        client: { select: { companyName: true, status: true } },
+      },
     }),
   ]);
 
@@ -60,6 +67,8 @@ export async function GET(request: NextRequest) {
       companyName: c.companyName,
       precoAtualDoCliente: c.monthlyValue,
       valorNoLancamentoDoMes: revenueByClientId.get(c.id)!.value,
+      statusDoLancamento: revenueByClientId.get(c.id)!.status,
+      pagoEm: revenueByClientId.get(c.id)!.paidDate,
     }));
 
   return NextResponse.json({

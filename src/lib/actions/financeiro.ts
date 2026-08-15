@@ -104,6 +104,47 @@ export async function createExpense(_prevState: FinanceFormState, formData: Form
   revalidatePath("/financeiro");
 }
 
+const FixedExpenseSchema = z.object({
+  description: z.string().min(2, "Informe uma descrição."),
+  category: z.string().min(1, "Informe a categoria."),
+  value: z.coerce.number().positive("Valor deve ser maior que zero."),
+  dueDay: z.coerce.number().int().min(1).max(31).optional(),
+});
+
+export type FixedExpenseFormState = { error?: string } | undefined;
+
+export async function createFixedExpense(
+  _prevState: FixedExpenseFormState,
+  formData: FormData
+): Promise<FixedExpenseFormState> {
+  await requireModuleAccess("financeiro");
+  const parsed = FixedExpenseSchema.safeParse({
+    description: formData.get("description"),
+    category: formData.get("category"),
+    value: formData.get("value"),
+    dueDay: formData.get("dueDay") || undefined,
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  await prisma.fixedExpense.create({ data: parsed.data });
+  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/dre");
+}
+
+export async function toggleFixedExpenseActive(fixedExpenseId: string, active: boolean) {
+  await requireModuleAccess("financeiro");
+  await prisma.fixedExpense.update({ where: { id: fixedExpenseId }, data: { active } });
+  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/dre");
+}
+
+export async function deleteFixedExpense(fixedExpenseId: string) {
+  await requireModuleAccess("financeiro");
+  await prisma.fixedExpense.delete({ where: { id: fixedExpenseId } });
+  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/dre");
+}
+
 export async function deleteExpense(expenseId: string) {
   await requireModuleAccess("financeiro");
   await prisma.expense.delete({ where: { id: expenseId } });

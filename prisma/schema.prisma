@@ -160,16 +160,34 @@ model Revenue {
 }
 
 model Expense {
-  id            String   @id @default(cuid())
-  description   String
-  category      String
-  value         Decimal  @db.Decimal(12, 2)
-  date          DateTime
-  responsibleId String?
-  responsible   User?    @relation(fields: [responsibleId], references: [id])
-  createdAt     DateTime @default(now())
+  id             String        @id @default(cuid())
+  description    String
+  category       String
+  value          Decimal       @db.Decimal(12, 2)
+  date           DateTime
+  responsibleId  String?
+  responsible    User?         @relation(fields: [responsibleId], references: [id])
+  fixedExpenseId String?
+  fixedExpense   FixedExpense? @relation(fields: [fixedExpenseId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
 
   @@map("expenses")
+}
+
+// Despesas fixas/recorrentes (salários, aluguel, ferramentas...) — igual à
+// mensalidade do cliente pro MRR, gera automaticamente o lançamento do mês.
+model FixedExpense {
+  id          String    @id @default(cuid())
+  description String
+  category    String
+  value       Decimal   @db.Decimal(12, 2)
+  dueDay      Int?
+  active      Boolean   @default(true)
+  expenses    Expense[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@map("fixed_expenses")
 }
 
 // ─── Contratos ──────────────────────────────────────────────────────────────

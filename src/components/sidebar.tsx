@@ -6,7 +6,7 @@ import { useState } from "react";
 import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
-  Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X,
+  Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart,
 } from "lucide-react";
 import type { Role } from "@/generated/prisma/enums";
 import { canAccessModule, type ModuleKey } from "@/lib/permissions";
@@ -42,6 +42,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/clientes", label: "Clientes", icon: Users, module: "clientes" },
       { href: "/contratos", label: "Contratos", icon: FileText, module: "contratos" },
       { href: "/financeiro", label: "Financeiro", icon: Wallet, module: "financeiro" },
+      { href: "/financeiro/dre", label: "DRE", icon: FileBarChart, module: "financeiro" },
       { href: "/equipe", label: "Equipe", icon: UserCog, module: "equipe" },
     ],
   },

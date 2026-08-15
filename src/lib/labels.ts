@@ -1,6 +1,8 @@
 // Únicos dias de vencimento/pagamento aceitos no sistema.
 export const PAYMENT_DAYS = [5, 10, 15, 20, 25, 30] as const;
 
+export const EXPENSE_CATEGORIES = ["Salários", "Aluguel", "Ferramentas/Software", "Impostos", "Marketing", "Comissões", "Outros"];
+
 // Planos contratados disponíveis no cadastro de cliente.
 export const PLAN_OPTIONS = [
   "Gestão Completa",

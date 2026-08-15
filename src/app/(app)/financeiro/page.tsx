@@ -1,13 +1,15 @@
 import Link from "next/link";
-import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock, ChevronLeft, ChevronRight, FileBarChart, Pause, Play } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { getFinanceOverview, getRevenueByClient, getRevenueByCity } from "@/lib/metrics";
 import { formatCurrency, formatDate, REVENUE_STATUS_LABELS, REVENUE_STATUS_COLORS } from "@/lib/labels";
-import { markRevenuePaid, deleteRevenue, deleteExpense } from "@/lib/actions/financeiro";
+import { markRevenuePaid, deleteRevenue, deleteExpense, toggleFixedExpenseActive, deleteFixedExpense } from "@/lib/actions/financeiro";
 import { ensureMonthlyMrrRevenues, getMonthlyMrrRevenues } from "@/lib/mrr-revenue";
+import { ensureMonthlyFixedExpenses } from "@/lib/fixed-expenses";
 import { RevenueForm } from "./revenue-form";
 import { ExpenseForm } from "./expense-form";
+import { FixedExpenseForm } from "./fixed-expense-form";
 import { GoalForm } from "./goal-form";
 import { MrrBoard } from "./mrr-board";
 import { DueDateInput } from "./due-date-input";
@@ -25,10 +27,11 @@ export default async function FinanceiroPage({
   const { month } = await searchParams;
 
   // Gera automaticamente (idempotente) a receita do mês para cada cliente
-  // ativo com mensalidade — sempre pro mês real de hoje, independente de
-  // qual mês está sendo visualizado abaixo.
+  // ativo com mensalidade, e a despesa do mês para cada despesa fixa ativa —
+  // sempre pro mês real de hoje, independente de qual mês está sendo
+  // visualizado abaixo.
   const now = new Date();
-  await ensureMonthlyMrrRevenues(now);
+  await Promise.all([ensureMonthlyMrrRevenues(now), ensureMonthlyFixedExpenses(now)]);
 
   const refDate = month && /^\d{4}-\d{2}$/.test(month) ? new Date(`${month}-01T00:00:00Z`) : now;
   const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));
@@ -42,7 +45,7 @@ export default async function FinanceiroPage({
   const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1);
 
   const overview = await getFinanceOverview(refDate);
-  const [revenueByClient, revenueByCity, clients, revenues, expenses] = await Promise.all([
+  const [revenueByClient, revenueByCity, clients, revenues, expenses, fixedExpenses] = await Promise.all([
     getRevenueByClient(),
     getRevenueByCity(),
     prisma.client.findMany({ select: { id: true, companyName: true }, orderBy: { companyName: "asc" } }),
@@ -52,6 +55,7 @@ export default async function FinanceiroPage({
       orderBy: { dueDate: "asc" },
     }),
     prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } }, orderBy: { date: "asc" } }),
+    prisma.fixedExpense.findMany({ orderBy: { description: "asc" } }),
   ]);
 
   const { overdue, dueToday, dueSoon } = overview.alerts;
@@ -89,6 +93,13 @@ export default async function FinanceiroPage({
           >
             <ChevronRight size={16} />
           </Link>
+          <Link
+            href={`/financeiro/dre?month=${monthParam(refDate)}`}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border bg-surface hover:bg-surface-muted transition-colors text-sm font-medium"
+          >
+            <FileBarChart size={15} />
+            DRE
+          </Link>
         </div>
       </div>
 
@@ -101,7 +112,7 @@ export default async function FinanceiroPage({
           label="Lucro estimado (mês)"
           value={formatCurrency(overview.lucroEstimado)}
         />
-        <MetricCard icon={Clock} label="A receber" value={formatCurrency(overview.aReceber)} alert={overview.aReceber > 0} />
+        <MetricCard icon={Clock} label={`A receber — ${monthLabel}`} value={formatCurrency(overview.aReceber)} alert={overview.aReceber > 0} />
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
@@ -164,6 +175,44 @@ export default async function FinanceiroPage({
           <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Nova despesa</p>
           <ExpenseForm />
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4">
+        <div>
+          <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Despesas fixas</p>
+          <p className="text-xs text-foreground-muted mt-0.5">
+            Lançadas automaticamente todo mês (salários, aluguel, ferramentas...) — igual à mensalidade dos clientes.
+          </p>
+        </div>
+        <FixedExpenseForm />
+        {fixedExpenses.length > 0 && (
+          <div className="flex flex-col divide-y divide-border">
+            {fixedExpenses.map((f) => (
+              <div key={f.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                <span className={f.active ? "" : "text-foreground-muted line-through"}>
+                  {f.description} <span className="text-foreground-muted">— {f.category}</span>
+                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-medium">{formatCurrency(f.value.toString())}</span>
+                  <form action={toggleFixedExpenseActive.bind(null, f.id, !f.active)}>
+                    <button
+                      type="submit"
+                      className="p-1.5 rounded-lg hover:bg-surface-muted text-foreground-muted hover:text-foreground"
+                      title={f.active ? "Pausar (não gera mais todo mês)" : "Reativar"}
+                    >
+                      {f.active ? <Pause size={14} /> : <Play size={14} />}
+                    </button>
+                  </form>
+                  <form action={deleteFixedExpense.bind(null, f.id)}>
+                    <button type="submit" className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500" title="Excluir">
+                      <Trash2 size={14} />
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="rounded-2xl border border-border bg-surface overflow-hidden">

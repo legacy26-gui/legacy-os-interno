@@ -18,7 +18,9 @@ export async function getFinanceOverview(refDate = new Date()) {
       prisma.revenue.findMany({ where: { status: "PAGO", paidDate: { gte: monthStart, lt: monthEnd } } }),
       prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } } }),
       prisma.monthlyGoal.findUnique({ where: { month } }),
-      prisma.revenue.findMany({ where: { status: { in: ["PENDENTE", "ATRASADO"] } } }),
+      prisma.revenue.findMany({
+        where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
+      }),
       prisma.revenue.findMany({
         where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: new Date(new Date().toDateString()) } },
         include: { client: { select: { companyName: true } } },

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock, ChevronLeft, ChevronRight, FileBarChart, Pause, Play, UserCheck } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock, ChevronLeft, ChevronRight, FileBarChart, Pause, Play, UserCheck, Repeat, Receipt, Percent } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { getFinanceOverview, getRevenueByClient, getRevenueByCity } from "@/lib/metrics";
@@ -117,14 +117,42 @@ export default async function FinanceiroPage({
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <MetricCard icon={TrendingUp} label="Receita recorrente (MRR)" value={formatCurrency(overview.mrr)} />
-        <MetricCard icon={Wallet} label="Faturado/Mês" value={formatCurrency(overview.faturamentoMensal)} />
+        <MetricCard
+          icon={Wallet}
+          label={`Faturado — ${monthLabel}`}
+          value={formatCurrency(overview.faturamentoMensal)}
+          hint="Só o que já foi confirmado como recebido neste mês"
+        />
         <MetricCard icon={Wallet} label="Faturamento anual" value={formatCurrency(overview.faturamentoAnual)} />
         <MetricCard
           icon={overview.lucroEstimado >= 0 ? TrendingUp : TrendingDown}
           label="Lucro estimado (mês)"
           value={formatCurrency(overview.lucroEstimado)}
+          hint="Faturado menos despesas fixas e variáveis"
         />
         <MetricCard icon={Clock} label={`A receber — ${monthLabel}`} value={formatCurrency(overview.aReceber)} alert={overview.aReceber > 0} />
+      </div>
+
+      {/* Custos do mês */}
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard icon={Repeat} label="Custos fixos (mês)" value={formatCurrency(overview.despesasFixas)} />
+        <MetricCard icon={Receipt} label="Custos variáveis (mês)" value={formatCurrency(overview.despesasVariaveis)} />
+        <MetricCard
+          icon={TrendingDown}
+          label="Custo total (mês)"
+          value={formatCurrency(overview.despesasMes)}
+          alert={overview.despesasMes > overview.faturamentoMensal}
+        />
+        <MetricCard
+          icon={Percent}
+          label="Custo sobre faturado"
+          value={
+            overview.faturamentoMensal > 0
+              ? `${((overview.despesasMes / overview.faturamentoMensal) * 100).toFixed(0)}%`
+              : "—"
+          }
+          alert={overview.faturamentoMensal > 0 && overview.despesasMes > overview.faturamentoMensal}
+        />
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
@@ -389,11 +417,13 @@ function MetricCard({
   label,
   value,
   alert,
+  hint,
 }: {
   icon: typeof TrendingUp;
   label: string;
   value: string;
   alert?: boolean;
+  hint?: string;
 }) {
   return (
     <div className="rounded-2xl border border-border bg-surface p-5">
@@ -402,6 +432,7 @@ function MetricCard({
         <span className="text-xs font-medium uppercase tracking-wide">{label}</span>
       </div>
       <p className={`text-xl font-semibold ${alert ? "text-amber-500" : ""}`}>{value}</p>
+      {hint && <p className="text-xs text-foreground-muted mt-1">{hint}</p>}
     </div>
   );
 }

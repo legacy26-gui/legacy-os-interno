@@ -15,7 +15,11 @@ export async function getFinanceOverview(refDate = new Date()) {
   const [activeClients, revenuesThisMonth, expensesThisMonth, goal, pendingRevenues, overdue, dueToday, dueSoon] =
     await Promise.all([
       prisma.client.findMany({ where: { status: "ATIVO", billingActive: true } }),
-      prisma.revenue.findMany({ where: { status: "PAGO", paidDate: { gte: monthStart, lt: monthEnd } } }),
+      // Faturado do mês = cobranças daquele mês que já foram confirmadas
+      // ("Confirmar"/"marcar como pago"). Usa dueDate — e não paidDate — pra
+      // que dar baixa retroativa num mês passado entre no faturado daquele
+      // mês, e pra bater com o "confirmado" do quadro de MRR.
+      prisma.revenue.findMany({ where: { status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } } }),
       prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } } }),
       prisma.monthlyGoal.findUnique({ where: { month } }),
       prisma.revenue.findMany({
@@ -45,7 +49,14 @@ export async function getFinanceOverview(refDate = new Date()) {
   const faturamentoMensal = revenuesThisMonth.reduce((s, r) => s + Number(r.value), 0);
   // Projeção anual = MRR atual × 12 (não soma histórico do ano).
   const faturamentoAnual = mrr * 12;
-  const despesasMes = expensesThisMonth.reduce((s, e) => s + Number(e.value), 0);
+  const despesasFixas = expensesThisMonth
+    .filter((e) => e.fixedExpenseId)
+    .reduce((s, e) => s + Number(e.value), 0);
+  const despesasVariaveis = expensesThisMonth
+    .filter((e) => !e.fixedExpenseId)
+    .reduce((s, e) => s + Number(e.value), 0);
+  const despesasMes = despesasFixas + despesasVariaveis;
+  // Lucro estimado = o que entrou no mês menos tudo que saiu (fixas + variáveis).
   const lucroEstimado = faturamentoMensal - despesasMes;
   const aReceber = pendingRevenues.reduce((s, r) => s + Number(r.value), 0);
   const ticketMedio = activeClients.length > 0 ? mrr / activeClients.length : 0;
@@ -60,6 +71,8 @@ export async function getFinanceOverview(refDate = new Date()) {
     faturamentoMensal,
     faturamentoAnual,
     despesasMes,
+    despesasFixas,
+    despesasVariaveis,
     lucroEstimado,
     aReceber,
     ticketMedio,
@@ -68,6 +81,134 @@ export async function getFinanceOverview(refDate = new Date()) {
     targetRevenue,
     percentAtingido,
     alerts: { overdue, dueToday, dueSoon },
+  };
+}
+
+// Categoria de despesa tratada como imposto — sai da receita antes do EBITDA,
+// que por definição é o resultado operacional ANTES de juros e impostos.
+const TAX_CATEGORY = "Impostos";
+
+export interface DreMonth {
+  month: string;
+  monthLabel: string;
+  receitaConfirmada: number;
+  receitaPendente: number;
+  receitaPrevista: number;
+  impostos: number;
+  receitaLiquida: number;
+  despesasPorCategoria: { category: string; value: number; fixo: number; variavel: number }[];
+  despesasOperacionais: number;
+  despesasFixas: number;
+  despesasVariaveis: number;
+  fixasOperacionais: number;
+  variaveisOperacionais: number;
+  totalDespesas: number;
+  ebitda: number;
+  margemEbitda: number;
+  depreciacao: number;
+  ebit: number;
+  resultadoFinanceiro: number;
+  lucroLiquido: number;
+  margemLiquida: number;
+  pontoEquilibrio: number;
+  clientesFaturados: number;
+  clientesInadimplentes: number;
+  valorInadimplente: number;
+  taxaInadimplencia: number;
+  ticketMedioRecebido: number;
+}
+
+// Monta o DRE de um mês: receita confirmada, impostos, despesas operacionais
+// (fixas e variáveis, por categoria), EBITDA, EBIT e lucro líquido.
+export async function getDreMonth(refDate: Date): Promise<DreMonth> {
+  const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));
+  const monthEnd = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
+  const monthLabelRaw = refDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+
+  const [paid, pending, expenses] = await Promise.all([
+    prisma.revenue.findMany({
+      where: { status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } },
+      select: { clientId: true, value: true },
+    }),
+    prisma.revenue.findMany({
+      where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
+      select: { clientId: true, value: true },
+    }),
+    prisma.expense.findMany({
+      where: { date: { gte: monthStart, lt: monthEnd } },
+      select: { category: true, value: true, fixedExpenseId: true },
+    }),
+  ]);
+
+  const receitaConfirmada = paid.reduce((s, r) => s + Number(r.value), 0);
+  const receitaPendente = pending.reduce((s, r) => s + Number(r.value), 0);
+  const receitaPrevista = receitaConfirmada + receitaPendente;
+
+  const byCategory = new Map<string, { value: number; fixo: number; variavel: number }>();
+  for (const e of expenses) {
+    const entry = byCategory.get(e.category) ?? { value: 0, fixo: 0, variavel: 0 };
+    const v = Number(e.value);
+    entry.value += v;
+    if (e.fixedExpenseId) entry.fixo += v;
+    else entry.variavel += v;
+    byCategory.set(e.category, entry);
+  }
+
+  const despesasPorCategoria = [...byCategory.entries()]
+    .map(([category, v]) => ({ category, ...v }))
+    .sort((a, b) => b.value - a.value);
+
+  const impostos = byCategory.get(TAX_CATEGORY)?.value ?? 0;
+  const totalDespesas = expenses.reduce((s, e) => s + Number(e.value), 0);
+  const despesasOperacionais = totalDespesas - impostos;
+  const despesasFixas = expenses.filter((e) => e.fixedExpenseId).reduce((s, e) => s + Number(e.value), 0);
+  const despesasVariaveis = totalDespesas - despesasFixas;
+  // Split fixa/variável só das operacionais (sem impostos), pra que as linhas
+  // "das quais" fechem exatamente com o total de despesas operacionais.
+  const operacionais = expenses.filter((e) => e.category !== TAX_CATEGORY);
+  const fixasOperacionais = operacionais.filter((e) => e.fixedExpenseId).reduce((s, e) => s + Number(e.value), 0);
+  const variaveisOperacionais = despesasOperacionais - fixasOperacionais;
+
+  const receitaLiquida = receitaConfirmada - impostos;
+  const ebitda = receitaLiquida - despesasOperacionais;
+  // Não rastreamos imobilizado nem empréstimos, então D&A e resultado
+  // financeiro ficam zerados — EBIT e lucro líquido acompanham o EBITDA.
+  const depreciacao = 0;
+  const ebit = ebitda - depreciacao;
+  const resultadoFinanceiro = 0;
+  const lucroLiquido = ebit + resultadoFinanceiro;
+
+  const clientesFaturados = new Set(paid.map((r) => r.clientId)).size;
+  const clientesInadimplentes = new Set(pending.map((r) => r.clientId)).size;
+
+  return {
+    month: monthStart.toISOString().slice(0, 7),
+    monthLabel: monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1),
+    receitaConfirmada,
+    receitaPendente,
+    receitaPrevista,
+    impostos,
+    receitaLiquida,
+    despesasPorCategoria,
+    despesasOperacionais,
+    despesasFixas,
+    despesasVariaveis,
+    fixasOperacionais,
+    variaveisOperacionais,
+    totalDespesas,
+    ebitda,
+    margemEbitda: receitaLiquida > 0 ? (ebitda / receitaLiquida) * 100 : 0,
+    depreciacao,
+    ebit,
+    resultadoFinanceiro,
+    lucroLiquido,
+    margemLiquida: receitaConfirmada > 0 ? (lucroLiquido / receitaConfirmada) * 100 : 0,
+    pontoEquilibrio: totalDespesas,
+    clientesFaturados,
+    clientesInadimplentes,
+    valorInadimplente: receitaPendente,
+    taxaInadimplencia: receitaPrevista > 0 ? (receitaPendente / receitaPrevista) * 100 : 0,
+    ticketMedioRecebido: clientesFaturados > 0 ? receitaConfirmada / clientesFaturados : 0,
   };
 }
 

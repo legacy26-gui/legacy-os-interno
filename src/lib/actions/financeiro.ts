@@ -35,37 +35,35 @@ export async function createRevenue(_prevState: FinanceFormState, formData: Form
       paidDate: status === "PAGO" ? new Date() : null,
     },
   });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
 }
 
 export async function markRevenuePaid(revenueId: string) {
   await requireModuleAccess("financeiro");
   await prisma.revenue.update({ where: { id: revenueId }, data: { status: "PAGO", paidDate: new Date() } });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
 }
 
 // Desfaz um "marcar como pago" feito por engano — volta pra pendente.
 export async function markRevenueUnpaid(revenueId: string) {
   await requireModuleAccess("financeiro");
   await prisma.revenue.update({ where: { id: revenueId }, data: { status: "PENDENTE", paidDate: null } });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
 }
 
 export async function deleteRevenue(revenueId: string) {
   await requireModuleAccess("financeiro");
   await prisma.revenue.delete({ where: { id: revenueId } });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
 }
 
 export async function updateRevenueDueDate(revenueId: string, dueDate: string) {
   await requireModuleAccess("financeiro");
   if (!dueDate) return;
   await prisma.revenue.update({ where: { id: revenueId }, data: { dueDate: new Date(dueDate) } });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
 }
 
-// Move o card do quadro de MRR pra outro dia de recebimento — mantém mês/ano,
-// só troca o dia (com clamp pro último dia do mês, ex: dia 30 em fevereiro).
 // Exclui um cliente do fluxo de pagamento mensal (Financeiro) sem mexer no
 // status dele em Clientes — some do quadro de MRR e apaga as cobranças
 // pendentes deste mês em diante. Cobranças já pagas continuam no histórico.
@@ -78,17 +76,17 @@ export async function excludeClientFromBilling(clientId: string) {
     where: { clientId, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart } },
   });
 
-  revalidatePath("/financeiro");
-  revalidatePath("/financeiro/dre");
+  revalidatePath("/financeiro", "layout");
 }
 
 export async function includeClientInBilling(clientId: string) {
   await requireModuleAccess("financeiro");
   await prisma.client.update({ where: { id: clientId }, data: { billingActive: true } });
-  revalidatePath("/financeiro");
-  revalidatePath("/financeiro/dre");
+  revalidatePath("/financeiro", "layout");
 }
 
+// Move o card do quadro de MRR pra outro dia de recebimento — mantém mês/ano,
+// só troca o dia (com clamp pro último dia do mês, ex: dia 30 em fevereiro).
 export async function moveMrrRevenueToDay(revenueId: string, day: number) {
   await requireModuleAccess("financeiro");
   const revenue = await prisma.revenue.findUnique({ where: { id: revenueId }, select: { dueDate: true } });
@@ -100,7 +98,7 @@ export async function moveMrrRevenueToDay(revenueId: string, day: number) {
   const newDueDate = new Date(Date.UTC(year, month, Math.min(day, lastDay)));
 
   await prisma.revenue.update({ where: { id: revenueId }, data: { dueDate: newDueDate } });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
 }
 
 const ExpenseSchema = z.object({
@@ -124,7 +122,7 @@ export async function createExpense(_prevState: FinanceFormState, formData: Form
   await prisma.expense.create({
     data: { ...rest, date: new Date(date), responsibleId: user.id },
   });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
 }
 
 const FixedExpenseSchema = z.object({
@@ -150,28 +148,25 @@ export async function createFixedExpense(
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
   await prisma.fixedExpense.create({ data: parsed.data });
-  revalidatePath("/financeiro");
-  revalidatePath("/financeiro/dre");
+  revalidatePath("/financeiro", "layout");
 }
 
 export async function toggleFixedExpenseActive(fixedExpenseId: string, active: boolean) {
   await requireModuleAccess("financeiro");
   await prisma.fixedExpense.update({ where: { id: fixedExpenseId }, data: { active } });
-  revalidatePath("/financeiro");
-  revalidatePath("/financeiro/dre");
+  revalidatePath("/financeiro", "layout");
 }
 
 export async function deleteFixedExpense(fixedExpenseId: string) {
   await requireModuleAccess("financeiro");
   await prisma.fixedExpense.delete({ where: { id: fixedExpenseId } });
-  revalidatePath("/financeiro");
-  revalidatePath("/financeiro/dre");
+  revalidatePath("/financeiro", "layout");
 }
 
 export async function deleteExpense(expenseId: string) {
   await requireModuleAccess("financeiro");
   await prisma.expense.delete({ where: { id: expenseId } });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
 }
 
 const GoalSchema = z.object({
@@ -192,7 +187,7 @@ export async function setMonthlyGoal(_prevState: FinanceFormState, formData: For
     update: { targetRevenue: parsed.data.targetRevenue },
     create: { month: parsed.data.month, targetRevenue: parsed.data.targetRevenue },
   });
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
   revalidatePath("/dashboard");
 }
 

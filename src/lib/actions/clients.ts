@@ -80,7 +80,7 @@ export async function createClient(_prevState: ClientFormState, formData: FormDa
   }
 
   revalidatePath("/clientes");
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
   revalidatePath("/comercial");
   redirect(`/clientes/${client.id}`);
 }
@@ -157,7 +157,7 @@ export async function updateClient(
 
   revalidatePath("/clientes");
   revalidatePath(`/clientes/${clientId}`);
-  revalidatePath("/financeiro");
+  revalidatePath("/financeiro", "layout");
   redirect(`/clientes/${clientId}`);
 }
 

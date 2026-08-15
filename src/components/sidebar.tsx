@@ -6,7 +6,7 @@ import { useState } from "react";
 import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
-  Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart,
+  Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves,
 } from "lucide-react";
 import type { Role } from "@/generated/prisma/enums";
 import { canAccessModule, type ModuleKey } from "@/lib/permissions";
@@ -42,7 +42,9 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/clientes", label: "Clientes", icon: Users, module: "clientes" },
       { href: "/contratos", label: "Contratos", icon: FileText, module: "contratos" },
       { href: "/financeiro", label: "Financeiro", icon: Wallet, module: "financeiro" },
+      { href: "/financeiro/analise", label: "Análise financeira", icon: BarChart3, module: "financeiro" },
       { href: "/financeiro/dre", label: "DRE", icon: FileBarChart, module: "financeiro" },
+      { href: "/financeiro/dfc", label: "DFC", icon: Waves, module: "financeiro" },
       { href: "/equipe", label: "Equipe", icon: UserCog, module: "equipe" },
     ],
   },
@@ -78,8 +80,12 @@ export function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
+  // Rotas que têm sub-páginas próprias no menu precisam de match exato, senão
+  // o item "pai" acende junto com a sub-página (ex: Financeiro + DRE).
+  const EXACT_ONLY = ["/dashboard", "/financeiro"];
+
   function isActive(href: string) {
-    return href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
+    return EXACT_ONLY.includes(href) ? pathname === href : pathname.startsWith(href);
   }
 
   const isEmployee = role === "GESTOR_TRAFEGO";

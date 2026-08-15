@@ -212,6 +212,125 @@ export async function getDreMonth(refDate: Date): Promise<DreMonth> {
   };
 }
 
+export interface CashFlowMonth {
+  month: string;
+  label: string;
+  shortLabel: string;
+  entradas: number;
+  saidas: number;
+  fluxoLiquido: number;
+  saldoInicial: number;
+  saldoFinal: number;
+}
+
+export interface CashFlow {
+  months: CashFlowMonth[];
+  atual: CashFlowMonth;
+  entradasPorOrigem: { label: string; value: number }[];
+  saidasPorCategoria: { label: string; value: number; fixo: boolean }[];
+  aReceberNoMes: number;
+}
+
+// DFC (fluxo de caixa): entradas confirmadas menos saídas pagas, mês a mês,
+// com saldo acumulado. O saldo inicial de cada mês é tudo que entrou menos
+// tudo que saiu antes dele — o sistema não tem saldo bancário de abertura,
+// então o acumulado começa do primeiro lançamento registrado.
+export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFlow> {
+  const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));
+  const monthEnd = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
+  const windowStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() - (monthsBack - 1), 1));
+
+  const [paid, expenses, pendingThisMonth] = await Promise.all([
+    prisma.revenue.findMany({
+      where: { status: "PAGO", dueDate: { lt: monthEnd } },
+      select: { value: true, dueDate: true, description: true },
+    }),
+    prisma.expense.findMany({
+      where: { date: { lt: monthEnd } },
+      select: { value: true, date: true, category: true, fixedExpenseId: true },
+    }),
+    prisma.revenue.findMany({
+      where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
+      select: { value: true },
+    }),
+  ]);
+
+  const key = (d: Date) => d.toISOString().slice(0, 7);
+  const entradasPorMes = new Map<string, number>();
+  const saidasPorMes = new Map<string, number>();
+
+  for (const r of paid) {
+    const k = key(r.dueDate);
+    entradasPorMes.set(k, (entradasPorMes.get(k) ?? 0) + Number(r.value));
+  }
+  for (const e of expenses) {
+    const k = key(e.date);
+    saidasPorMes.set(k, (saidasPorMes.get(k) ?? 0) + Number(e.value));
+  }
+
+  // Saldo acumulado antes da janela exibida.
+  let saldo = 0;
+  for (const r of paid) if (r.dueDate < windowStart) saldo += Number(r.value);
+  for (const e of expenses) if (e.date < windowStart) saldo -= Number(e.value);
+
+  const months: CashFlowMonth[] = [];
+  for (let i = 0; i < monthsBack; i++) {
+    const d = new Date(Date.UTC(windowStart.getUTCFullYear(), windowStart.getUTCMonth() + i, 1));
+    const k = key(d);
+    const entradas = entradasPorMes.get(k) ?? 0;
+    const saidas = saidasPorMes.get(k) ?? 0;
+    const saldoInicial = saldo;
+    const fluxoLiquido = entradas - saidas;
+    saldo = saldoInicial + fluxoLiquido;
+
+    const labelRaw = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
+    months.push({
+      month: k,
+      label: labelRaw.charAt(0).toUpperCase() + labelRaw.slice(1),
+      shortLabel: d.toLocaleDateString("pt-BR", { month: "short", timeZone: "UTC" }).replace(".", ""),
+      entradas,
+      saidas,
+      fluxoLiquido,
+      saldoInicial,
+      saldoFinal: saldo,
+    });
+  }
+
+  const atual = months[months.length - 1];
+
+  // Separa mensalidade recorrente de entradas avulsas no mês exibido.
+  const mrrTag = "[MRR]";
+  let recorrente = 0;
+  let avulso = 0;
+  for (const r of paid) {
+    if (key(r.dueDate) !== atual.month) continue;
+    if (r.description.startsWith(mrrTag)) recorrente += Number(r.value);
+    else avulso += Number(r.value);
+  }
+
+  const catMap = new Map<string, { value: number; fixo: boolean }>();
+  for (const e of expenses) {
+    if (key(e.date) !== atual.month) continue;
+    const entry = catMap.get(e.category) ?? { value: 0, fixo: false };
+    entry.value += Number(e.value);
+    if (e.fixedExpenseId) entry.fixo = true;
+    catMap.set(e.category, entry);
+  }
+
+  return {
+    months,
+    atual,
+    entradasPorOrigem: [
+      { label: "Mensalidades (recorrente)", value: recorrente },
+      { label: "Entradas avulsas", value: avulso },
+    ].filter((x) => x.value > 0),
+    saidasPorCategoria: [...catMap.entries()]
+      .map(([label, v]) => ({ label, ...v }))
+      .sort((a, b) => b.value - a.value),
+    aReceberNoMes: pendingThisMonth.reduce((s, r) => s + Number(r.value), 0),
+  };
+}
+
 export async function getRevenueByClient() {
   const revenues = await prisma.revenue.groupBy({
     by: ["clientId"],

@@ -21,7 +21,7 @@ export function RevenueForm({ clients }: { clients: { id: string; companyName: s
       }}
       className="flex flex-col gap-3"
     >
-      <div className="grid sm:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-2">
         <select name="clientId" required className={inputClass}>
           <option value="">Cliente</option>
           {clients.map((c) => (

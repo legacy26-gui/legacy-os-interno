@@ -1,10 +1,17 @@
 import Link from "next/link";
-import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock, ChevronLeft, ChevronRight, FileBarChart, Pause, Play } from "lucide-react";
+import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock, ChevronLeft, ChevronRight, FileBarChart, Pause, Play, UserCheck } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { getFinanceOverview, getRevenueByClient, getRevenueByCity } from "@/lib/metrics";
 import { formatCurrency, formatDate, REVENUE_STATUS_LABELS, REVENUE_STATUS_COLORS } from "@/lib/labels";
-import { markRevenuePaid, deleteRevenue, deleteExpense, toggleFixedExpenseActive, deleteFixedExpense } from "@/lib/actions/financeiro";
+import {
+  markRevenuePaid,
+  deleteRevenue,
+  deleteExpense,
+  toggleFixedExpenseActive,
+  deleteFixedExpense,
+  includeClientInBilling,
+} from "@/lib/actions/financeiro";
 import { ensureMonthlyMrrRevenues, getMonthlyMrrRevenues } from "@/lib/mrr-revenue";
 import { ensureMonthlyFixedExpenses } from "@/lib/fixed-expenses";
 import { RevenueForm } from "./revenue-form";
@@ -45,7 +52,7 @@ export default async function FinanceiroPage({
   const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1);
 
   const overview = await getFinanceOverview(refDate);
-  const [revenueByClient, revenueByCity, clients, revenues, expenses, fixedExpenses] = await Promise.all([
+  const [revenueByClient, revenueByCity, clients, revenues, expenses, fixedExpenses, excludedFromBilling] = await Promise.all([
     getRevenueByClient(),
     getRevenueByCity(),
     prisma.client.findMany({ select: { id: true, companyName: true }, orderBy: { companyName: "asc" } }),
@@ -56,6 +63,11 @@ export default async function FinanceiroPage({
     }),
     prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } }, orderBy: { date: "asc" } }),
     prisma.fixedExpense.findMany({ orderBy: { description: "asc" } }),
+    prisma.client.findMany({
+      where: { billingActive: false, status: "ATIVO" },
+      select: { id: true, companyName: true, monthlyValue: true },
+      orderBy: { companyName: "asc" },
+    }),
   ]);
 
   const { overdue, dueToday, dueSoon } = overview.alerts;
@@ -140,6 +152,34 @@ export default async function FinanceiroPage({
         paidTotal={mrrBoard.paidTotal}
         pendingTotal={mrrBoard.pendingTotal}
       />
+
+      {excludedFromBilling.length > 0 && (
+        <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3">
+          <div>
+            <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Excluídos do fluxo de pagamento</p>
+            <p className="text-xs text-foreground-muted mt-0.5">Clientes ativos que não entram mais na cobrança mensal automática.</p>
+          </div>
+          <div className="flex flex-col divide-y divide-border">
+            {excludedFromBilling.map((c) => (
+              <div key={c.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                <span>{c.companyName}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-foreground-muted">{formatCurrency(c.monthlyValue.toString())}</span>
+                  <form action={includeClientInBilling.bind(null, c.id)}>
+                    <button
+                      type="submit"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border hover:bg-surface-muted text-xs font-medium"
+                      title="Voltar pro fluxo de pagamento"
+                    >
+                      <UserCheck size={13} /> Reativar
+                    </button>
+                  </form>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(overdue.length > 0 || dueToday.length > 0 || dueSoon.length > 0) && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5">

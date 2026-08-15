@@ -14,7 +14,7 @@ export async function getFinanceOverview(refDate = new Date()) {
 
   const [activeClients, revenuesThisMonth, expensesThisMonth, goal, pendingRevenues, overdue, dueToday, dueSoon] =
     await Promise.all([
-      prisma.client.findMany({ where: { status: "ATIVO" } }),
+      prisma.client.findMany({ where: { status: "ATIVO", billingActive: true } }),
       prisma.revenue.findMany({ where: { status: "PAGO", paidDate: { gte: monthStart, lt: monthEnd } } }),
       prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } } }),
       prisma.monthlyGoal.findUnique({ where: { month } }),

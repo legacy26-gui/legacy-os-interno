@@ -28,7 +28,7 @@ export async function ensureMonthlyMrrRevenues(ref: Date = new Date()): Promise<
 
   const [clients, existing] = await Promise.all([
     prisma.client.findMany({
-      where: { status: "ATIVO", monthlyValue: { gt: 0 } },
+      where: { status: "ATIVO", monthlyValue: { gt: 0 }, billingActive: true },
       select: { id: true, monthlyValue: true, dueDay: true },
     }),
     prisma.revenue.findMany({

@@ -20,10 +20,15 @@ export async function GET(request: NextRequest) {
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
   const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
-  const [activeClients, mrrRevenues] = await Promise.all([
+  const [activeClients, excludedFromBilling, mrrRevenues] = await Promise.all([
     prisma.client.findMany({
-      where: { status: "ATIVO" },
+      where: { status: "ATIVO", billingActive: true },
       select: { id: true, companyName: true, monthlyValue: true },
+      orderBy: { companyName: "asc" },
+    }),
+    prisma.client.findMany({
+      where: { status: "ATIVO", billingActive: false },
+      select: { companyName: true, monthlyValue: true },
       orderBy: { companyName: "asc" },
     }),
     prisma.revenue.findMany({
@@ -68,6 +73,7 @@ export async function GET(request: NextRequest) {
     ativoSemLancamento,
     lancamentoDeClienteNaoAtivo,
     precoDesatualizado,
+    excluidosDoFluxoDePagamento: excludedFromBilling,
     clientesAtivos: activeClients.map((c) => ({ companyName: c.companyName, monthlyValue: c.monthlyValue })),
   });
 }

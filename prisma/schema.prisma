@@ -91,6 +91,9 @@ model Client {
   monthlyValue  Decimal      @default(0) @db.Decimal(12, 2)
   dueDay        Int?
   status        ClientStatus @default(IMPLANTACAO)
+  // Permite excluir o cliente só do fluxo de cobrança mensal (Financeiro)
+  // sem mudar o status dele em Clientes — ex: acordo especial, cortesia.
+  billingActive Boolean      @default(true)
   internalNotes String?
   managerId     String?
   manager       User?        @relation("ClientManager", fields: [managerId], references: [id])

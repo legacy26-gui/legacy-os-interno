@@ -66,6 +66,29 @@ export async function updateRevenueDueDate(revenueId: string, dueDate: string) {
 
 // Move o card do quadro de MRR pra outro dia de recebimento — mantém mês/ano,
 // só troca o dia (com clamp pro último dia do mês, ex: dia 30 em fevereiro).
+// Exclui um cliente do fluxo de pagamento mensal (Financeiro) sem mexer no
+// status dele em Clientes — some do quadro de MRR e apaga as cobranças
+// pendentes deste mês em diante. Cobranças já pagas continuam no histórico.
+export async function excludeClientFromBilling(clientId: string) {
+  await requireModuleAccess("financeiro");
+  await prisma.client.update({ where: { id: clientId }, data: { billingActive: false } });
+
+  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  await prisma.revenue.deleteMany({
+    where: { clientId, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart } },
+  });
+
+  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/dre");
+}
+
+export async function includeClientInBilling(clientId: string) {
+  await requireModuleAccess("financeiro");
+  await prisma.client.update({ where: { id: clientId }, data: { billingActive: true } });
+  revalidatePath("/financeiro");
+  revalidatePath("/financeiro/dre");
+}
+
 export async function moveMrrRevenueToDay(revenueId: string, day: number) {
   await requireModuleAccess("financeiro");
   const revenue = await prisma.revenue.findUnique({ where: { id: revenueId }, select: { dueDate: true } });

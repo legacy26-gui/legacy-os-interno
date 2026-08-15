@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Wallet, Clock, Undo2, GripVertical } from "lucide-react";
+import { CheckCircle2, Wallet, Clock, Undo2, GripVertical, UserX } from "lucide-react";
 import { formatCurrency } from "@/lib/labels";
-import { markRevenuePaid, markRevenueUnpaid, moveMrrRevenueToDay } from "@/lib/actions/financeiro";
+import { markRevenuePaid, markRevenueUnpaid, moveMrrRevenueToDay, excludeClientFromBilling } from "@/lib/actions/financeiro";
 import type { MrrRevenueGroup } from "@/lib/mrr-revenue";
 
 type MrrItem = MrrRevenueGroup["items"][number];
@@ -110,9 +110,27 @@ function MrrCard({ r, moving }: { r: MrrItem; moving: boolean }) {
         moving ? "opacity-50" : ""
       }`}
     >
-      <div className="flex items-center gap-1.5">
-        <GripVertical size={13} className="text-foreground-muted shrink-0" />
-        <span className="text-sm truncate">{r.client.companyName}</span>
+      <div className="flex items-center justify-between gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <GripVertical size={13} className="text-foreground-muted shrink-0" />
+          <span className="text-sm truncate">{r.client.companyName}</span>
+        </div>
+        <form
+          action={excludeClientFromBilling.bind(null, r.clientId)}
+          onSubmit={(e) => {
+            if (!window.confirm(`Excluir "${r.client.companyName}" do fluxo de pagamento mensal? Ele some do quadro de MRR (cobranças pendentes deste mês em diante são apagadas). Pode reativar depois.`)) {
+              e.preventDefault();
+            }
+          }}
+        >
+          <button
+            type="submit"
+            title="Excluir do fluxo de pagamento"
+            className="p-0.5 rounded hover:bg-red-500/10 text-foreground-muted hover:text-red-500 shrink-0"
+          >
+            <UserX size={13} />
+          </button>
+        </form>
       </div>
       <div className="flex items-center justify-between gap-2">
         <span className="text-sm font-medium">{formatCurrency(r.value.toString())}</span>

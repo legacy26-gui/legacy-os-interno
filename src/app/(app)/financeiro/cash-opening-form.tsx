@@ -9,10 +9,10 @@ const inputClass =
 
 export function CashOpeningForm({
   currentBalance,
-  currentMonth,
+  currentDate,
 }: {
   currentBalance?: number;
-  currentMonth?: string;
+  currentDate?: string;
 }) {
   const [state, formAction, pending] = useActionState(setCashOpeningBalance, undefined);
 
@@ -32,12 +32,12 @@ export function CashOpeningForm({
           />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-foreground-muted">No dia 1º de</span>
+          <span className="text-xs text-foreground-muted">Conferido em</span>
           <input
-            name="openingMonth"
-            type="month"
+            name="openingDate"
+            type="date"
             required
-            defaultValue={currentMonth ?? ""}
+            defaultValue={currentDate ?? new Date().toISOString().slice(0, 10)}
             className={`${inputClass} w-44`}
           />
         </label>

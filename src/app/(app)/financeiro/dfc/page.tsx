@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
 import { getCashFlow } from "@/lib/metrics";
-import { formatCurrency } from "@/lib/labels";
+import { formatCurrency, formatDate } from "@/lib/labels";
 import { FinanceTabs } from "../finance-tabs";
 import { CashOpeningForm } from "../cash-opening-form";
 
@@ -39,6 +39,12 @@ export default async function DfcPage({
 
   const cf = await getCashFlow(refDate, 6);
   const { atual } = cf;
+  // Saldo conferido no meio do mês exibido: a conta do mês parte dele, e só
+  // conta o que entrou/saiu depois da data da conferência.
+  const openingAqui = cf.opening?.insideDisplayedMonth ?? false;
+  const fluxoExibido = openingAqui
+    ? cf.opening!.entradasDepois - cf.opening!.saidasDepois
+    : atual.fluxoLiquido;
 
   // Escala comum pras barras do histórico, pra comparação visual honesta.
   const maxBar = Math.max(...cf.months.flatMap((m) => [m.entradas, m.saidas]), 1);
@@ -91,16 +97,18 @@ export default async function DfcPage({
           <div className="p-5">
             <div className="flex items-center gap-2 text-foreground-muted mb-2">
               <Wallet size={15} />
-              <span className="text-xs font-semibold uppercase tracking-wide">Saldo inicial</span>
+              <span className="text-xs font-semibold uppercase tracking-wide">
+                {openingAqui ? "Saldo conferido" : "Saldo inicial"}
+              </span>
             </div>
-            <p className={`text-xl font-bold ${(atual.saldoInicial ?? 0) < 0 ? "text-red-500" : ""}`}>
-              {money(atual.saldoInicial)}
+            <p className={`text-xl font-bold ${((openingAqui ? cf.opening!.balance : atual.saldoInicial) ?? 0) < 0 ? "text-red-500" : ""}`}>
+              {money(openingAqui ? cf.opening!.balance : atual.saldoInicial)}
             </p>
             <p className="text-xs text-foreground-muted mt-1">
-              {atual.saldoInicial === null
-                ? "Informe o saldo em banco abaixo"
-                : cf.opening?.month === atual.month
-                  ? "Saldo em banco que você informou"
+              {openingAqui
+                ? `Que você conferiu no banco em ${formatDate(cf.opening!.date)}`
+                : atual.saldoInicial === null
+                  ? "Informe o saldo em banco abaixo"
                   : "Acumulado até o mês anterior"}
             </p>
           </div>
@@ -110,9 +118,17 @@ export default async function DfcPage({
               <ArrowUpCircle size={15} />
               <span className="text-xs font-semibold uppercase tracking-wide">(+) Entradas</span>
             </div>
-            <p className="text-xl font-bold text-emerald-500">{formatCurrency(atual.entradas)}</p>
+            <p className="text-xl font-bold text-emerald-500">
+              {formatCurrency(openingAqui ? cf.opening!.entradasDepois : atual.entradas)}
+            </p>
             <p className="text-xs text-foreground-muted mt-1 flex items-center gap-1">
-              <Clock size={11} /> a receber: {formatCurrency(cf.aReceberNoMes)}
+              {openingAqui ? (
+                <>Depois da conferência · mês todo: {formatCurrency(atual.entradas)}</>
+              ) : (
+                <>
+                  <Clock size={11} /> a receber: {formatCurrency(cf.aReceberNoMes)}
+                </>
+              )}
             </p>
           </div>
 
@@ -121,8 +137,14 @@ export default async function DfcPage({
               <ArrowDownCircle size={15} />
               <span className="text-xs font-semibold uppercase tracking-wide">(−) Saídas</span>
             </div>
-            <p className="text-xl font-bold text-red-500">{formatCurrency(atual.saidas)}</p>
-            <p className="text-xs text-foreground-muted mt-1">Tudo que foi pago no mês</p>
+            <p className="text-xl font-bold text-red-500">
+              {formatCurrency(openingAqui ? cf.opening!.saidasDepois : atual.saidas)}
+            </p>
+            <p className="text-xs text-foreground-muted mt-1">
+              {openingAqui
+                ? `Depois da conferência · mês todo: ${formatCurrency(atual.saidas)}`
+                : "Tudo que foi pago no mês"}
+            </p>
           </div>
 
           <div className={`p-5 ${(atual.saldoFinal ?? 0) >= 0 ? "bg-accent/5" : "bg-red-500/10"}`}>
@@ -135,8 +157,8 @@ export default async function DfcPage({
             <p className={`text-xl font-bold ${(atual.saldoFinal ?? 0) < 0 ? "text-red-500" : ""}`}>
               {money(atual.saldoFinal)}
             </p>
-            <p className={`text-xs mt-1 ${atual.fluxoLiquido >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-              {atual.fluxoLiquido >= 0 ? "Gerou" : "Consumiu"} {formatCurrency(Math.abs(atual.fluxoLiquido))} de caixa
+            <p className={`text-xs mt-1 ${fluxoExibido >= 0 ? "text-emerald-500" : "text-red-500"}`}>
+              {fluxoExibido >= 0 ? "Gerou" : "Consumiu"} {formatCurrency(Math.abs(fluxoExibido))} de caixa
             </p>
           </div>
         </div>
@@ -278,11 +300,14 @@ export default async function DfcPage({
           <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Saldo em banco</p>
           <p className="text-xs text-foreground-muted mt-0.5">
             {cf.opening
-              ? `Partindo de ${formatCurrency(cf.opening.balance)} no dia 1º de ${cf.opening.label.toLowerCase()}. As entradas e saídas lançadas depois disso ajustam o saldo automaticamente.`
-              : "O sistema não lê o extrato do Itaú. Informe o saldo em banco pra que o acumulado abaixo fique fiel — depois basta ir lançando entradas e saídas."}
+              ? `Partindo de ${formatCurrency(cf.opening.balance)} conferido em ${formatDate(cf.opening.date)}. Só entradas e saídas com data posterior a essa mexem no saldo — o que veio antes já está dentro desse número.`
+              : "O sistema não lê o extrato do Itaú. Informe o saldo em banco pra que o caixa fique fiel — depois basta ir lançando entradas e saídas."}
           </p>
         </div>
-        <CashOpeningForm currentBalance={cf.opening?.balance} currentMonth={cf.opening?.month} />
+        <CashOpeningForm
+          currentBalance={cf.opening?.balance}
+          currentDate={cf.opening ? cf.opening.date.toISOString().slice(0, 10) : undefined}
+        />
       </div>
     </div>
   );

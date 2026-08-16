@@ -171,11 +171,12 @@ export async function deleteExpense(expenseId: string) {
 
 const CashOpeningSchema = z.object({
   openingBalance: z.coerce.number("Informe um valor válido."),
-  openingMonth: z.string().regex(/^\d{4}-\d{2}$/, "Informe o mês no formato AAAA-MM."),
+  openingDate: z.string().min(1, "Informe a data em que conferiu o saldo."),
 });
 
-// Saldo de caixa em banco no dia 1º do mês informado. É o ponto de partida do
-// acumulado no DFC — o sistema não lê o extrato, então esse número vem de você.
+// Saldo conferido no banco numa data. É o ponto de partida do caixa — o
+// sistema não lê o extrato, então esse número vem de você. Só entradas e
+// saídas posteriores a essa data mexem no saldo.
 export async function setCashOpeningBalance(
   _prevState: FinanceFormState,
   formData: FormData
@@ -183,14 +184,19 @@ export async function setCashOpeningBalance(
   await requireModuleAccess("financeiro");
   const parsed = CashOpeningSchema.safeParse({
     openingBalance: formData.get("openingBalance"),
-    openingMonth: formData.get("openingMonth"),
+    openingDate: formData.get("openingDate"),
   });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
+  const data = {
+    openingBalance: parsed.data.openingBalance,
+    openingDate: new Date(`${parsed.data.openingDate}T00:00:00Z`),
+  };
+
   await prisma.cashSetting.upsert({
     where: { id: "default" },
-    update: parsed.data,
-    create: { id: "default", ...parsed.data },
+    update: data,
+    create: { id: "default", ...data },
   });
   revalidatePath("/financeiro", "layout");
 }

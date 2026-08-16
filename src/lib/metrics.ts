@@ -231,7 +231,16 @@ export interface CashFlow {
   entradasPorOrigem: { label: string; value: number }[];
   saidasPorCategoria: { label: string; value: number; fixo: boolean }[];
   aReceberNoMes: number;
-  opening: { balance: number; month: string; label: string } | null;
+  opening: {
+    balance: number;
+    date: Date;
+    insideDisplayedMonth: boolean;
+    // Movimento posterior à conferência, dentro do mês exibido — é o que
+    // realmente mexe no saldo quando a conferência caiu no meio do mês.
+    entradasDepois: number;
+    saidasDepois: number;
+  } | null;
+  saldoEmCaixa: number | null;
 }
 
 // DFC (fluxo de caixa): entradas confirmadas menos saídas pagas, mês a mês,
@@ -272,36 +281,29 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
     saidasPorMes.set(k, (saidasPorMes.get(k) ?? 0) + Number(e.value));
   }
 
-  // O acumulado parte do saldo de caixa informado no mês de abertura. Antes
-  // disso o sistema não sabe quanto havia em banco, então o saldo fica nulo.
-  const openingMonth = cashSetting?.openingMonth ?? null;
+  // O saldo parte do valor conferido no banco na data informada. Só o que
+  // entrou/saiu DEPOIS dela mexe no saldo — o que veio antes já está dentro
+  // desse número. Sem saldo informado, o sistema não inventa acumulado.
+  const openingDate = cashSetting?.openingDate ?? null;
   const openingBalance = cashSetting ? Number(cashSetting.openingBalance) : 0;
 
-  let saldo: number | null = null;
-  if (openingMonth) {
-    if (openingMonth <= key(windowStart)) {
-      // Abertura antes da janela: acumula do mês de abertura até a janela.
-      saldo = openingBalance;
-      const openingStart = new Date(`${openingMonth}-01T00:00:00Z`);
-      for (const r of paid) if (r.dueDate >= openingStart && r.dueDate < windowStart) saldo += Number(r.value);
-      for (const e of expenses) if (e.date >= openingStart && e.date < windowStart) saldo -= Number(e.value);
-    }
+  // Saldo em caixa numa data-limite qualquer (fim de mês, ou hoje).
+  function saldoAte(limite: Date): number | null {
+    if (!openingDate) return null;
+    if (limite <= openingDate) return null;
+    let s = openingBalance;
+    for (const r of paid) if (r.dueDate > openingDate && r.dueDate < limite) s += Number(r.value);
+    for (const e of expenses) if (e.date > openingDate && e.date < limite) s -= Number(e.value);
+    return s;
   }
 
   const months: CashFlowMonth[] = [];
   for (let i = 0; i < monthsBack; i++) {
     const d = new Date(Date.UTC(windowStart.getUTCFullYear(), windowStart.getUTCMonth() + i, 1));
+    const mEnd = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
     const k = key(d);
     const entradas = entradasPorMes.get(k) ?? 0;
     const saidas = saidasPorMes.get(k) ?? 0;
-    const fluxoLiquido = entradas - saidas;
-
-    // Mês em que o saldo informado passa a valer.
-    if (openingMonth && k === openingMonth) saldo = openingBalance;
-
-    const saldoInicial = saldo;
-    const saldoFinal = saldoInicial === null ? null : saldoInicial + fluxoLiquido;
-    saldo = saldoFinal;
 
     const labelRaw = d.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
     months.push({
@@ -310,9 +312,9 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
       shortLabel: d.toLocaleDateString("pt-BR", { month: "short", timeZone: "UTC" }).replace(".", ""),
       entradas,
       saidas,
-      fluxoLiquido,
-      saldoInicial,
-      saldoFinal,
+      fluxoLiquido: entradas - saidas,
+      saldoInicial: saldoAte(d),
+      saldoFinal: saldoAte(mEnd),
     });
   }
 
@@ -348,20 +350,21 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
       .map(([label, v]) => ({ label, ...v }))
       .sort((a, b) => b.value - a.value),
     aReceberNoMes: pendingThisMonth.reduce((s, r) => s + Number(r.value), 0),
-    opening: openingMonth
+    opening: openingDate
       ? {
           balance: openingBalance,
-          month: openingMonth,
-          label: (() => {
-            const raw = new Date(`${openingMonth}-01T00:00:00Z`).toLocaleDateString("pt-BR", {
-              month: "long",
-              year: "numeric",
-              timeZone: "UTC",
-            });
-            return raw.charAt(0).toUpperCase() + raw.slice(1);
-          })(),
+          date: openingDate,
+          insideDisplayedMonth: openingDate >= monthStart && openingDate < monthEnd,
+          entradasDepois: paid
+            .filter((r) => r.dueDate > openingDate && r.dueDate < monthEnd)
+            .reduce((s, r) => s + Number(r.value), 0),
+          saidasDepois: expenses
+            .filter((e) => e.date > openingDate && e.date < monthEnd)
+            .reduce((s, e) => s + Number(e.value), 0),
         }
       : null,
+    // Saldo de hoje: sempre o valor mais atual, independente do mês exibido.
+    saldoEmCaixa: saldoAte(new Date(Date.now() + 86_400_000)),
   };
 }
 

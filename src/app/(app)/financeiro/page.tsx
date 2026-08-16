@@ -68,7 +68,7 @@ export default async function FinanceiroPage({
   const totalSaidas = saidas.reduce((s, e) => s + Number(e.value), 0);
   const aReceber = pendentes.reduce((s, r) => s + Number(r.value), 0);
   const saldo = totalEntradas - totalSaidas;
-  const saldoEmCaixa = cashFlow.months[0]?.saldoFinal ?? null;
+  const saldoEmCaixa = cashFlow.saldoEmCaixa;
 
   // Barras proporcionais ao maior dos dois, pra dar leitura visual imediata.
   const maior = Math.max(totalEntradas, totalSaidas, 1);

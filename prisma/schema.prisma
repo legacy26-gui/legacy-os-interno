@@ -430,13 +430,14 @@ model SupportTicket {
 
 // ─── Metas da agência ───────────────────────────────────────────────────────
 
-// Saldo de caixa informado manualmente pelo Guilherme: o sistema não conhece
-// o extrato do banco, então o acumulado do DFC parte deste valor. Linha única
-// (id fixo "default"). openingMonth é o mês em que o saldo vale no dia 1º.
+// Saldo de caixa informado manualmente: o sistema não lê o extrato do banco,
+// então o acumulado do DFC parte deste valor. Linha única (id fixo "default").
+// openingDate é a data exata em que o saldo foi conferido — só entradas e
+// saídas posteriores a ela mexem no saldo (as anteriores já estão dentro dele).
 model CashSetting {
   id             String   @id @default("default")
   openingBalance Decimal  @db.Decimal(12, 2)
-  openingMonth   String // YYYY-MM
+  openingDate    DateTime @db.Date
   updatedAt      DateTime @updatedAt
 
   @@map("cash_settings")

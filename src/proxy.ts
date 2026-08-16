@@ -29,5 +29,10 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|.*\\.png$|favicon.ico).*)"],
+  // Arquivos do PWA (manifest, service worker e página de offline) ficam fora
+  // da autenticação: o navegador busca o manifest sem cookie, e se ele cair no
+  // redirect pro login o app deixa de ser instalável.
+  matcher: [
+    "/((?!api|_next/static|_next/image|manifest.webmanifest|sw\\.js|offline|.*\\.png$|favicon.ico).*)",
+  ],
 };

@@ -220,6 +220,10 @@ export default async function ContaDetailPage({
 
   const observacoesDoMes = dailyReviews.filter((d) => d.notes);
   const defaultWeek = isCurrentMonth ? weekOfMonthFor(now) : 1;
+  // Se a semana em curso ainda não tem revisão, o formulário já aparece aberto:
+  // é trabalho pendente. Caso contrário fica recolhido pra não poluir a análise.
+  const semanaAtualPendente =
+    isCurrentMonth && (semanas.find((s) => s.week === defaultWeek)?.revisoes.length ?? 0) === 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -290,6 +294,62 @@ export default async function ContaDetailPage({
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* O trabalho de hoje vem antes de tudo: a gestora abre o cliente e já
+          faz a tarefa do dia aqui, sem precisar voltar pro Meu Dia. */}
+      <div
+        className={`rounded-2xl border p-5 ${
+          todayDaily ? "border-emerald-500/30 bg-emerald-500/5" : "border-accent/40 bg-accent/5"
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <h2 className="text-sm font-semibold flex items-center gap-2">
+            <ClipboardCheck size={15} className={todayDaily ? "text-emerald-500" : "text-accent"} />
+            Checklist de hoje
+          </h2>
+          {todayDaily ? (
+            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-500 flex items-center gap-1.5">
+              <CheckCircle2 size={12} /> Feito por {todayDaily.reviewer?.name ?? "—"} às{" "}
+              {formatDateTime(todayDaily.createdAt)}
+            </span>
+          ) : (
+            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-red-500/15 text-red-500 flex items-center gap-1.5">
+              <AlertCircle size={12} /> Pendente hoje
+            </span>
+          )}
+        </div>
+
+        {todayDaily ? (
+          <div className="flex flex-col gap-3">
+            <div className="grid sm:grid-cols-2 gap-x-8">
+              {DAILY_REVIEW_CHECKS.map(([key, label]) => (
+                <CheckRow key={key} checked={todayDaily[key]} label={label} />
+              ))}
+            </div>
+            {todayDaily.notes && <p className="text-xs text-foreground-muted">Obs: {todayDaily.notes}</p>}
+            {todayDaily.photoUrl ? (
+              <a href={todayDaily.photoUrl} target="_blank" rel="noreferrer" className="inline-block w-fit">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={todayDaily.photoUrl} alt="Foto da campanha de hoje" className="max-h-40 rounded-lg border border-border" />
+              </a>
+            ) : (
+              <p className="text-xs text-foreground-muted flex items-center gap-1.5">
+                <ImageOff size={13} /> Sem foto registrada
+              </p>
+            )}
+            <details className="mt-1">
+              <summary className="text-xs text-foreground-muted cursor-pointer hover:text-foreground w-fit">
+                Preencher outra revisão hoje
+              </summary>
+              <div className="mt-3 pt-3 border-t border-border">
+                <DailyReviewForm clientId={client.id} suggestions={dailySuggestions} />
+              </div>
+            </details>
+          </div>
+        ) : (
+          <DailyReviewForm clientId={client.id} suggestions={dailySuggestions} />
         )}
       </div>
 
@@ -433,58 +493,6 @@ export default async function ContaDetailPage({
         />
       </div>
 
-      {/* Status do checklist diário de hoje */}
-      <div className="rounded-2xl border border-border bg-surface p-5">
-        <h2 className="text-sm font-semibold mb-3 flex items-center gap-2">
-          <ClipboardCheck size={15} className="text-foreground-muted" /> Checklist de hoje
-        </h2>
-        {todayDaily ? (
-          <div className="flex flex-col gap-3">
-            <p className="text-xs text-foreground-muted">
-              Preenchido por {todayDaily.reviewer?.name ?? "—"} às {formatDateTime(todayDaily.createdAt)}
-            </p>
-            <div>
-              {DAILY_REVIEW_CHECKS.map(([key, label]) => (
-                <CheckRow key={key} checked={todayDaily[key]} label={label} />
-              ))}
-            </div>
-            {todayDaily.notes && <p className="text-xs text-foreground-muted">Obs: {todayDaily.notes}</p>}
-            {todayDaily.photoUrl ? (
-              <a href={todayDaily.photoUrl} target="_blank" rel="noreferrer" className="inline-block w-fit">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={todayDaily.photoUrl} alt="Foto da campanha de hoje" className="max-h-40 rounded-lg border border-border" />
-              </a>
-            ) : (
-              <p className="text-xs text-foreground-muted flex items-center gap-1.5">
-                <ImageOff size={13} /> Sem foto registrada
-              </p>
-            )}
-          </div>
-        ) : (
-          <p className="text-sm text-foreground-muted flex items-center gap-1.5">
-            <AlertCircle size={15} className="text-red-500 shrink-0" /> Ainda não preenchido hoje.
-          </p>
-        )}
-      </div>
-
-      {/* Checklists */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="rounded-2xl border border-border bg-surface p-5">
-          <h2 className="text-sm font-semibold mb-4">Checklist diário</h2>
-          <DailyReviewForm clientId={client.id} suggestions={dailySuggestions} />
-        </div>
-        <div className="rounded-2xl border border-border bg-surface p-5">
-          <h2 className="text-sm font-semibold mb-4">Checklist semanal</h2>
-          <WeeklyReviewForm
-            clientId={client.id}
-            suggestions={weeklySuggestions}
-            refMonth={mesAtual}
-            weeks={semanas.map(({ week, from, to }) => ({ week, from, to }))}
-            defaultWeek={defaultWeek}
-          />
-        </div>
-      </div>
-
       {/* Semana a semana do mês */}
       <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4">
         <div>
@@ -493,6 +501,36 @@ export default async function ContaDetailPage({
             {semanasPreenchidas} de {totalSemanas} semanas com revisão preenchida.
           </p>
         </div>
+
+        {/* A revisão semanal fica junto da visão das semanas: é aqui que a
+            gestora vê o que falta e preenche, sem trocar de tela. */}
+        <details
+          open={semanaAtualPendente}
+          className={`rounded-xl border p-4 ${
+            semanaAtualPendente ? "border-accent/40 bg-accent/5" : "border-border"
+          }`}
+        >
+          <summary className="cursor-pointer text-sm font-medium flex items-center gap-2">
+            <ClipboardCheck size={15} />
+            {semanaAtualPendente
+              ? `Preencher revisão da semana ${defaultWeek}`
+              : "Preencher revisão semanal"}
+            {semanaAtualPendente && (
+              <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-red-500/15 text-red-500">
+                Pendente
+              </span>
+            )}
+          </summary>
+          <div className="mt-4">
+            <WeeklyReviewForm
+              clientId={client.id}
+              suggestions={weeklySuggestions}
+              refMonth={mesAtual}
+              weeks={semanas.map(({ week, from, to }) => ({ week, from, to }))}
+              defaultWeek={defaultWeek}
+            />
+          </div>
+        </details>
 
         <div className="grid sm:grid-cols-2 gap-4">
           {semanas.map((s) => (

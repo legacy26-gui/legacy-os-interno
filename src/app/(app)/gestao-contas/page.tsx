@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Gauge, ShieldCheck, AlertTriangle, Flame, Trophy, CalendarX, CalendarClock, Zap, ImageOff, ClipboardCheck } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
-import { getAccountsHealth, SCORE_COLORS, BUCKET_LABELS, type AccountHealth } from "@/lib/account-health";
+import { getAccountsHealth, SCORE_COLORS, type AccountHealth } from "@/lib/account-health";
 import { formatDate } from "@/lib/labels";
 
 function ScoreBadge({ score, bucket }: { score: number; bucket: AccountHealth["metrics"]["bucket"] }) {

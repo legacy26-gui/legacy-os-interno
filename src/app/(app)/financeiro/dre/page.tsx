@@ -12,7 +12,7 @@ import {
   PiggyBank,
 } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
-import { getDreMonth, type DreMonth } from "@/lib/metrics";
+import { getDreMonth } from "@/lib/metrics";
 import { formatCurrency } from "@/lib/labels";
 import { FinanceTabs } from "../finance-tabs";
 

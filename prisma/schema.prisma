@@ -172,8 +172,14 @@ model Expense {
   responsible    User?         @relation(fields: [responsibleId], references: [id])
   fixedExpenseId String?
   fixedExpense   FixedExpense? @relation(fields: [fixedExpenseId], references: [id], onDelete: SetNull)
+  // Saída fixa nasce não confirmada: só entra no DRE/DFC/lucro depois que o
+  // Guilherme confirmar que saiu de verdade. Saída lançada na mão já nasce
+  // confirmada, porque só se lança o que já aconteceu.
+  paid           Boolean       @default(true)
+  paidDate       DateTime?
   createdAt      DateTime      @default(now())
 
+  @@index([date, paid])
   @@map("expenses")
 }
 

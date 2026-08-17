@@ -9,12 +9,14 @@ import {
   Trash2,
   Repeat,
   Landmark,
+  CheckCircle2,
+  Undo2,
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/labels";
 import { getCashFlow } from "@/lib/metrics";
-import { deleteRevenue, deleteExpense } from "@/lib/actions/financeiro";
+import { deleteRevenue, deleteExpense, markExpensePaid, markExpenseUnpaid } from "@/lib/actions/financeiro";
 import { ensureMonthlyMrrRevenues } from "@/lib/mrr-revenue";
 import { ensureMonthlyFixedExpenses } from "@/lib/fixed-expenses";
 import { RevenueForm } from "./revenue-form";
@@ -64,8 +66,13 @@ export default async function FinanceiroPage({
     prisma.client.findMany({ select: { id: true, companyName: true }, orderBy: { companyName: "asc" } }),
   ]);
 
+  // Saída fixa só conta depois de confirmada — antes disso fica como "a pagar".
+  const saidasConfirmadas = saidas.filter((e) => e.paid);
+  const saidasAPagar = saidas.filter((e) => !e.paid);
+
   const totalEntradas = entradas.reduce((s, r) => s + Number(r.value), 0);
-  const totalSaidas = saidas.reduce((s, e) => s + Number(e.value), 0);
+  const totalSaidas = saidasConfirmadas.reduce((s, e) => s + Number(e.value), 0);
+  const totalAPagar = saidasAPagar.reduce((s, e) => s + Number(e.value), 0);
   const aReceber = pendentes.reduce((s, r) => s + Number(r.value), 0);
   const saldo = totalEntradas - totalSaidas;
   const saldoEmCaixa = cashFlow.saldoEmCaixa;
@@ -134,7 +141,15 @@ export default async function FinanceiroPage({
           <div className="h-1.5 rounded-full bg-red-500/15 overflow-hidden mt-3">
             <div className="h-full bg-red-500" style={{ width: `${(totalSaidas / maior) * 100}%` }} />
           </div>
-          <p className="text-xs text-foreground-muted mt-2">{saidas.length} pagamento(s)</p>
+          <p className="text-xs text-foreground-muted mt-2">
+            {saidasConfirmadas.length} confirmado(s)
+            {saidasAPagar.length > 0 && (
+              <span className="text-amber-500">
+                {" · "}
+                {formatCurrency(totalAPagar)} aguardando você
+              </span>
+            )}
+          </p>
         </div>
 
         <div
@@ -228,23 +243,68 @@ export default async function FinanceiroPage({
             <span className="text-sm font-bold text-red-500">{formatCurrency(totalSaidas)}</span>
           </div>
 
-          {saidas.length === 0 ? (
-            <p className="text-sm text-foreground-muted px-5 py-8 text-center">Nenhuma saída neste mês.</p>
+          {/* Aguardando sua confirmação: ainda não contam em lucro, DRE nem DFC */}
+          {saidasAPagar.length > 0 && (
+            <div className="border-b border-border bg-amber-500/5">
+              <div className="flex items-center justify-between gap-2 px-5 py-2.5">
+                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-amber-500">
+                  <Clock size={12} /> Aguardando sua confirmação
+                </span>
+                <span className="text-xs font-semibold text-amber-500">{formatCurrency(totalAPagar)}</span>
+              </div>
+              <div className="flex flex-col divide-y divide-border">
+                {saidasAPagar.map((e) => (
+                  <div key={e.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate flex items-center gap-1.5">
+                        {e.description}
+                        {e.fixedExpenseId && <FixaBadge />}
+                      </p>
+                      <p className="text-xs text-foreground-muted truncate">
+                        {e.category} · {formatDate(e.date)}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-sm font-semibold text-foreground-muted">
+                        {formatCurrency(e.value.toString())}
+                      </span>
+                      <form action={markExpensePaid.bind(null, e.id)}>
+                        <button
+                          type="submit"
+                          className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-1 rounded-lg bg-accent text-accent-foreground hover:opacity-90"
+                          title="Confirmar que essa saída aconteceu"
+                        >
+                          <CheckCircle2 size={12} /> Confirmar
+                        </button>
+                      </form>
+                      <form action={deleteExpense.bind(null, e.id)}>
+                        <button
+                          type="submit"
+                          className="p-1.5 rounded-lg hover:bg-red-500/10 text-foreground-muted hover:text-red-500"
+                          title="Excluir"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {saidasConfirmadas.length === 0 ? (
+            <p className="text-sm text-foreground-muted px-5 py-8 text-center">
+              {saidasAPagar.length > 0 ? "Nenhuma saída confirmada ainda." : "Nenhuma saída neste mês."}
+            </p>
           ) : (
             <div className="flex flex-col divide-y divide-border">
-              {saidas.map((e) => (
+              {saidasConfirmadas.map((e) => (
                 <div key={e.id} className="flex items-center justify-between gap-3 px-5 py-3">
                   <div className="min-w-0">
                     <p className="text-sm font-medium truncate flex items-center gap-1.5">
                       {e.description}
-                      {e.fixedExpenseId && (
-                        <span
-                          title="Despesa fixa — lançada automaticamente todo mês"
-                          className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-surface-muted text-foreground-muted shrink-0"
-                        >
-                          <Repeat size={9} /> fixa
-                        </span>
-                      )}
+                      {e.fixedExpenseId && <FixaBadge />}
                     </p>
                     <p className="text-xs text-foreground-muted truncate">
                       {e.category} · {formatDate(e.date)}
@@ -252,6 +312,15 @@ export default async function FinanceiroPage({
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-sm font-semibold text-red-500">−{formatCurrency(e.value.toString())}</span>
+                    <form action={markExpenseUnpaid.bind(null, e.id)}>
+                      <button
+                        type="submit"
+                        className="p-1.5 rounded-lg hover:bg-amber-500/10 text-foreground-muted hover:text-amber-500"
+                        title="Desfazer confirmação"
+                      >
+                        <Undo2 size={13} />
+                      </button>
+                    </form>
                     <form action={deleteExpense.bind(null, e.id)}>
                       <button type="submit" className="p-1.5 rounded-lg hover:bg-red-500/10 text-foreground-muted hover:text-red-500" title="Excluir">
                         <Trash2 size={13} />
@@ -270,5 +339,16 @@ export default async function FinanceiroPage({
         </div>
       </div>
     </div>
+  );
+}
+
+function FixaBadge() {
+  return (
+    <span
+      title="Despesa fixa — lançada automaticamente todo mês"
+      className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-surface-muted text-foreground-muted shrink-0"
+    >
+      <Repeat size={9} /> fixa
+    </span>
   );
 }

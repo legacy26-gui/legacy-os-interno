@@ -239,8 +239,9 @@ export default async function DrePage({
         </div>
 
         <p className="text-xs text-foreground-muted mt-4 pt-3 border-t border-border">
-          EBITDA = resultado operacional antes de impostos sobre lucro, juros e depreciação. Como não controlamos
-          imobilizado nem empréstimos, EBITDA e lucro líquido dão o mesmo valor aqui.
+          Entram aqui só receitas e saídas <strong>confirmadas</strong> — despesa fixa aguardando sua confirmação ainda
+          não é custo do mês. EBITDA = resultado operacional antes de impostos sobre lucro, juros e depreciação. Como
+          não controlamos imobilizado nem empréstimos, EBITDA e lucro líquido dão o mesmo valor aqui.
         </p>
       </div>
 

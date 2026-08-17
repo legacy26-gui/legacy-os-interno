@@ -163,6 +163,20 @@ export async function deleteFixedExpense(fixedExpenseId: string) {
   revalidatePath("/financeiro", "layout");
 }
 
+// Confirma que a saída aconteceu de verdade. Antes disso ela não entra no
+// DRE, no DFC nem no lucro — fica só como "a pagar".
+export async function markExpensePaid(expenseId: string) {
+  await requireModuleAccess("financeiro");
+  await prisma.expense.update({ where: { id: expenseId }, data: { paid: true, paidDate: new Date() } });
+  revalidatePath("/financeiro", "layout");
+}
+
+export async function markExpenseUnpaid(expenseId: string) {
+  await requireModuleAccess("financeiro");
+  await prisma.expense.update({ where: { id: expenseId }, data: { paid: false, paidDate: null } });
+  revalidatePath("/financeiro", "layout");
+}
+
 export async function deleteExpense(expenseId: string) {
   await requireModuleAccess("financeiro");
   await prisma.expense.delete({ where: { id: expenseId } });

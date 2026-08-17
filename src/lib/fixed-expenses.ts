@@ -34,6 +34,9 @@ export async function ensureMonthlyFixedExpenses(ref: Date = new Date()): Promis
       value: f.value,
       date: dueDateForMonth(ref, f.dueDay),
       fixedExpenseId: f.id,
+      // Nasce aguardando confirmação — só conta no financeiro depois que o
+      // pagamento for confirmado na tela.
+      paid: false,
     })),
   });
 

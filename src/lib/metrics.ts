@@ -12,15 +12,27 @@ export async function getFinanceOverview(refDate = new Date()) {
   const month = refDate.toISOString().slice(0, 7);
   const { start: monthStart, end: monthEnd } = monthRange(month);
 
-  const [activeClients, revenuesThisMonth, expensesThisMonth, goal, pendingRevenues, overdue, dueToday, dueSoon] =
-    await Promise.all([
+  const [
+    activeClients,
+    revenuesThisMonth,
+    expensesThisMonth,
+    pendingExpenses,
+    goal,
+    pendingRevenues,
+    overdue,
+    dueToday,
+    dueSoon,
+  ] = await Promise.all([
       prisma.client.findMany({ where: { status: "ATIVO", billingActive: true } }),
       // Faturado do mês = cobranças daquele mês que já foram confirmadas
       // ("Confirmar"/"marcar como pago"). Usa dueDate — e não paidDate — pra
       // que dar baixa retroativa num mês passado entre no faturado daquele
       // mês, e pra bater com o "confirmado" do quadro de MRR.
       prisma.revenue.findMany({ where: { status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } } }),
-      prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } } }),
+      // Só saída confirmada entra em custo e lucro. As não confirmadas viram
+      // "a pagar", medido separadamente abaixo.
+      prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd }, paid: true } }),
+      prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd }, paid: false } }),
       prisma.monthlyGoal.findUnique({ where: { month } }),
       prisma.revenue.findMany({
         where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
@@ -58,6 +70,9 @@ export async function getFinanceOverview(refDate = new Date()) {
   const despesasMes = despesasFixas + despesasVariaveis;
   // Lucro estimado = o que entrou no mês menos tudo que saiu (fixas + variáveis).
   const lucroEstimado = faturamentoMensal - despesasMes;
+  // Saídas lançadas que ainda aguardam confirmação — não entram no lucro.
+  const aPagar = pendingExpenses.reduce((s, e) => s + Number(e.value), 0);
+  const aPagarQtd = pendingExpenses.length;
   const aReceber = pendingRevenues.reduce((s, r) => s + Number(r.value), 0);
   const ticketMedio = activeClients.length > 0 ? mrr / activeClients.length : 0;
   const targetRevenue = goal ? Number(goal.targetRevenue) : 0;
@@ -73,6 +88,8 @@ export async function getFinanceOverview(refDate = new Date()) {
     despesasMes,
     despesasFixas,
     despesasVariaveis,
+    aPagar,
+    aPagarQtd,
     lucroEstimado,
     aReceber,
     ticketMedio,
@@ -134,8 +151,10 @@ export async function getDreMonth(refDate: Date): Promise<DreMonth> {
       where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
       select: { clientId: true, value: true },
     }),
+    // DRE conta só saída confirmada — despesa fixa aguardando confirmação
+    // ainda não é custo do mês.
     prisma.expense.findMany({
-      where: { date: { gte: monthStart, lt: monthEnd } },
+      where: { date: { gte: monthStart, lt: monthEnd }, paid: true },
       select: { category: true, value: true, fixedExpenseId: true },
     }),
   ]);
@@ -257,8 +276,9 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
       where: { status: "PAGO", dueDate: { lt: monthEnd } },
       select: { value: true, dueDate: true, description: true },
     }),
+    // Fluxo de caixa é dinheiro que saiu de verdade: só saída confirmada.
     prisma.expense.findMany({
-      where: { date: { lt: monthEnd } },
+      where: { date: { lt: monthEnd }, paid: true },
       select: { value: true, date: true, category: true, fixedExpenseId: true },
     }),
     prisma.revenue.findMany({

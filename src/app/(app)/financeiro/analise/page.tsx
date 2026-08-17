@@ -8,6 +8,7 @@ import {
   markRevenuePaid,
   deleteRevenue,
   deleteExpense,
+  markExpensePaid,
   toggleFixedExpenseActive,
   deleteFixedExpense,
   includeClientInBilling,
@@ -138,6 +139,11 @@ export default async function FinanceiroPage({
           label="Custo total (mês)"
           value={formatCurrency(overview.despesasMes)}
           alert={overview.despesasMes > overview.faturamentoMensal}
+          hint={
+            overview.aPagar > 0
+              ? `+ ${formatCurrency(overview.aPagar)} aguardando sua confirmação (${overview.aPagarQtd})`
+              : "Só saídas confirmadas"
+          }
         />
         <MetricCard
           icon={Percent}
@@ -351,6 +357,7 @@ export default async function FinanceiroPage({
               <th className="px-5 py-2.5 font-medium">Categoria</th>
               <th className="px-5 py-2.5 font-medium">Data</th>
               <th className="px-5 py-2.5 font-medium text-right">Valor</th>
+              <th className="px-5 py-2.5 font-medium">Status</th>
               <th className="px-5 py-2.5 font-medium" />
             </tr>
           </thead>
@@ -362,7 +369,29 @@ export default async function FinanceiroPage({
                 <td className="px-5 py-3 text-foreground-muted">{formatDate(e.date)}</td>
                 <td className="px-5 py-3 text-right font-medium">{formatCurrency(e.value.toString())}</td>
                 <td className="px-5 py-3">
-                  <div className="flex justify-end">
+                  {e.paid ? (
+                    <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-red-500/15 text-red-500">
+                      Confirmada
+                    </span>
+                  ) : (
+                    <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-amber-500/15 text-amber-500">
+                      Aguardando
+                    </span>
+                  )}
+                </td>
+                <td className="px-5 py-3">
+                  <div className="flex items-center gap-1 justify-end">
+                    {!e.paid && (
+                      <form action={markExpensePaid.bind(null, e.id)}>
+                        <button
+                          type="submit"
+                          className="p-1.5 rounded-lg hover:bg-emerald-500/10 text-emerald-500"
+                          title="Confirmar saída"
+                        >
+                          <CheckCircle2 size={15} />
+                        </button>
+                      </form>
+                    )}
                     <form action={deleteExpense.bind(null, e.id)}>
                       <button type="submit" className="p-1.5 rounded-lg hover:bg-red-500/10 text-red-500" title="Excluir">
                         <Trash2 size={15} />

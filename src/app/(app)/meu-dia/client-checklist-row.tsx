@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
+import { ChevronDown, ChevronUp, CheckCircle2, AlertCircle, ExternalLink, CalendarSearch } from "lucide-react";
 import { DailyReviewForm } from "../gestao-contas/[id]/daily-review-form";
 
 export function ClientChecklistRow({
@@ -54,15 +54,23 @@ export function ClientChecklistRow({
 
         <div className="flex items-center gap-2 shrink-0">
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${scoreClass}`}>{score}</span>
+
+          {/* Abre a página do cliente, onde dá pra ver mês a mês, vendas,
+              semanas e observações. */}
+          <Link
+            href={`/gestao-contas/${clientId}`}
+            className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-border hover:bg-surface-muted transition-colors"
+          >
+            <CalendarSearch size={14} /> Ver mês a mês
+          </Link>
+
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
             className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors ${
-              open
+              open || dailyDoneToday
                 ? "border border-border hover:bg-surface-muted"
-                : dailyDoneToday
-                  ? "border border-border hover:bg-surface-muted"
-                  : "bg-accent text-accent-foreground hover:opacity-90"
+                : "bg-accent text-accent-foreground hover:opacity-90"
             }`}
           >
             {open ? (

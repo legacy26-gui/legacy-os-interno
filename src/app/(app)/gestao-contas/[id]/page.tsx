@@ -55,9 +55,14 @@ export default async function ContaDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ month?: string }>;
 }) {
-  await requireModuleAccess("gestao-contas");
+  const user = await requireModuleAccess("gestao-contas");
   const { id } = await params;
   const { month } = await searchParams;
+
+  // Gestor de tráfego chega aqui pelo Meu Dia e não tem Gestão de Contas no
+  // menu — o "voltar" dele precisa levar de volta pro Meu Dia.
+  const voltarPara = user.role === "GESTOR_TRAFEGO" ? "/meu-dia" : "/gestao-contas";
+  const voltarLabel = user.role === "GESTOR_TRAFEGO" ? "Voltar para Meu Dia" : "Voltar para Gestão de Contas";
 
   const client = await prisma.client.findUnique({
     where: { id },
@@ -219,8 +224,8 @@ export default async function ContaDetailPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link href="/gestao-contas" className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground mb-2">
-          <ArrowLeft size={15} /> Voltar para Gestão de Contas
+        <Link href={voltarPara} className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground mb-2">
+          <ArrowLeft size={15} /> {voltarLabel}
         </Link>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

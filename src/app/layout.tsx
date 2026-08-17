@@ -21,8 +21,10 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "Legacy OS",
-    // Barra de status escura combinando com o tema do app no iPhone.
-    statusBarStyle: "black-translucent",
+    // "default" deixa o iPhone reservar a barra de status e escolher a cor do
+    // relógio. Com "black-translucent" a página subia por baixo do relógio e,
+    // no tema claro, o relógio ficava branco em fundo branco.
+    statusBarStyle: "default",
   },
   icons: {
     icon: "/icon-192.png",

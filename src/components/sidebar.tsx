@@ -99,8 +99,10 @@ export function Sidebar({ role }: { role: Role }) {
 
   return (
     <>
+      {/* O botão do menu desce junto com o notch, senão fica em cima do relógio
+          quando o app está instalado. */}
       <button
-        className="fixed top-4 left-4 z-50 md:hidden bg-sidebar text-sidebar-foreground p-2 rounded-lg shadow-lg border border-border"
+        className="fixed top-[calc(0.75rem_+_env(safe-area-inset-top,0px))] left-4 z-50 md:hidden bg-sidebar text-sidebar-foreground p-2 rounded-lg shadow-lg border border-border"
         onClick={() => setOpen(!open)}
         aria-label="Menu"
         type="button"
@@ -111,9 +113,10 @@ export function Sidebar({ role }: { role: Role }) {
       {open && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setOpen(false)} />}
 
       <aside
-        className={`fixed top-0 left-0 h-full w-64 bg-sidebar text-sidebar-foreground z-40 flex flex-col border-r border-black/40
+        className={`fixed top-0 left-0 h-dvh w-64 bg-sidebar text-sidebar-foreground z-40 flex flex-col border-r border-black/40
+          pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]
           transform transition-transform duration-300
-          ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:sticky md:top-0 md:h-screen md:flex`}
+          ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:sticky md:top-0 md:h-dvh md:flex`}
       >
         <div className="px-6 py-5 border-b border-white/10 flex flex-col min-h-[76px] justify-center">
           <span className="text-white font-black text-lg tracking-tight leading-none">

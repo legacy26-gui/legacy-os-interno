@@ -5,7 +5,7 @@ export default async function TrocarSenhaPage() {
   const user = await getCurrentUser();
 
   return (
-    <div className="flex flex-1 items-center justify-center bg-background px-4">
+    <div className="flex flex-1 items-center justify-center bg-background px-4 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <h1 className="text-lg font-semibold">Olá, {user.name.split(" ")[0]}</h1>

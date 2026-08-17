@@ -25,7 +25,7 @@ export function PwaSetup() {
   if (!showIosHint) return null;
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 z-50 md:hidden rounded-xl border border-border bg-surface shadow-lg p-4 flex items-start gap-3">
+    <div className="fixed bottom-[calc(1rem_+_env(safe-area-inset-bottom,0px))] left-4 right-4 z-50 md:hidden rounded-xl border border-border bg-surface shadow-lg p-4 flex items-start gap-3">
       <div className="flex-1 text-sm">
         <p className="font-medium">Instalar o Legacy OS</p>
         <p className="text-foreground-muted text-xs mt-1 flex items-center gap-1 flex-wrap">

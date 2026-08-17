@@ -2,7 +2,7 @@ import { LoginForm } from "./login-form";
 
 export default function LoginPage() {
   return (
-    <div className="flex flex-1 items-center justify-center bg-background px-4">
+    <div className="flex flex-1 items-center justify-center bg-background px-4 pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="inline-flex flex-col items-center">

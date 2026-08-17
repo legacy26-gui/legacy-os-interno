@@ -43,9 +43,19 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Área segura do aparelho: notch/ilha dinâmica em cima e barra de gestos
+   embaixo. No app instalado não existe a barra do navegador, então sem reservar
+   esse espaço o conteúdo encosta no relógio do celular.
+
+   O env() é usado direto nas classes (não dá pra guardar numa variável CSS: o
+   Chromium não resolve env() dentro de custom property e a regra inteira cai). */
+
 body {
   background: var(--background);
   color: var(--foreground);
+  /* No app instalado não faz sentido o "elástico" de rolagem da página
+     inteira — dá a sensação de site, não de aplicativo. */
+  overscroll-behavior-y: none;
 }
 
 * {

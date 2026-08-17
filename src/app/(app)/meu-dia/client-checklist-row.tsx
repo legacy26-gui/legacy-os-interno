@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, CheckCircle2, AlertCircle } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, ChevronUp, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 import { DailyReviewForm } from "../gestao-contas/[id]/daily-review-form";
 
 export function ClientChecklistRow({
@@ -29,34 +30,53 @@ export function ClientChecklistRow({
         dailyDoneToday ? "border-border" : "border-red-500/40"
       }`}
     >
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="w-full flex flex-wrap items-center justify-between gap-3 p-4 text-left hover:bg-surface-muted transition-colors"
-      >
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4">
+        {/* Nome abre a página completa do cliente; o botão ao lado só expande
+            o checklist pra preencher rápido, sem sair da lista. */}
+        <Link href={`/gestao-contas/${clientId}`} className="flex items-center gap-3 min-w-0 group">
           {dailyDoneToday ? (
             <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
           ) : (
             <AlertCircle size={18} className="text-red-500 shrink-0" />
           )}
-          <div>
-            <p className="font-medium">{companyName}</p>
+          <div className="min-w-0">
+            <p className="font-medium truncate group-hover:text-accent transition-colors flex items-center gap-1.5">
+              {companyName}
+              <ExternalLink size={12} className="text-foreground-muted shrink-0" />
+            </p>
             <p className="text-xs text-foreground-muted mt-0.5">
               {dailyDoneToday ? "Revisão diária feita hoje" : "Revisão diária pendente hoje"}
               {" · "}
               {weeklyDoneThisWeek ? "semanal em dia" : "semanal pendente"}
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {!dailyDoneToday && !open && (
-            <span className="text-xs font-medium px-2.5 py-1 rounded-lg bg-accent text-accent-foreground">Preencher</span>
-          )}
+        </Link>
+
+        <div className="flex items-center gap-2 shrink-0">
           <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${scoreClass}`}>{score}</span>
-          {open ? <ChevronUp size={16} className="text-foreground-muted" /> : <ChevronDown size={16} className="text-foreground-muted" />}
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className={`inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors ${
+              open
+                ? "border border-border hover:bg-surface-muted"
+                : dailyDoneToday
+                  ? "border border-border hover:bg-surface-muted"
+                  : "bg-accent text-accent-foreground hover:opacity-90"
+            }`}
+          >
+            {open ? (
+              <>
+                Fechar <ChevronUp size={14} />
+              </>
+            ) : (
+              <>
+                Preencher <ChevronDown size={14} />
+              </>
+            )}
+          </button>
         </div>
-      </button>
+      </div>
 
       {open && (
         <div className="p-4 border-t border-border">

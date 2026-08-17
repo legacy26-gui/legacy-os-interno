@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { weekOfMonthFor, monthKey } from "@/lib/month-weeks";
 
 const CHANGE_TYPES = [
   "CAMPANHA_CRIADA",
@@ -88,10 +89,20 @@ export async function submitWeeklyReview(
   const buffer = Buffer.from(await photo.arrayBuffer());
   const reportPhotoUrl = `data:${photo.type};base64,${buffer.toString("base64")}`;
 
+  // Semana e mês a que a revisão se refere. Vem do formulário pra permitir
+  // preencher com atraso sem cair na semana errada; sem isso, usa hoje.
+  const now = new Date();
+  const weekRaw = Number(formData.get("weekOfMonth"));
+  const weekOfMonth = weekRaw >= 1 && weekRaw <= 5 ? weekRaw : weekOfMonthFor(now);
+  const refMonthRaw = (formData.get("refMonth") as string) || "";
+  const refMonth = /^\d{4}-\d{2}$/.test(refMonthRaw) ? refMonthRaw : monthKey(now);
+
   await prisma.weeklyReview.create({
     data: {
       clientId,
       reviewerId: user.id,
+      weekOfMonth,
+      refMonth,
       paymentCleared: bool(formData, "paymentCleared"),
       reportGenerated: bool(formData, "reportGenerated"),
       checkedBestCampaigns: bool(formData, "checkedBestCampaigns"),

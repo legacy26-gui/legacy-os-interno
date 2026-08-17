@@ -18,9 +18,17 @@ function Check({ name, label }: { name: string; label: string }) {
 export function WeeklyReviewForm({
   clientId,
   suggestions = [],
+  refMonth,
+  weeks,
+  defaultWeek,
 }: {
   clientId: string;
   suggestions?: { id: string; title: string }[];
+  // Mês/semana a que a revisão se refere — vem da tela, que já sabe qual mês
+  // está sendo visualizado.
+  refMonth: string;
+  weeks: { week: number; from: number; to: number }[];
+  defaultWeek: number;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -37,6 +45,25 @@ export function WeeklyReviewForm({
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-4">
       <PlaybookHint playbooks={suggestions} />
+
+      <input type="hidden" name="refMonth" value={refMonth} />
+      <div>
+        <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1.5">
+          Semana do mês
+        </p>
+        <select
+          name="weekOfMonth"
+          defaultValue={String(defaultWeek)}
+          className="w-full sm:w-auto rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent/40"
+        >
+          {weeks.map((w) => (
+            <option key={w.week} value={w.week}>
+              Semana {w.week} · dias {w.from} a {w.to}
+            </option>
+          ))}
+        </select>
+      </div>
+
       <div>
         {WEEKLY_REVIEW_CHECKS.map(([name, label]) => (
           <Check key={name} name={name} label={label} />

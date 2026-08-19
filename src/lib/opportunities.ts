@@ -22,7 +22,6 @@ export interface OpportunityInput {
   custoPorVendaMes: number | null;
   custoPorVendaMesAnterior: number | null;
   dailyOverdue: boolean;
-  daysSinceCreative: number | null;
   semanasPreenchidas: number;
   semanasDoMes: number;
 }
@@ -96,19 +95,6 @@ export function getOpportunities(input: OpportunityInput): {
       key: "checklist-atrasado",
       label: "Checklist diário atrasado",
       detail: "A conta não foi revisada hoje.",
-      level: "media",
-      points: 15,
-    });
-  }
-
-  if (input.daysSinceCreative === null || input.daysSinceCreative >= 15) {
-    list.push({
-      key: "criativo-parado",
-      label:
-        input.daysSinceCreative === null
-          ? "Nenhum criativo novo registrado"
-          : `${input.daysSinceCreative} dias sem criativo novo`,
-      detail: "Criativo cansado costuma derrubar resultado antes de aparecer no faturamento.",
       level: "media",
       points: 15,
     });

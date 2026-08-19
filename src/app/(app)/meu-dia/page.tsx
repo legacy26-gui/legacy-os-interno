@@ -40,7 +40,7 @@ export default async function MeuDiaPage() {
     const lastDaily = c.dailyReviews[0]?.createdAt ?? null;
     const lastWeekly = c.weeklyReviews[0]?.createdAt ?? null;
     const lastChange = c.campaignChanges[0]?.createdAt ?? null;
-    const metrics = computeMetrics({ lastDaily, lastWeekly, lastChange, lastCreative: lastChange });
+    const metrics = computeMetrics({ lastDaily, lastWeekly, lastChange });
     return {
       id: c.id,
       companyName: c.companyName,

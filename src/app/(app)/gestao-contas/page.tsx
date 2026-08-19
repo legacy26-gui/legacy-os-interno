@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Gauge, ShieldCheck, AlertTriangle, Flame, Trophy, CalendarX, CalendarClock, Zap, ImageOff, ClipboardCheck } from "lucide-react";
+import { Gauge, ShieldCheck, AlertTriangle, Flame, Trophy, CalendarX, CalendarClock, Zap, ClipboardCheck } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
 import { getAccountsHealth, SCORE_COLORS, type AccountHealth } from "@/lib/account-health";
 import { formatDate } from "@/lib/labels";
@@ -23,7 +23,6 @@ export default async function GestaoContasPage() {
   const semDiaria = accounts.filter((a) => a.metrics.dailyOverdue);
   const semSemanal = accounts.filter((a) => a.metrics.weeklyOverdue);
   const semAlteracao = accounts.filter((a) => a.metrics.changeOverdue);
-  const semCriativo = accounts.filter((a) => a.metrics.creativeOverdue);
 
   return (
     <div className="flex flex-col gap-6">
@@ -62,7 +61,6 @@ export default async function GestaoContasPage() {
         <CriticalList icon={CalendarX} title="Sem revisão diária" accounts={semDiaria} />
         <CriticalList icon={CalendarClock} title="Sem revisão semanal" accounts={semSemanal} />
         <CriticalList icon={Zap} title="Sem alteração há mais de 7 dias" accounts={semAlteracao} metric="change" />
-        <CriticalList icon={ImageOff} title="Sem criativo novo há mais de 15 dias" accounts={semCriativo} metric="creative" />
       </div>
 
       {/* Tabela geral */}
@@ -79,7 +77,6 @@ export default async function GestaoContasPage() {
                 <th className="px-5 py-3 font-medium hidden md:table-cell">Últ. diária</th>
                 <th className="px-5 py-3 font-medium hidden md:table-cell">Últ. semanal</th>
                 <th className="px-5 py-3 font-medium text-right hidden lg:table-cell">Dias s/ alteração</th>
-                <th className="px-5 py-3 font-medium text-right hidden lg:table-cell">Dias s/ criativo</th>
                 <th className="px-5 py-3 font-medium text-right">Score</th>
               </tr>
             </thead>
@@ -101,9 +98,6 @@ export default async function GestaoContasPage() {
                   <td className={`px-5 py-3 text-right hidden lg:table-cell ${a.metrics.changeOverdue ? "text-red-500" : "text-foreground-muted"}`}>
                     {a.metrics.daysSinceChange ?? "—"}
                   </td>
-                  <td className={`px-5 py-3 text-right hidden lg:table-cell ${a.metrics.creativeOverdue ? "text-red-500" : "text-foreground-muted"}`}>
-                    {a.metrics.daysSinceCreative ?? "—"}
-                  </td>
                   <td className="px-5 py-3 text-right">
                     <ScoreBadge score={a.metrics.score} bucket={a.metrics.bucket} />
                   </td>
@@ -111,7 +105,7 @@ export default async function GestaoContasPage() {
               ))}
               {accounts.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-5 py-10 text-center text-foreground-muted">
+                  <td colSpan={6} className="px-5 py-10 text-center text-foreground-muted">
                     Nenhuma conta cadastrada.
                   </td>
                 </tr>
@@ -161,7 +155,7 @@ function CriticalList({
   icon: typeof CalendarX;
   title: string;
   accounts: AccountHealth[];
-  metric?: "change" | "creative";
+  metric?: "change";
 }) {
   return (
     <div className="rounded-2xl border border-border bg-surface p-5">
@@ -183,9 +177,7 @@ function CriticalList({
               <span>{a.companyName}</span>
               <span className="text-xs text-foreground-muted">
                 {metric === "change" && a.metrics.daysSinceChange !== null ? `${a.metrics.daysSinceChange}d` : null}
-                {metric === "creative" && a.metrics.daysSinceCreative !== null ? `${a.metrics.daysSinceCreative}d` : null}
                 {metric === "change" && a.metrics.daysSinceChange === null ? "nunca" : null}
-                {metric === "creative" && a.metrics.daysSinceCreative === null ? "nunca" : null}
               </span>
             </Link>
           ))}

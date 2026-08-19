@@ -98,7 +98,7 @@ export async function GET(request: NextRequest) {
     });
     changesCreated++;
 
-    // Criativo novo (define "dias sem criativo novo").
+    // Criativo novo: fica só como histórico de alteração (não pontua).
     await prisma.campaignChange.create({
       data: {
         clientId: c.id,

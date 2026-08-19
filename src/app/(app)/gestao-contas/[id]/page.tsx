@@ -41,8 +41,6 @@ import { ChangeLogForm } from "./change-log-form";
 import { SaleForm } from "./sale-form";
 import { PinnedInfoForm } from "./pinned-info-form";
 
-const CREATIVE_TYPES = ["CRIATIVO_NOVO", "CRIATIVO_ALTERADO"];
-
 function startOfToday() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -89,15 +87,10 @@ export default async function ContaDetailPage({
   const monthLabelRaw = refDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
   const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1);
 
-  const [lastDaily, lastWeekly, lastChange, lastCreative, changes, todayDaily, lastSale] = await Promise.all([
+  const [lastDaily, lastWeekly, lastChange, changes, todayDaily, lastSale] = await Promise.all([
     prisma.dailyReview.findFirst({ where: { clientId: id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.weeklyReview.findFirst({ where: { clientId: id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
     prisma.campaignChange.findFirst({ where: { clientId: id }, orderBy: { createdAt: "desc" }, select: { createdAt: true } }),
-    prisma.campaignChange.findFirst({
-      where: { clientId: id, type: { in: CREATIVE_TYPES as never } },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    }),
     prisma.campaignChange.findMany({
       where: { clientId: id, createdAt: { gte: monthStart, lt: monthEnd } },
       orderBy: { createdAt: "desc" },
@@ -176,7 +169,6 @@ export default async function ContaDetailPage({
     lastDaily: lastDaily?.createdAt ?? null,
     lastWeekly: lastWeekly?.createdAt ?? null,
     lastChange: lastChange?.createdAt ?? null,
-    lastCreative: lastCreative?.createdAt ?? null,
   });
 
   // Relatório de vendas do mês
@@ -213,7 +205,6 @@ export default async function ContaDetailPage({
     custoPorVendaMes: custoPorVenda,
     custoPorVendaMesAnterior: custoPorVendaPrev,
     dailyOverdue: metrics.dailyOverdue,
-    daysSinceCreative: metrics.daysSinceCreative,
     semanasPreenchidas,
     semanasDoMes: totalSemanas,
   });

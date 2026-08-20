@@ -115,6 +115,7 @@ model Client {
   campaignChanges CampaignChange[]
   sales           ClientSale[]
   pinnedInfo      ClientPinnedInfo[]
+  onboardings     ClientOnboarding[]
 
   @@map("clients")
 }
@@ -610,4 +611,35 @@ model CommercialEvent {
 
   @@index([type, createdAt])
   @@map("commercial_events")
+}
+
+// ─── Formulário de entrada de novos clientes ────────────────────────────────
+
+enum OnboardingStatus {
+  NOVO
+  EM_ANDAMENTO
+  CONCLUIDO
+}
+
+// Resposta do formulário público que o cliente novo preenche antes de entrar
+// na operação. Os campos que a equipe usa pra listar e buscar ficam em coluna
+// própria; o resto das respostas fica em JSON, porque as perguntas mudam com o
+// tempo e não vale uma migration a cada ajuste de pergunta.
+model ClientOnboarding {
+  id            String           @id @default(cuid())
+  companyName   String
+  contactName   String
+  phone         String?
+  email         String?
+  city          String?
+  answers       Json
+  status        OnboardingStatus @default(NOVO)
+  internalNotes String?
+  clientId      String?
+  client        Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([status, createdAt])
+  @@map("client_onboardings")
 }

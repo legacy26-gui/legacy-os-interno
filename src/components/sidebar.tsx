@@ -6,7 +6,7 @@ import { useState } from "react";
 import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
-  Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves,
+  Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
 } from "lucide-react";
 import type { Role } from "@/generated/prisma/enums";
 import { canAccessModule, type ModuleKey } from "@/lib/permissions";
@@ -40,6 +40,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "RH & Administrativo",
     items: [
       { href: "/clientes", label: "Clientes", icon: Users, module: "clientes" },
+      { href: "/formularios", label: "Formulários", icon: ClipboardPen, module: "formularios" },
       { href: "/contratos", label: "Contratos", icon: FileText, module: "contratos" },
       { href: "/financeiro", label: "Financeiro", icon: Wallet, module: "financeiro" },
       { href: "/financeiro/analise", label: "Análise financeira", icon: BarChart3, module: "financeiro" },

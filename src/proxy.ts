@@ -3,11 +3,19 @@ import type { NextRequest } from "next/server";
 import { decrypt } from "@/lib/session";
 import { canAccessPath } from "@/lib/permissions";
 
+// /formulario é o link que mandamos pro cliente novo preencher: precisa abrir
+// sem login e não pode redirecionar quem já está logado (o Guilherme conferindo
+// o link também tem que ver o formulário).
 const PUBLIC_ROUTES = ["/login"];
+const OPEN_ROUTES = ["/formulario"];
 
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+
+  if (OPEN_ROUTES.some((r) => pathname === r || pathname.startsWith(`${r}/`))) {
+    return NextResponse.next();
+  }
 
   const cookie = request.cookies.get("legacyos_session")?.value;
   const session = await decrypt(cookie);

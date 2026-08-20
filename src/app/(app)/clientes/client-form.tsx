@@ -15,7 +15,9 @@ export function ClientForm({
   action,
   canSeeValues = true,
 }: {
-  client?: Client;
+  // Parcial porque o cadastro novo pode vir pré-preenchido pela ficha do
+  // formulário de entrada, que só traz alguns campos.
+  client?: Partial<Client>;
   action: (state: ClientFormState, formData: FormData) => Promise<ClientFormState>;
   canSeeValues?: boolean;
 }) {
@@ -94,13 +96,13 @@ export function ClientForm({
               type="number"
               step="0.01"
               min="0"
-              defaultValue={client ? client.monthlyValue.toString() : ""}
+              defaultValue={client?.monthlyValue != null ? client.monthlyValue.toString() : ""}
               required
               className={inputClass}
             />
           </div>
         ) : (
-          <input type="hidden" name="monthlyValue" value={client ? client.monthlyValue.toString() : "0"} />
+          <input type="hidden" name="monthlyValue" value={client?.monthlyValue != null ? client.monthlyValue.toString() : "0"} />
         )}
         <div>
           <label className={labelClass}>Dia de vencimento</label>

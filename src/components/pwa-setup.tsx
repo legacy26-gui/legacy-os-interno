@@ -1,14 +1,24 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Share, Plus, X } from "lucide-react";
 
 // Registra o service worker (necessário pro app ser instalável) e, no iPhone,
 // explica como instalar — o Safari não tem prompt automático de instalação.
+// Páginas abertas ao público (o formulário que o cliente responde) não são o
+// nosso app: não faz sentido convidar o cliente a instalar o sistema interno,
+// e o aviso ainda tapava o botão de enviar no celular.
+const ROTAS_PUBLICAS = ["/formulario"];
+
 export function PwaSetup() {
   const [showIosHint, setShowIosHint] = useState(false);
+  const pathname = usePathname();
+  const rotaPublica = ROTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(`${r}/`));
 
   useEffect(() => {
+    if (rotaPublica) return;
+
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {
         // Falha no registro não pode atrapalhar o uso normal do sistema.
@@ -20,9 +30,9 @@ export function PwaSetup() {
     const jaDispensou = localStorage.getItem("legacyos_ios_hint") === "off";
 
     if (isIOS && !isStandalone && !jaDispensou) setShowIosHint(true);
-  }, []);
+  }, [rotaPublica]);
 
-  if (!showIosHint) return null;
+  if (rotaPublica || !showIosHint) return null;
 
   return (
     <div className="fixed bottom-[calc(1rem_+_env(safe-area-inset-bottom,0px))] left-4 right-4 z-50 md:hidden rounded-xl border border-border bg-surface shadow-lg p-4 flex items-start gap-3">

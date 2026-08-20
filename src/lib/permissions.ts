@@ -3,6 +3,7 @@ import type { Role } from "@/generated/prisma/enums";
 export const MODULES = [
   "dashboard",
   "clientes",
+  "formularios",
   "financeiro",
   "contratos",
   "comercial",
@@ -25,6 +26,7 @@ export type ModuleKey = (typeof MODULES)[number];
 const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   dashboard: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   clientes: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
+  formularios: ["ADMIN", "GERENTE"],
   financeiro: ["ADMIN"],
   contratos: ["ADMIN", "GERENTE"],
   comercial: ["ADMIN"],
@@ -42,6 +44,7 @@ const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
 
 const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   { prefix: "/clientes", module: "clientes" },
+  { prefix: "/formularios", module: "formularios" },
   { prefix: "/financeiro", module: "financeiro" },
   { prefix: "/contratos", module: "contratos" },
   { prefix: "/comercial", module: "comercial" },

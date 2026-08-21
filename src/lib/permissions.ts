@@ -60,8 +60,23 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   { prefix: "/configuracoes", module: "configuracoes" },
 ];
 
-export function canAccessModule(role: Role, module: ModuleKey): boolean {
-  return MODULE_ACCESS[module].includes(role);
+// Acessos dados a pessoas específicas, independente do cargo. Serve pra quando
+// alguém precisa de um módulo que o cargo dela não abre por padrão, sem liberar
+// pra todo mundo que tem aquele cargo.
+const ACESSOS_POR_PESSOA: { quem: (email: string) => boolean; modulos: ModuleKey[] }[] = [
+  {
+    // Andrielli é quem trabalha as fichas dos clientes novos. O e-mail dela já
+    // apareceu escrito de mais de um jeito (andriele/andrielli), então casamos
+    // pelo começo do endereço, dentro do domínio da agência.
+    quem: (email) => /^andriel/i.test(email) && email.toLowerCase().endsWith("@legacydigital.com"),
+    modulos: ["formularios"],
+  },
+];
+
+export function canAccessModule(role: Role, module: ModuleKey, email?: string | null): boolean {
+  if (MODULE_ACCESS[module].includes(role)) return true;
+  if (email && ACESSOS_POR_PESSOA.some((a) => a.quem(email) && a.modulos.includes(module))) return true;
+  return false;
 }
 
 export function moduleForPath(pathname: string): ModuleKey | null {
@@ -69,10 +84,17 @@ export function moduleForPath(pathname: string): ModuleKey | null {
   return match?.module ?? null;
 }
 
-export function canAccessPath(role: Role, pathname: string): boolean {
+// Diz se o módulo pode ser liberado pra alguém fora do cargo. O proxy usa isso
+// pra não barrar quem tem sessão antiga (sem e-mail no cookie) antes da página
+// conferir no banco.
+export function moduleHasPersonalGrant(module: ModuleKey): boolean {
+  return ACESSOS_POR_PESSOA.some((a) => a.modulos.includes(module));
+}
+
+export function canAccessPath(role: Role, pathname: string, email?: string | null): boolean {
   const mod = moduleForPath(pathname);
   if (!mod) return true; // rotas não mapeadas (dashboard, login etc.) são liberadas
-  return canAccessModule(role, mod);
+  return canAccessModule(role, mod, email);
 }
 
 export const ROLE_LABELS: Record<Role, string> = {

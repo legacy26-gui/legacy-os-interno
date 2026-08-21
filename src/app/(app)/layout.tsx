@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     // h-dvh em vez de h-screen: no celular a altura útil muda quando a barra do
     // navegador aparece/desaparece, e h-screen (100vh) deixava a tela cortada.
     <div className="flex flex-1 h-dvh bg-background overflow-hidden">
-      <Sidebar role={user.role} />
+      <Sidebar role={user.role} email={user.email} />
       <div className="flex-1 flex flex-col min-w-0 h-dvh overflow-hidden">
         <Topbar name={user.name} role={user.role} />
         {/* O padding de baixo reserva a barra de gestos do celular, senão o

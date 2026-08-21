@@ -26,7 +26,7 @@ export default async function NovoClientePage({
 
   // Veio do formulário de entrada: já abre com o que o cliente respondeu.
   const ficha =
-    fichaId && canAccessModule(user.role, "formularios")
+    fichaId && canAccessModule(user.role, "formularios", user.email)
       ? await prisma.clientOnboarding.findUnique({ where: { id: fichaId } })
       : null;
 

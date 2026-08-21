@@ -13,6 +13,10 @@ const SESSION_DURATION_MS = 12 * 60 * 60 * 1000; // 12h
 export interface SessionPayload {
   userId: string;
   name: string;
+  // O e-mail entra na sessão porque alguns acessos são dados a pessoas
+  // específicas, não ao cargo. Sessão antiga (criada antes disso) vem sem ele;
+  // nesse caso quem decide é a página, que lê o usuário do banco.
+  email?: string;
   role: Role;
   expiresAt: number;
   [key: string]: unknown;
@@ -36,9 +40,9 @@ export async function decrypt(session: string | undefined = ""): Promise<Session
   }
 }
 
-export async function createSession(userId: string, name: string, role: Role) {
+export async function createSession(userId: string, name: string, role: Role, email?: string) {
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-  const session = await encrypt({ userId, name, role, expiresAt: expiresAt.getTime() });
+  const session = await encrypt({ userId, name, email, role, expiresAt: expiresAt.getTime() });
   const cookieStore = await cookies();
   cookieStore.set(SESSION_COOKIE, session, {
     httpOnly: true,

@@ -32,7 +32,7 @@ export const getCurrentUser = cache(async () => {
 
 export async function requireModuleAccess(module: ModuleKey) {
   const user = await getCurrentUser();
-  if (!canAccessModule(user.role, module)) {
+  if (!canAccessModule(user.role, module, user.email)) {
     redirect("/dashboard?erro=acesso-negado");
   }
   return user;

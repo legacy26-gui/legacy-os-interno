@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { decrypt } from "@/lib/session";
-import { canAccessPath } from "@/lib/permissions";
+import { canAccessPath, moduleForPath, moduleHasPersonalGrant } from "@/lib/permissions";
 
 // /formulario é o link que mandamos pro cliente novo preencher: precisa abrir
 // sem login e não pode redirecionar quem já está logado (o Guilherme conferindo
@@ -29,7 +29,13 @@ export default async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  if (isAuthenticated && session && !canAccessPath(session.role, pathname)) {
+  // Sessão criada antes de o e-mail entrar no cookie não sabe dizer se a pessoa
+  // tem acesso individual. Nesses módulos deixamos passar aqui e quem decide é
+  // a página, que lê o usuário direto do banco.
+  const modulo = moduleForPath(pathname);
+  const decidirNaPagina = !session?.email && !!modulo && moduleHasPersonalGrant(modulo);
+
+  if (isAuthenticated && session && !decidirNaPagina && !canAccessPath(session.role, pathname, session.email)) {
     return NextResponse.redirect(new URL("/dashboard?erro=acesso-negado", request.url));
   }
 

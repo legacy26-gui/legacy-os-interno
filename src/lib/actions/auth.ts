@@ -36,7 +36,7 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
     return { error: "E-mail ou senha inválidos." };
   }
 
-  await createSession(user.id, user.name, user.role);
+  await createSession(user.id, user.name, user.role, user.email);
 
   if (user.mustChangePassword) {
     redirect("/trocar-senha");

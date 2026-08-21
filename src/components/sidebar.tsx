@@ -55,6 +55,12 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+// Itens fora do menu mínimo que aparecem quando a pessoa tem acesso liberado
+// individualmente (ver ACESSOS_POR_PESSOA em lib/permissions).
+const EXTRA_ITEMS: NavLeaf[] = [
+  { href: "/formularios", label: "Formulários", icon: ClipboardPen, module: "formularios" },
+];
+
 // Menu mínimo do Gestor de Tráfego: só o essencial pra trabalhar no dia a dia.
 const EMPLOYEE_ITEMS: NavLeaf[] = [
   { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: null },
@@ -77,7 +83,7 @@ function NavLink({ href, label, icon: Icon, active, onClick }: NavLeaf & { activ
   );
 }
 
-export function Sidebar({ role }: { role: Role }) {
+export function Sidebar({ role, email }: { role: Role; email?: string }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -91,11 +97,14 @@ export function Sidebar({ role }: { role: Role }) {
 
   const isEmployee = role === "GESTOR_TRAFEGO";
 
-  const topItems = TOP_ITEMS.filter((item) => !isEmployee && (!item.module || canAccessModule(role, item.module)));
-  const employeeItems = EMPLOYEE_ITEMS.filter((item) => !item.module || canAccessModule(role, item.module));
+  const topItems = TOP_ITEMS.filter((item) => !isEmployee && (!item.module || canAccessModule(role, item.module, email)));
+  const employeeItems = [
+    ...EMPLOYEE_ITEMS.filter((item) => !item.module || canAccessModule(role, item.module, email)),
+    ...EXTRA_ITEMS.filter((item) => item.module && canAccessModule(role, item.module, email)),
+  ];
   const groups = NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((item) => !item.module || canAccessModule(role, item.module)),
+    items: g.items.filter((item) => !item.module || canAccessModule(role, item.module, email)),
   })).filter((g) => g.items.length > 0);
 
   return (

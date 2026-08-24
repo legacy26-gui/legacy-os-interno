@@ -24,7 +24,10 @@ versão concluída e avisa quando a última tentativa falhou.
 | Arquivo | Papel |
 |---|---|
 | `src/lib/ai/config.ts` | Provedor, modelo e limites — tudo por variável de ambiente |
-| `src/lib/ai/client.ts` | Única porta de saída pra IA (timeout, retry, validação) |
+| `src/lib/ai/client.ts` | Única porta de saída pra IA (escolhe o provedor, timeout, retry, validação) |
+| `src/lib/ai/provedores/openai.ts` | Adaptador da OpenAI (structured output em modo estrito) |
+| `src/lib/ai/provedores/anthropic.ts` | Adaptador da Anthropic |
+| `src/lib/ai/tipos.ts` | Contrato que os dois adaptadores cumprem |
 | `src/lib/ai/diagnostico-schema.ts` | Formato da resposta (Zod) — vale como contrato e como validação |
 | `src/lib/ai/diagnostico-prompt.ts` | Prompt do analista + versão do prompt |
 | `src/lib/ai/diagnostico.ts` | Orquestra: versiona, grava, trata erro |
@@ -34,13 +37,24 @@ versão concluída e avisa quando a última tentativa falhou.
 
 ## Variáveis de ambiente
 
-Obrigatória: `ANTHROPIC_API_KEY`.
+Dois provedores implementados: **OpenAI** e **Anthropic**. Escolha em
+`AI_PROVIDER` e preencha só a chave correspondente:
 
-Opcionais (já têm padrão): `AI_PROVIDER`, `AI_MODEL`, `AI_EFFORT`,
+| AI_PROVIDER | chave | modelo padrão |
+|---|---|---|
+| `openai` | `OPENAI_API_KEY` | `gpt-5` |
+| `anthropic` | `ANTHROPIC_API_KEY` | `claude-opus-5` |
+
+Opcionais (já têm padrão): `AI_MODEL`, `AI_EFFORT` (só Anthropic),
 `AI_MAX_TOKENS`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`. Ver `.env.example`.
 
-Trocar de modelo é mudar `AI_MODEL`. Trocar de provedor exige implementar o
-outro caminho em `src/lib/ai/client.ts` — o resto do sistema não muda.
+Trocar de modelo ou de provedor é mudar variável de ambiente — nada de código.
+Cada provedor vive em `src/lib/ai/provedores/`, com a mesma assinatura; para
+somar um terceiro, basta implementar `chamar`, `descreve`, `retentavel` e
+`modelos` e registrá-lo em `src/lib/ai/client.ts`.
+
+Não sabe o nome exato do modelo? `GET /api/diagnostico/gerar?key=SETUP_SECRET&modelos=1`
+lista os modelos que a conta configurada realmente tem.
 
 ## Trocar as perguntas ou o prompt
 

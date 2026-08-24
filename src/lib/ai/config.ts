@@ -4,9 +4,19 @@ import "server-only";
 // resto do sistema. Tudo vem de variável de ambiente — a chave NUNCA sai do
 // servidor (nenhum arquivo deste diretório é importado por componente client).
 
+const PROVIDER = (process.env.AI_PROVIDER ?? "anthropic").toLowerCase();
+
+// Modelo padrão de cada provedor. Dá pra sobrescrever com AI_MODEL — e a rota
+// /api/diagnostico/gerar?...&modelos=1 lista os modelos que a conta tem, pra
+// não ficar no chute.
+const MODELO_PADRAO: Record<string, string> = {
+  anthropic: "claude-opus-5",
+  openai: "gpt-5",
+};
+
 export const AI_CONFIG = {
-  provider: process.env.AI_PROVIDER ?? "anthropic",
-  model: process.env.AI_MODEL ?? "claude-opus-5",
+  provider: PROVIDER,
+  model: process.env.AI_MODEL ?? MODELO_PADRAO[PROVIDER] ?? "gpt-5",
   // Esforço de raciocínio: mais alto pensa melhor e demora mais. "medium"
   // mantém a geração dentro do tempo de execução da função na Vercel.
   effort: (process.env.AI_EFFORT ?? "medium") as "low" | "medium" | "high" | "xhigh" | "max",
@@ -18,15 +28,21 @@ export const AI_CONFIG = {
   maxRetries: Number(process.env.AI_MAX_RETRIES ?? 0),
 } as const;
 
+// Cada provedor lê a chave dele. Nenhuma delas sai do servidor.
 export function aiApiKey(): string | null {
-  return process.env.ANTHROPIC_API_KEY?.trim() || null;
+  const chave = AI_CONFIG.provider === "openai" ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;
+  return chave?.trim() || null;
+}
+
+export function nomeDaVariavelDaChave(): string {
+  return AI_CONFIG.provider === "openai" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY";
 }
 
 export class AiNaoConfigurado extends Error {
   constructor() {
     super(
-      "IA não configurada: falta a variável de ambiente ANTHROPIC_API_KEY. " +
-        "Configure no painel da Vercel (Settings → Environment Variables) e gere de novo."
+      `IA não configurada: falta a variável de ambiente ${nomeDaVariavelDaChave()}. ` +
+        "Configure no painel da Vercel (Settings → Environment Variables), refaça o deploy e gere de novo."
     );
     this.name = "AiNaoConfigurado";
   }

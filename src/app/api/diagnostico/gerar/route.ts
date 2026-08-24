@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { gerarDiagnostico, GeracaoDuplicada } from "@/lib/ai/diagnostico";
-import { AI_CONFIG, aiApiKey } from "@/lib/ai/config";
+import { AI_CONFIG, aiApiKey, nomeDaVariavelDaChave } from "@/lib/ai/config";
+import { listarModelos } from "@/lib/ai/client";
 import { prisma } from "@/lib/prisma";
 
 // Disparo manual do diagnóstico, fora da tela — serve pra reprocessar fichas
@@ -38,12 +39,20 @@ export async function GET(request: NextRequest) {
     }),
   ]);
 
+  // ?modelos=1 lista os modelos que a conta tem — serve pra acertar AI_MODEL.
+  let modelos: string[] | { erro: string } | undefined;
+  if (request.nextUrl.searchParams.get("modelos")) {
+    modelos = await listarModelos().catch((e) => ({ erro: e instanceof Error ? e.message : String(e) }));
+  }
+
   return NextResponse.json({
     ia: {
       provider: AI_CONFIG.provider,
       model: AI_CONFIG.model,
       effort: AI_CONFIG.effort,
+      variavelDaChave: nomeDaVariavelDaChave(),
       chaveConfigurada: !!aiApiKey(),
+      ...(modelos ? { modelosDisponiveis: modelos } : {}),
     },
     fichasSemDiagnostico: pendentes,
     ultimasAnalises: ultimas,

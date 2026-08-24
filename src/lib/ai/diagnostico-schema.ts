@@ -81,6 +81,8 @@ export const DiagnosticoSchema = z.object({
   oportunidades_comerciais: z.array(OportunidadeComercialSchema),
   alertas: z.array(z.string()),
   // Só no plano final: o que a reunião confirmou ou derrubou das hipóteses.
+  // Nulável (e não opcional) porque o modo estrito da OpenAI exige que todo
+  // campo exista; no pré-diagnóstico ele vem null.
   hipoteses_resolvidas: z
     .array(
       z.object({
@@ -89,7 +91,7 @@ export const DiagnosticoSchema = z.object({
         base: z.string(),
       })
     )
-    .optional(),
+    .nullable(),
   proximo_passo: z.string(),
 });
 
@@ -112,10 +114,17 @@ export const CATEGORIA_COMERCIAL_LABELS: Record<OportunidadeComercial["categoria
   outra: "Outra",
 };
 
+// Schema de LEITURA: mais tolerante que o de envio. O de envio exige todos os
+// campos (é o que o modo estrito dos provedores pede); o de leitura aceita
+// análise antiga, gerada quando o formato tinha menos campos.
+const DiagnosticoLeituraSchema = DiagnosticoSchema.extend({
+  hipoteses_resolvidas: DiagnosticoSchema.shape.hipoteses_resolvidas.nullish().transform((v) => v ?? null),
+});
+
 // Aceita um diagnóstico salvo no banco (Json) e devolve tipado, ou null se a
 // forma não bate — assim uma análise antiga com formato diferente não quebra a
 // tela.
 export function parseDiagnostico(valor: unknown): Diagnostico | null {
-  const r = DiagnosticoSchema.safeParse(valor);
-  return r.success ? r.data : null;
+  const r = DiagnosticoLeituraSchema.safeParse(valor);
+  return r.success ? (r.data as Diagnostico) : null;
 }

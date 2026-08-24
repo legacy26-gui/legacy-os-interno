@@ -25,11 +25,13 @@ export async function DiagnosticoSection({
   meetingNotes,
   titulo = "Diagnóstico e Plano de Ação",
   subtitulo,
+  iniciaAberto = false,
 }: {
   onboardingId: string;
   meetingNotes: string | null;
   titulo?: string;
   subtitulo?: string;
+  iniciaAberto?: boolean;
 }) {
   const { pre, final } = await carregarAnalises(onboardingId);
   const par = (p: ParDeAnalises): ParSerializado => ({
@@ -44,7 +46,8 @@ export async function DiagnosticoSection({
           <Sparkles size={15} className="text-accent" /> {titulo}
         </h2>
         <p className="text-xs text-foreground-muted mt-0.5">
-          {subtitulo ?? "Gerado por IA a partir do formulário de entrada. Confira antes de levar pro cliente."}
+          {subtitulo ??
+            "Gerado por IA a partir das respostas do formulário. Abra pra ver resumo, gargalos e plano de ação."}
         </p>
       </div>
 
@@ -53,6 +56,7 @@ export async function DiagnosticoSection({
         pre={par(pre)}
         final={par(final)}
         meetingNotes={meetingNotes}
+        iniciaAberto={iniciaAberto}
       />
     </div>
   );

@@ -20,6 +20,7 @@ import {
   Clock,
   Loader2,
   ChevronRight,
+  ChevronUp,
 } from "lucide-react";
 import { regenerarDiagnostico, salvarNotasReuniao } from "@/lib/actions/onboarding";
 import {
@@ -354,14 +355,19 @@ export function DiagnosticoPanel({
   pre,
   final,
   meetingNotes,
+  iniciaAberto = false,
 }: {
   onboardingId: string;
   pre: ParSerializado;
   final: ParSerializado;
   meetingNotes: string | null;
+  // Fechado por padrão: na lista de fichas o diagnóstico é longo demais pra
+  // ficar aberto em todas ao mesmo tempo.
+  iniciaAberto?: boolean;
 }) {
   const router = useRouter();
   const [aba, setAba] = useState<"pre" | "final">(final.concluida ? "final" : "pre");
+  const [aberto, setAberto] = useState(iniciaAberto);
   const [pendente, startTransition] = useTransition();
 
   const par = aba === "final" ? final : pre;
@@ -382,6 +388,57 @@ export function DiagnosticoPanel({
       await regenerarDiagnostico(onboardingId, kind);
       router.refresh();
     });
+  }
+
+  // Fechado: mostra só o estado e a primeira linha do resumo, com o botão que
+  // abre o material completo.
+  if (!aberto) {
+    const melhor = final.concluida ?? pre.concluida;
+    const ultimaTentativa = final.ultima ?? pre.ultima;
+    const resumoCurto = melhor?.diagnostico?.resumo_executivo ?? null;
+
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => setAberto(true)}
+            className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2.5 rounded-lg bg-accent text-accent-foreground hover:opacity-90"
+          >
+            <Sparkles size={15} />
+            {melhor ? "Ver diagnóstico e plano de ação" : "Abrir diagnóstico"}
+          </button>
+
+          {processando && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-accent/15 text-accent">
+              <Loader2 size={12} className="animate-spin" /> gerando...
+            </span>
+          )}
+          {!processando && melhor && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-500">
+              <CheckCircle2 size={12} /> pronto · {quando(melhor.completedAt ?? melhor.createdAt)}
+            </span>
+          )}
+          {!processando && !melhor && ultimaTentativa?.status === "ERRO" && (
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-red-500/15 text-red-500">
+              <AlertTriangle size={12} /> falhou — dá pra gerar de novo
+            </span>
+          )}
+          {!processando && !melhor && !ultimaTentativa && (
+            <span className="text-xs text-foreground-muted">ainda não gerado</span>
+          )}
+          {final.concluida && (
+            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-surface-muted text-foreground-muted">
+              plano final v{final.concluida.version}
+            </span>
+          )}
+        </div>
+
+        {resumoCurto && (
+          <p className="text-sm text-foreground-muted leading-relaxed line-clamp-2">{resumoCurto}</p>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -408,15 +465,26 @@ export function DiagnosticoPanel({
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() => gerar(aba === "final" ? "PLANO_FINAL" : "PRE_DIAGNOSTICO")}
-          disabled={pendente || processando}
-          className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-border hover:bg-surface-muted disabled:opacity-60"
-        >
-          {pendente || processando ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          {conteudo ? "Regenerar análise" : "Gerar análise"}
-        </button>
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => gerar(aba === "final" ? "PLANO_FINAL" : "PRE_DIAGNOSTICO")}
+            disabled={pendente || processando}
+            className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-border hover:bg-surface-muted disabled:opacity-60"
+          >
+            {pendente || processando ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            {conteudo ? "Regenerar análise" : "Gerar análise"}
+          </button>
+          {!iniciaAberto && (
+            <button
+              type="button"
+              onClick={() => setAberto(false)}
+              className="inline-flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-border hover:bg-surface-muted"
+            >
+              <ChevronUp size={14} /> Fechar
+            </button>
+          )}
+        </div>
       </div>
 
       {conteudo && (

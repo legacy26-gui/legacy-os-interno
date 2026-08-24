@@ -633,13 +633,62 @@ model ClientOnboarding {
   email         String?
   city          String?
   answers       Json
+  // Dados digitais coletados fora do formulário (Instagram, Google, site...).
+  // Ver src/lib/ai/enriquecimento.ts — hoje nasce nulo, a estrutura já existe.
+  enrichment    Json?
+  // Resumo/transcrição da reunião de onboarding. Alimenta o plano de ação final.
+  meetingNotes  String?          @db.Text
   status        OnboardingStatus @default(NOVO)
   internalNotes String?
   clientId      String?
   client        Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  analyses      OnboardingAnalysis[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
   @@index([status, createdAt])
   @@map("client_onboardings")
+}
+
+// ─── Diagnóstico gerado por IA ──────────────────────────────────────────────
+
+enum AnalysisKind {
+  PRE_DIAGNOSTICO // antes da reunião: formulário (+ dados digitais quando houver)
+  PLANO_FINAL     // depois da reunião: soma o que foi levantado na conversa
+}
+
+enum AnalysisStatus {
+  PROCESSANDO
+  CONCLUIDO
+  ERRO
+}
+
+// Cada geração vira uma linha nova — nada é sobrescrito. A tela mostra a última
+// versão concluída de cada tipo e o histórico continua no banco pra auditoria.
+model OnboardingAnalysis {
+  id            String           @id @default(cuid())
+  onboardingId  String
+  onboarding    ClientOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  // Repetido aqui pra conseguir buscar o diagnóstico direto pelo cliente depois
+  // que a ficha vira cadastro.
+  clientId      String?
+  kind          AnalysisKind     @default(PRE_DIAGNOSTICO)
+  version       Int              @default(1)
+  status        AnalysisStatus   @default(PROCESSANDO)
+  provider      String
+  model         String
+  promptVersion String
+  // Exatamente o que foi enviado pra IA (respostas + dados digitais + reunião).
+  inputData     Json
+  result        Json?
+  rawResponse   String?          @db.Text
+  error         String?          @db.Text
+  durationMs    Int?
+  requestedById String?
+  createdAt     DateTime         @default(now())
+  completedAt   DateTime?
+
+  @@index([onboardingId, kind, version])
+  @@index([clientId])
+  @@map("onboarding_analyses")
 }

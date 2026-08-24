@@ -64,7 +64,12 @@ export default async function NovoClientePage({
       )}
 
       <div className="rounded-2xl border border-border bg-surface p-6">
-        <ClientForm action={createClient} canSeeValues={canAccessModule(user.role, "financeiro")} client={prefill} />
+        <ClientForm
+          action={createClient}
+          canSeeValues={canAccessModule(user.role, "financeiro")}
+          client={prefill}
+          hiddenFields={ficha ? { fichaId: ficha.id } : undefined}
+        />
       </div>
     </div>
   );

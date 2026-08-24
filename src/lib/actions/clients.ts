@@ -67,6 +67,21 @@ export async function createClient(_prevState: ClientFormState, formData: FormDa
     },
   });
 
+  // Cliente criado a partir de uma ficha do formulário de entrada: amarra as
+  // duas pontas, pra o diagnóstico da IA aparecer na página do cliente.
+  const fichaId = formData.get("fichaId");
+  if (typeof fichaId === "string" && fichaId) {
+    await prisma.clientOnboarding.update({
+      where: { id: fichaId },
+      data: { clientId: client.id, status: "CONCLUIDO" },
+    });
+    await prisma.onboardingAnalysis.updateMany({
+      where: { onboardingId: fichaId },
+      data: { clientId: client.id },
+    });
+    revalidatePath("/formularios");
+  }
+
   // Cada cliente adicionado é uma venda — alimenta o painel de números do
   // Comercial automaticamente.
   await prisma.commercialEvent.create({

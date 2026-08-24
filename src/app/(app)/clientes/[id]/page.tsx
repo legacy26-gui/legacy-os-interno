@@ -6,6 +6,7 @@ import { requireModuleAccess } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate, formatDateTime } from "@/lib/labels";
 import { deleteClient } from "@/lib/actions/clients";
+import { DiagnosticoSection } from "@/components/diagnostico/diagnostico-section";
 import { HistoryForm } from "./history-form";
 import { AttachmentForm } from "./attachment-form";
 import { DeleteClientButton } from "../delete-client-button";
@@ -20,6 +21,8 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
     include: {
       manager: { select: { name: true } },
       history: { orderBy: { createdAt: "desc" }, include: { author: { select: { name: true } } } },
+      // Ficha do formulário de entrada: é dela que vem o diagnóstico da IA.
+      onboardings: { orderBy: { createdAt: "desc" }, take: 1, select: { id: true, meetingNotes: true } },
       attachments: { orderBy: { uploadedAt: "desc" } },
       revenues: { orderBy: { dueDate: "desc" }, take: 5 },
       contracts: { orderBy: { createdAt: "desc" }, take: 5 },
@@ -86,6 +89,13 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
       </div>
+
+      {client.onboardings[0] && (
+        <DiagnosticoSection
+          onboardingId={client.onboardings[0].id}
+          meetingNotes={client.onboardings[0].meetingNotes}
+        />
+      )}
 
       {client.internalNotes && (
         <div className="rounded-2xl border border-border bg-surface p-5">

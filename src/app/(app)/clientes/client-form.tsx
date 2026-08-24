@@ -14,7 +14,9 @@ export function ClientForm({
   client,
   action,
   canSeeValues = true,
+  hiddenFields,
 }: {
+  hiddenFields?: Record<string, string>;
   // Parcial porque o cadastro novo pode vir pré-preenchido pela ficha do
   // formulário de entrada, que só traz alguns campos.
   client?: Partial<Client>;
@@ -25,6 +27,10 @@ export function ClientForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-6">
+      {hiddenFields &&
+        Object.entries(hiddenFields).map(([nome, valor]) => (
+          <input key={nome} type="hidden" name={nome} value={valor} />
+        ))}
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
           <label className={labelClass}>Nome da empresa *</label>

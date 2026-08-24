@@ -11,6 +11,7 @@ import {
   formatAnswer,
 } from "@/lib/onboarding-form";
 import { deleteOnboarding, saveOnboardingNotes } from "@/lib/actions/onboarding";
+import { DiagnosticoSection } from "@/components/diagnostico/diagnostico-section";
 import { CopyLink } from "./copy-link";
 import { StatusButtons } from "./status-buttons";
 import { DeleteFichaButton } from "./delete-ficha-button";
@@ -239,6 +240,8 @@ export default async function FormulariosPage({
                       </form>
                     </div>
                   </details>
+
+                  <DiagnosticoSection onboardingId={ficha.id} meetingNotes={ficha.meetingNotes} />
 
                   {ficha.internalNotes && (
                     <p className="text-xs text-foreground-muted border-t border-border pt-3">

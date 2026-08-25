@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { gerarDiagnostico, GeracaoDuplicada } from "@/lib/ai/diagnostico";
+import { gerarDiagnostico, GeracaoDuplicada, sincronizarAnalise } from "@/lib/ai/diagnostico";
 import { AI_CONFIG, aiApiKey, nomeDaVariavelDaChave } from "@/lib/ai/config";
 import { listarModelos } from "@/lib/ai/client";
 import { prisma } from "@/lib/prisma";
@@ -18,6 +18,15 @@ function autorizado(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   if (!autorizado(request)) return NextResponse.json({ error: "Chave inválida." }, { status: 403 });
+
+  // Puxa o resultado de quem está em segundo plano: assim dá pra acompanhar por
+  // aqui sem depender de alguém abrir a tela.
+  const emAndamento = await prisma.onboardingAnalysis.findMany({
+    where: { status: "PROCESSANDO", providerJobId: { not: null } },
+    select: { id: true },
+    take: 10,
+  });
+  await Promise.all(emAndamento.map((a) => sincronizarAnalise(a.id).catch(() => {})));
 
   const [pendentes, ultimas] = await Promise.all([
     prisma.clientOnboarding.count({ where: { analyses: { none: { status: "CONCLUIDO" } } } }),

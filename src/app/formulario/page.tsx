@@ -8,6 +8,10 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// O diagnóstico roda em segundo plano (after) dentro desta função, então ela
+// precisa de fôlego maior que o padrão.
+export const maxDuration = 300;
+
 // Página pública: quem abre é o cliente, sem login. A liberação está em
 // src/proxy.ts (OPEN_ROUTES). O visual é preto e amarelo, fixo — não segue o
 // tema claro/escuro do sistema interno.

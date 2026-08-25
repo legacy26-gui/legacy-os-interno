@@ -13,6 +13,14 @@ function cliente(apiKey: string) {
   return new OpenAI({ apiKey, timeout: AI_CONFIG.timeoutMs, maxRetries: 0 });
 }
 
+// A OpenAI aceita low | medium | high. Nossos níveis extras (xhigh/max) viram
+// high — é o teto de lá.
+function esforcoDeRaciocinio(): "low" | "medium" | "high" {
+  if (AI_CONFIG.effort === "low") return "low";
+  if (AI_CONFIG.effort === "medium") return "medium";
+  return "high";
+}
+
 export async function chamarOpenAi<S extends z.ZodType>({
   apiKey,
   system,
@@ -24,6 +32,7 @@ export async function chamarOpenAi<S extends z.ZodType>({
     .chat.completions.parse({
       model: AI_CONFIG.model,
       max_completion_tokens: maxTokens,
+      reasoning_effort: esforcoDeRaciocinio(),
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },

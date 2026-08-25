@@ -17,6 +17,9 @@ import { StatusButtons } from "./status-buttons";
 import { DeleteFichaButton } from "./delete-ficha-button";
 import type { OnboardingStatus } from "@/generated/prisma/enums";
 
+// Os botões de gerar/regenerar diagnóstico rodam a IA nesta rota.
+export const maxDuration = 300;
+
 const FILTROS: { key: string; label: string }[] = [
   { key: "todos", label: "Todos" },
   { key: "NOVO", label: "Novos" },

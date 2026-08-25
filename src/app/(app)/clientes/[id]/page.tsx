@@ -11,6 +11,9 @@ import { HistoryForm } from "./history-form";
 import { AttachmentForm } from "./attachment-form";
 import { DeleteClientButton } from "../delete-client-button";
 
+// O botão de regenerar diagnóstico roda a IA nesta rota.
+export const maxDuration = 300;
+
 export default async function ClienteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await requireModuleAccess("clientes");
   const canSeeValues = canAccessModule(user.role, "financeiro");

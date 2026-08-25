@@ -21,10 +21,11 @@ export const AI_CONFIG = {
   // mantém a geração dentro do tempo de execução da função na Vercel.
   effort: (process.env.AI_EFFORT ?? "medium") as "low" | "medium" | "high" | "xhigh" | "max",
   maxTokens: Number(process.env.AI_MAX_TOKENS ?? 8000),
-  // Timeout por tentativa (ms). Fica abaixo do tempo máximo de execução da
-  // função na Vercel (60s) de propósito: assim a falha é registrada como erro
-  // na análise em vez de a função ser morta com tudo "processando".
-  timeoutMs: Number(process.env.AI_TIMEOUT_MS ?? 52_000),
+  // Timeout por tentativa (ms). Fica abaixo do tempo máximo de execução das
+  // rotas que chamam a IA (maxDuration = 300s) de propósito: assim a falha é
+  // registrada como erro na análise em vez de a função ser morta no meio,
+  // deixando tudo "processando".
+  timeoutMs: Number(process.env.AI_TIMEOUT_MS ?? 240_000),
   maxRetries: Number(process.env.AI_MAX_RETRIES ?? 0),
 } as const;
 

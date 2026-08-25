@@ -1,6 +1,6 @@
 import "server-only";
 import OpenAI from "openai";
-import { zodResponseFormat } from "openai/helpers/zod";
+import { zodResponseFormat, zodTextFormat } from "openai/helpers/zod";
 import type * as z from "zod";
 import { AI_CONFIG } from "@/lib/ai/config";
 import { RespostaIaInvalida, type ChamadaIa, type RespostaBruta } from "@/lib/ai/tipos";
@@ -63,6 +63,69 @@ export async function chamarOpenAi<S extends z.ZodType>({
   }
 
   return { dados: escolha.message.parsed as z.infer<S>, bruto, model: resposta.model ?? AI_CONFIG.model };
+}
+
+// ── Modo segundo plano ───────────────────────────────────────────────────────
+// A função da Vercel morre em 60s e uma ficha cheia leva mais que isso. Aqui a
+// gente só ENTREGA o trabalho pra OpenAI e guarda o número do protocolo; a tela
+// vai perguntando se ficou pronto (ela já se atualiza sozinha a cada 6s).
+
+export async function iniciarJobOpenAi<S extends z.ZodType>({
+  apiKey,
+  system,
+  user,
+  schema,
+  maxTokens,
+}: ChamadaIa<S>): Promise<string> {
+  const resposta = await cliente(apiKey).responses.create({
+    model: AI_CONFIG.model,
+    background: true,
+    store: true,
+    max_output_tokens: maxTokens,
+    reasoning: { effort: esforcoDeRaciocinio() },
+    instructions: system,
+    input: user,
+    text: { format: zodTextFormat(schema, "diagnostico") },
+  });
+  return resposta.id;
+}
+
+export type EstadoJob<T> =
+  | { estado: "processando" }
+  | { estado: "pronto"; dados: T; bruto: string; model: string }
+  | { estado: "erro"; mensagem: string };
+
+export async function consultarJobOpenAi<S extends z.ZodType>(
+  apiKey: string,
+  jobId: string,
+  schema: S
+): Promise<EstadoJob<z.infer<S>>> {
+  const r = await cliente(apiKey).responses.retrieve(jobId);
+
+  if (r.status === "queued" || r.status === "in_progress") return { estado: "processando" };
+
+  if (r.status === "failed" || r.status === "cancelled") {
+    return { estado: "erro", mensagem: r.error?.message ?? `a geração terminou como "${r.status}"` };
+  }
+  if (r.status === "incomplete") {
+    return { estado: "erro", mensagem: "a resposta foi cortada por tamanho" };
+  }
+
+  const bruto = r.output_text ?? "";
+  let json: unknown;
+  try {
+    json = JSON.parse(bruto);
+  } catch {
+    return { estado: "erro", mensagem: "a resposta não veio em JSON válido" };
+  }
+
+  const validado = schema.safeParse(json);
+  if (!validado.success) {
+    console.error("[ia] resposta fora do schema:", JSON.stringify(validado.error.issues).slice(0, 1000));
+    return { estado: "erro", mensagem: "a resposta não veio no formato esperado" };
+  }
+
+  return { estado: "pronto", dados: validado.data as z.infer<S>, bruto, model: r.model ?? AI_CONFIG.model };
 }
 
 export function descreveErroOpenAi(erro: unknown): string | null {

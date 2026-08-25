@@ -13,6 +13,9 @@ import {
   descreveErroOpenAi,
   ehRetentavelOpenAi,
   listarModelosOpenAi,
+  iniciarJobOpenAi,
+  consultarJobOpenAi,
+  type EstadoJob,
 } from "@/lib/ai/provedores/openai";
 
 // Única porta de saída pra IA. Quem chama pede "me devolve isso neste formato"
@@ -108,6 +111,46 @@ export async function gerarJson<S extends z.ZodType>({
   }
 
   throw new Error(descreveErro(ultimoErro));
+}
+
+// ── Geração em segundo plano ────────────────────────────────────────────────
+// Só a OpenAI tem isso hoje. Quando não tem, o orquestrador usa gerarJson e
+// espera a resposta na hora.
+export function suportaSegundoPlano(): boolean {
+  return AI_CONFIG.provider === "openai";
+}
+
+export async function iniciarJob<S extends z.ZodType>({
+  system,
+  user,
+  schema,
+  maxTokens = AI_CONFIG.maxTokens,
+}: {
+  system: string;
+  user: string;
+  schema: S;
+  maxTokens?: number;
+}): Promise<string> {
+  const apiKey = aiApiKey();
+  if (!apiKey) throw new AiNaoConfigurado();
+  try {
+    return await iniciarJobOpenAi({ apiKey, system, user, schema, maxTokens });
+  } catch (erro) {
+    throw new Error(descreveErro(erro));
+  }
+}
+
+export async function consultarJob<S extends z.ZodType>(
+  jobId: string,
+  schema: S
+): Promise<EstadoJob<z.infer<S>>> {
+  const apiKey = aiApiKey();
+  if (!apiKey) throw new AiNaoConfigurado();
+  try {
+    return await consultarJobOpenAi(apiKey, jobId, schema);
+  } catch (erro) {
+    return { estado: "erro", mensagem: descreveErro(erro) };
+  }
 }
 
 // Modelos que a conta configurada realmente tem — pra escolher AI_MODEL sem

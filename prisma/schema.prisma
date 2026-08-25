@@ -683,6 +683,10 @@ model OnboardingAnalysis {
   result        Json?
   rawResponse   String?          @db.Text
   error         String?          @db.Text
+  // Id do trabalho no provedor quando a geração roda em segundo plano (a função
+  // da Vercel morre em 60s; uma ficha cheia leva mais que isso). A tela pergunta
+  // pelo resultado até ficar pronto.
+  providerJobId String?
   durationMs    Int?
   requestedById String?
   createdAt     DateTime         @default(now())

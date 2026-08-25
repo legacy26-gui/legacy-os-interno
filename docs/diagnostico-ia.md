@@ -19,6 +19,18 @@ material pronto.
 Nada é sobrescrito: cada geração é uma versão nova. A tela mostra a última
 versão concluída e avisa quando a última tentativa falhou.
 
+### Por que a geração roda em segundo plano
+
+A função da Vercel morre em 60s e uma ficha respondida por inteiro leva mais que
+isso (medimos 62s só de geração). Por isso, com a OpenAI o sistema **entrega o
+trabalho** (`background: true`) e guarda o número do protocolo em
+`providerJobId`; a tela do diagnóstico já se atualiza sozinha a cada 6s e, a
+cada carregamento, o servidor pergunta ao provedor se ficou pronto e grava o
+resultado. Trabalho que passa de 15 minutos sem terminar vira erro.
+
+A Anthropic não tem esse modo: com `AI_PROVIDER=anthropic` a geração acontece
+dentro da requisição e precisa caber no tempo da função.
+
 ## Arquivos
 
 | Arquivo | Papel |

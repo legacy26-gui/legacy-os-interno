@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { gerarJson } from "@/lib/ai/client";
+import { gerarJson, iniciarJob, consultarJob, suportaSegundoPlano } from "@/lib/ai/client";
 import { AI_CONFIG } from "@/lib/ai/config";
 import { DiagnosticoSchema, parseDiagnostico } from "@/lib/ai/diagnostico-schema";
 import { SYSTEM_PROMPT, PROMPT_VERSION, montarPromptUsuario } from "@/lib/ai/diagnostico-prompt";
@@ -9,7 +9,7 @@ import type { AnalysisKind } from "@/generated/prisma/enums";
 
 // Depois disso, uma análise "processando" é considerada travada (função morreu
 // no meio, deploy no meio do caminho) e pode ser gerada de novo.
-const LIMITE_PROCESSANDO_MS = 6 * 60 * 1000;
+const LIMITE_PROCESSANDO_MS = 15 * 60 * 1000;
 
 export class GeracaoDuplicada extends Error {
   constructor() {
@@ -97,12 +97,44 @@ export async function gerarDiagnostico({
     },
   });
 
+  const pedido = {
+    system: SYSTEM_PROMPT,
+    user: montarPromptUsuario(entrada),
+    schema: DiagnosticoSchema,
+  };
+
+  // Caminho preferido: entrega o trabalho pro provedor e sai. Uma ficha cheia
+  // leva mais que os 60s de vida da função na Vercel — esperando aqui dentro,
+  // a função morre no meio e ninguém vê resultado nenhum.
+  if (suportaSegundoPlano()) {
+    try {
+      const jobId = await iniciarJob(pedido);
+      await prisma.onboardingAnalysis.update({
+        where: { id: analise.id },
+        data: { providerJobId: jobId },
+      });
+      console.log(`[diagnostico] ${kind} v${versao} da ficha ${onboardingId} entregue (job ${jobId})`);
+      // Já tenta uma vez: se a loja respondeu pouca coisa, costuma ficar pronto
+      // em segundos e a equipe nem vê "processando".
+      await sincronizarAnalise(analise.id);
+      const atual = await prisma.onboardingAnalysis.findUnique({
+        where: { id: analise.id },
+        select: { status: true },
+      });
+      return { analysisId: analise.id, status: atual?.status === "ERRO" ? "ERRO" : "CONCLUIDO" };
+    } catch (erro) {
+      const mensagem = erro instanceof Error ? erro.message : String(erro);
+      console.error(`[diagnostico] não consegui entregar o trabalho: ${mensagem}`);
+      await prisma.onboardingAnalysis.update({
+        where: { id: analise.id },
+        data: { status: "ERRO", error: mensagem.slice(0, 5000), completedAt: new Date() },
+      });
+      return { analysisId: analise.id, status: "ERRO" };
+    }
+  }
+
   try {
-    const resultado = await gerarJson({
-      system: SYSTEM_PROMPT,
-      user: montarPromptUsuario(entrada),
-      schema: DiagnosticoSchema,
-    });
+    const resultado = await gerarJson(pedido);
 
     await prisma.onboardingAnalysis.update({
       where: { id: analise.id },
@@ -131,6 +163,54 @@ export async function gerarDiagnostico({
   }
 }
 
+/**
+ * Pergunta ao provedor se um trabalho em segundo plano já ficou pronto e grava
+ * o resultado. É chamada toda vez que a tela do diagnóstico carrega — que é
+ * exatamente quando alguém está esperando por ela.
+ */
+export async function sincronizarAnalise(analysisId: string): Promise<void> {
+  const analise = await prisma.onboardingAnalysis.findUnique({ where: { id: analysisId } });
+  if (!analise || analise.status !== "PROCESSANDO" || !analise.providerJobId) return;
+
+  const estado = await consultarJob(analise.providerJobId, DiagnosticoSchema);
+
+  if (estado.estado === "processando") {
+    // Trabalho que não termina nunca vira erro, pra não ficar girando pra sempre.
+    if (Date.now() - analise.createdAt.getTime() > LIMITE_PROCESSANDO_MS) {
+      await prisma.onboardingAnalysis.update({
+        where: { id: analise.id },
+        data: {
+          status: "ERRO",
+          error: "A geração passou de 15 minutos sem terminar. Tente gerar de novo.",
+          completedAt: new Date(),
+        },
+      });
+    }
+    return;
+  }
+
+  if (estado.estado === "erro") {
+    await prisma.onboardingAnalysis.update({
+      where: { id: analise.id },
+      data: { status: "ERRO", error: estado.mensagem.slice(0, 5000), completedAt: new Date() },
+    });
+    return;
+  }
+
+  await prisma.onboardingAnalysis.update({
+    where: { id: analise.id },
+    data: {
+      status: "CONCLUIDO",
+      result: JSON.parse(JSON.stringify(estado.dados)),
+      rawResponse: estado.bruto.slice(0, 100_000),
+      model: estado.model,
+      durationMs: Date.now() - analise.createdAt.getTime(),
+      completedAt: new Date(),
+    },
+  });
+  console.log(`[diagnostico] ${analise.kind} v${analise.version} da ficha ${analise.onboardingId} ficou pronto`);
+}
+
 export interface AnaliseParaTela {
   id: string;
   kind: AnalysisKind;
@@ -157,6 +237,14 @@ export async function carregarAnalises(onboardingId: string): Promise<{
   final: ParDeAnalises;
   totalVersoes: number;
 }> {
+  // Antes de mostrar, pergunta ao provedor se o que está em andamento já ficou
+  // pronto. É o que faz a tela sair de "gerando..." sozinha.
+  const pendentes = await prisma.onboardingAnalysis.findMany({
+    where: { onboardingId, status: "PROCESSANDO", providerJobId: { not: null } },
+    select: { id: true },
+  });
+  await Promise.all(pendentes.map((p) => sincronizarAnalise(p.id).catch(() => {})));
+
   const linhas = await prisma.onboardingAnalysis.findMany({
     where: { onboardingId },
     orderBy: { createdAt: "desc" },

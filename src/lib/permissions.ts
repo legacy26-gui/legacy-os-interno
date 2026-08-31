@@ -56,6 +56,9 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   { prefix: "/calendario", module: "calendario" },
   { prefix: "/suporte", module: "suporte" },
   { prefix: "/gestao-contas", module: "gestao-contas" },
+  // O ranking das lojas vive fora de /gestao-contas pra ser uma aba própria no
+  // menu, mas quem vê é o mesmo pessoal que lança as vendas.
+  { prefix: "/ranking-lojas", module: "gestao-contas" },
   { prefix: "/playbooks", module: "playbooks" },
   { prefix: "/configuracoes", module: "configuracoes" },
 ];

@@ -7,6 +7,7 @@ import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
+  Trophy,
 } from "lucide-react";
 import type { Role } from "@/generated/prisma/enums";
 import { canAccessModule, type ModuleKey } from "@/lib/permissions";
@@ -32,6 +33,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/operacoes", label: "Operações", icon: ListChecks, module: "operacoes" },
       { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
+      { href: "/ranking-lojas", label: "Ranking de Lojas", icon: Trophy, module: "gestao-contas" },
       { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
       { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
     ],

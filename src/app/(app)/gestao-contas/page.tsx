@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Gauge, ShieldCheck, AlertTriangle, Flame, Trophy, CalendarX, CalendarClock, Zap, ClipboardCheck } from "lucide-react";
+import { Gauge, ShieldCheck, AlertTriangle, Flame, Trophy, Store, CalendarX, CalendarClock, Zap, ClipboardCheck } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
 import { getAccountsHealth, SCORE_COLORS, type AccountHealth } from "@/lib/account-health";
 import { formatDate } from "@/lib/labels";
@@ -45,6 +45,12 @@ export default async function GestaoContasPage() {
             className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted"
           >
             <Trophy size={16} /> Ranking de gestores
+          </Link>
+          <Link
+            href="/ranking-lojas"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted"
+          >
+            <Store size={16} /> Ranking de lojas
           </Link>
         </div>
       </div>

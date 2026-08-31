@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { Plus, Search, Pencil } from "lucide-react";
+import { Plus, Search, Pencil, AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
-import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency } from "@/lib/labels";
+import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate } from "@/lib/labels";
 import { deleteClient } from "@/lib/actions/clients";
 import { DeleteClientButton } from "./delete-client-button";
 import { ManagerSelect } from "../operacoes/manager-select";
@@ -19,7 +19,13 @@ export default async function ClientesPage({
   const canManageOperators = canAccessModule(user.role, "operacoes");
   const { q, status } = await searchParams;
 
-  const [clients, operators, statusCounts] = await Promise.all([
+  // Cobranças vencidas e ainda não recebidas — é o que pinta o cliente de
+  // vermelho na lista. Só o estado do atraso aparece pra todo mundo; o valor
+  // continua restrito a quem tem o Financeiro.
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+
+  const [clients, operators, statusCounts, vencidas] = await Promise.all([
     prisma.client.findMany({
       where: {
         AND: [
@@ -44,7 +50,26 @@ export default async function ClientesPage({
       orderBy: { name: "asc" },
     }),
     prisma.client.groupBy({ by: ["status"], _count: true }),
+    prisma.revenue.findMany({
+      where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: hoje } },
+      select: { clientId: true, dueDate: true, value: true },
+    }),
   ]);
+
+  // Por cliente: a cobrança vencida mais antiga manda no tamanho do atraso.
+  const atrasoPorCliente = new Map<string, { dias: number; qtd: number; total: number; vencimento: Date }>();
+  for (const r of vencidas) {
+    const dias = Math.floor((hoje.getTime() - r.dueDate.getTime()) / 86_400_000);
+    const atual = atrasoPorCliente.get(r.clientId);
+    atrasoPorCliente.set(r.clientId, {
+      dias: Math.max(dias, atual?.dias ?? 0),
+      qtd: (atual?.qtd ?? 0) + 1,
+      total: (atual?.total ?? 0) + Number(r.value),
+      vencimento: !atual || r.dueDate < atual.vencimento ? r.dueDate : atual.vencimento,
+    });
+  }
+  const clientesEmAtraso = clients.filter((c) => atrasoPorCliente.has(c.id)).length;
+  const atrasoGrave = clients.filter((c) => (atrasoPorCliente.get(c.id)?.dias ?? 0) > 3).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -61,6 +86,20 @@ export default async function ClientesPage({
           Novo Cliente
         </Link>
       </div>
+
+      {clientesEmAtraso > 0 && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/5 px-5 py-3.5 flex items-center gap-2.5">
+          <AlertTriangle size={16} className="text-red-500 shrink-0" />
+          <p className="text-sm">
+            <span className="font-semibold text-red-500">
+              {clientesEmAtraso} cliente(s) com pagamento em atraso
+            </span>
+            {atrasoGrave > 0 && (
+              <span className="text-foreground-muted"> · {atrasoGrave} passando de 3 dias</span>
+            )}
+          </p>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         {(Object.keys(CLIENT_STATUS_LABELS) as ClientStatus[]).map((s) => {
@@ -105,14 +144,23 @@ export default async function ClientesPage({
                 <th className="px-5 py-3 font-medium hidden lg:table-cell">Cidade/UF</th>
                 <th className="px-5 py-3 font-medium hidden sm:table-cell">Plano</th>
                 <th className="px-5 py-3 font-medium">Gestor</th>
+                <th className="px-5 py-3 font-medium whitespace-nowrap">Vencimento</th>
                 {canSeeValues && <th className="px-5 py-3 font-medium text-right">Mensalidade</th>}
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {clients.map((c) => (
-                <tr key={c.id} className="hover:bg-surface-muted transition-colors">
+              {clients.map((c) => {
+                const atraso = atrasoPorCliente.get(c.id);
+                const grave = (atraso?.dias ?? 0) > 3;
+                return (
+                <tr
+                  key={c.id}
+                  className={`transition-colors ${
+                    grave ? "bg-red-500/10 hover:bg-red-500/15" : atraso ? "bg-red-500/5 hover:bg-red-500/10" : "hover:bg-surface-muted"
+                  }`}
+                >
                   <td className="px-5 py-3.5">
                     <Link href={`/clientes/${c.id}`} className="font-medium hover:text-accent">
                       {c.companyName}
@@ -128,6 +176,30 @@ export default async function ClientesPage({
                       <ManagerSelect clientId={c.id} managerId={c.managerId} operators={operators} />
                     ) : (
                       <span className="text-foreground-muted">{c.manager?.name ?? "Sem gestor"}</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-3.5 whitespace-nowrap">
+                    {atraso ? (
+                      <div className="flex flex-col gap-1 items-start">
+                        <span
+                          className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1 rounded-full ${
+                            grave ? "bg-red-600 text-white" : "bg-red-500/15 text-red-500"
+                          }`}
+                        >
+                          <AlertTriangle size={12} className="shrink-0" />
+                          {atraso.dias === 0
+                            ? "vence hoje"
+                            : `${atraso.dias} ${atraso.dias === 1 ? "dia" : "dias"} em atraso`}
+                        </span>
+                        <span className="text-[11px] text-red-500">
+                          venceu {formatDate(atraso.vencimento)}
+                          {atraso.qtd > 1 && ` · ${atraso.qtd} cobranças`}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-foreground-muted text-xs">
+                        {c.dueDay ? `dia ${c.dueDay}` : "—"}
+                      </span>
                     )}
                   </td>
                   {canSeeValues && (
@@ -151,7 +223,8 @@ export default async function ClientesPage({
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           </div>

@@ -34,7 +34,8 @@ import {
 import { getSuggestedPlaybooks, DAILY_REVIEW_TAGS, WEEKLY_REVIEW_TAGS } from "@/lib/playbooks";
 import { monthKey, weekOfMonthFor, weeksInMonth, weekRange } from "@/lib/month-weeks";
 import { getOpportunities, OPPORTUNITY_COLORS, OPPORTUNITY_LABELS } from "@/lib/opportunities";
-import { deleteClientSale, deletePinnedInfo } from "@/lib/actions/client-sales";
+import { deletePinnedInfo } from "@/lib/actions/client-sales";
+import { VendaItem } from "@/components/vendas/venda-editavel";
 import { DailyReviewForm } from "./daily-review-form";
 import { WeeklyReviewForm } from "./weekly-review-form";
 import { ChangeLogForm } from "./change-log-form";
@@ -439,28 +440,17 @@ export default async function ContaDetailPage({
         ) : (
           <div className="flex flex-col divide-y divide-border">
             {sales.map((v) => (
-              <div key={v.id} className="flex items-center justify-between gap-3 px-5 py-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{v.description ?? "Venda"}</p>
-                  <p className="text-xs text-foreground-muted">
-                    {formatDate(v.soldAt)} · investido {formatCurrency(v.adSpend.toString())}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-sm font-semibold text-emerald-500">
-                    {formatCurrency(v.value.toString())}
-                  </span>
-                  <form action={deleteClientSale.bind(null, client.id, v.id)}>
-                    <button
-                      type="submit"
-                      className="p-1.5 rounded-lg hover:bg-red-500/10 text-foreground-muted hover:text-red-500"
-                      title="Excluir venda"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </form>
-                </div>
-              </div>
+              <VendaItem
+                key={v.id}
+                venda={{
+                  id: v.id,
+                  clientId: client.id,
+                  description: v.description,
+                  value: Number(v.value),
+                  adSpend: Number(v.adSpend),
+                  soldAt: v.soldAt.toISOString().slice(0, 10),
+                }}
+              />
             ))}
           </div>
         )}

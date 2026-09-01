@@ -12,7 +12,7 @@ export function SaleForm({ clientId, defaultDate }: { clientId: string; defaultD
   const [state, formAction, pending] = useActionState(createClientSale.bind(null, clientId), undefined);
 
   useEffect(() => {
-    if (state && !state.error) formRef.current?.reset();
+    if (state?.ok) formRef.current?.reset();
   }, [state]);
 
   return (

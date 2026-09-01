@@ -12,7 +12,26 @@ const SaleSchema = z.object({
   soldAt: z.string().min(1, "Informe a data da venda."),
 });
 
-export type SaleFormState = { error?: string } | undefined;
+// `ok` é o que diz ao formulário que deu certo — sem ele a tela não tem como
+// saber a diferença entre "acabou de abrir" e "salvou".
+export type SaleFormState = { error?: string; ok?: boolean } | undefined;
+
+function lerFormulario(formData: FormData) {
+  return SaleSchema.safeParse({
+    description: formData.get("description") || undefined,
+    value: formData.get("value"),
+    adSpend: formData.get("adSpend") || 0,
+    soldAt: formData.get("soldAt"),
+  });
+}
+
+// A venda aparece na página do cliente, na Gestão de Contas e no Ranking de
+// Lojas — mexeu em uma, as três precisam ser refeitas.
+function revalidarVendas(clientId: string) {
+  revalidatePath(`/gestao-contas/${clientId}`);
+  revalidatePath("/gestao-contas");
+  revalidatePath("/ranking-lojas");
+}
 
 export async function createClientSale(
   clientId: string,
@@ -20,12 +39,7 @@ export async function createClientSale(
   formData: FormData
 ): Promise<SaleFormState> {
   const user = await requireModuleAccess("gestao-contas");
-  const parsed = SaleSchema.safeParse({
-    description: formData.get("description") || undefined,
-    value: formData.get("value"),
-    adSpend: formData.get("adSpend") || 0,
-    soldAt: formData.get("soldAt"),
-  });
+  const parsed = lerFormulario(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
   const { soldAt, description, ...rest } = parsed.data;
@@ -38,15 +52,40 @@ export async function createClientSale(
       createdById: user.id,
     },
   });
-  revalidatePath(`/gestao-contas/${clientId}`);
-  revalidatePath("/gestao-contas");
+  revalidarVendas(clientId);
+  return { ok: true };
+}
+
+/** Corrige uma venda já lançada — valor, investimento, descrição ou data. */
+export async function updateClientSale(
+  saleId: string,
+  _prevState: SaleFormState,
+  formData: FormData
+): Promise<SaleFormState> {
+  await requireModuleAccess("gestao-contas");
+  const parsed = lerFormulario(formData);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
+
+  const venda = await prisma.clientSale.findUnique({ where: { id: saleId }, select: { clientId: true } });
+  if (!venda) return { error: "Esta venda não existe mais." };
+
+  const { soldAt, description, ...rest } = parsed.data;
+  await prisma.clientSale.update({
+    where: { id: saleId },
+    data: {
+      ...rest,
+      description: description?.trim() || null,
+      soldAt: new Date(`${soldAt}T00:00:00Z`),
+    },
+  });
+  revalidarVendas(venda.clientId);
+  return { ok: true };
 }
 
 export async function deleteClientSale(clientId: string, saleId: string) {
   await requireModuleAccess("gestao-contas");
   await prisma.clientSale.delete({ where: { id: saleId } });
-  revalidatePath(`/gestao-contas/${clientId}`);
-  revalidatePath("/gestao-contas");
+  revalidarVendas(clientId);
 }
 
 const PinnedSchema = z.object({

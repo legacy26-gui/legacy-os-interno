@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Trophy, Car, TrendingUp, Target, Store, Medal } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
-import { formatCurrency, formatDate } from "@/lib/labels";
+import { formatCurrency } from "@/lib/labels";
+import { VendaLinha } from "@/components/vendas/venda-editavel";
 
 // Ranking das lojas pelas vendas lançadas na Gestão de Contas. Duas leituras de
 // "quem mais vendeu": por valor vendido e por quantidade de carros — quem vende
@@ -291,27 +292,28 @@ export default async function RankingLojasPage({
                     <th className="px-5 py-3 font-medium hidden md:table-cell">Descrição</th>
                     <th className="px-5 py-3 font-medium text-right hidden sm:table-cell">Investido</th>
                     <th className="px-5 py-3 font-medium text-right">Valor</th>
+                    <th className="px-5 py-3 font-medium text-right">Editar</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
                   {vendas.slice(0, LIMITE_DA_LISTA).map((v) => (
-                    <tr key={v.id} className="hover:bg-surface-muted transition-colors">
-                      <td className="px-5 py-3 text-foreground-muted whitespace-nowrap">{formatDate(v.soldAt)}</td>
-                      <td className="px-5 py-3">
+                    <VendaLinha
+                      key={v.id}
+                      colunas={6}
+                      venda={{
+                        id: v.id,
+                        clientId: v.clientId,
+                        description: v.description,
+                        value: Number(v.value),
+                        adSpend: Number(v.adSpend),
+                        soldAt: v.soldAt.toISOString().slice(0, 10),
+                      }}
+                      loja={
                         <Link href={`/gestao-contas/${v.clientId}`} className="hover:text-accent">
                           {v.client?.companyName ?? "—"}
                         </Link>
-                      </td>
-                      <td className="px-5 py-3 text-foreground-muted hidden md:table-cell">
-                        {v.description ?? "Venda"}
-                      </td>
-                      <td className="px-5 py-3 text-right text-foreground-muted hidden sm:table-cell">
-                        {formatCurrency(v.adSpend.toString())}
-                      </td>
-                      <td className="px-5 py-3 text-right font-medium text-emerald-500">
-                        {formatCurrency(v.value.toString())}
-                      </td>
-                    </tr>
+                      }
+                    />
                   ))}
                 </tbody>
               </table>

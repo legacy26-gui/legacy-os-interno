@@ -443,10 +443,11 @@ export async function getCommercialOverview() {
   const monthStart = new Date(new Date().toISOString().slice(0, 7) + "-01");
   const [newLeads, meetings, proposals, contractsAwaitingSignature, closedDeals] = await Promise.all([
     prisma.lead.count({ where: { createdAt: { gte: monthStart } } }),
-    prisma.lead.count({ where: { stage: "REUNIAO" } }),
+    prisma.lead.count({ where: { stage: { in: ["REUNIAO_AGENDADA", "REUNIAO_REALIZADA"] } } }),
     prisma.lead.count({ where: { stage: "PROPOSTA" } }),
     prisma.contract.count({ where: { status: "AGUARDANDO_ASSINATURA" } }),
-    prisma.lead.count({ where: { stage: "FECHADO", updatedAt: { gte: monthStart } } }),
+    // Venda do mês é pela data em que fechou, não pela última mexida no cartão.
+    prisma.lead.count({ where: { wonAt: { gte: monthStart } } }),
   ]);
 
   return { newLeads, meetings, proposals, contractsAwaitingSignature, closedDeals };

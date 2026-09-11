@@ -62,12 +62,53 @@ export const TASK_PRIORITY_COLORS = {
 
 export const LEAD_STAGE_LABELS = {
   LEAD: "Lead",
-  CONTATO: "Contato",
-  REUNIAO: "Reunião",
+  QUALIFICADO: "Qualificado",
+  REUNIAO_AGENDADA: "Reunião agendada",
+  REUNIAO_REALIZADA: "Reunião realizada",
   PROPOSTA: "Proposta",
   NEGOCIACAO: "Negociação",
   FECHADO: "Fechado",
   PERDIDO: "Perdido",
+} as const;
+
+// Cor da faixa no topo da coluna do quadro — o funil esquenta da esquerda
+// (lead frio) pra direita (fechado).
+export const LEAD_STAGE_COLORS = {
+  LEAD: "bg-zinc-400",
+  QUALIFICADO: "bg-sky-500",
+  REUNIAO_AGENDADA: "bg-indigo-500",
+  REUNIAO_REALIZADA: "bg-violet-500",
+  PROPOSTA: "bg-amber-500",
+  NEGOCIACAO: "bg-orange-500",
+  FECHADO: "bg-emerald-500",
+  PERDIDO: "bg-red-500",
+} as const;
+
+export const LEAD_CHANNEL_LABELS = {
+  META: "Meta",
+  PRESENCIAL: "Presencial",
+  REDE: "Rede",
+  MESA_LOJISTA: "Mesa do lojista",
+  ORGANICO: "Orgânico",
+} as const;
+
+// Tag colorida do canal. Cada canal tem a sua cor e ela é a mesma no cartão, no
+// filtro e no dashboard — é assim que se bate o olho e sabe de onde veio.
+export const LEAD_CHANNEL_COLORS = {
+  META: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  PRESENCIAL: "bg-emerald-500/15 text-emerald-400 border-emerald-500/30",
+  REDE: "bg-violet-500/15 text-violet-400 border-violet-500/30",
+  MESA_LOJISTA: "bg-amber-500/15 text-amber-400 border-amber-500/30",
+  ORGANICO: "bg-teal-500/15 text-teal-400 border-teal-500/30",
+} as const;
+
+// Versão sólida da mesma cor, pros gráficos e barras do dashboard.
+export const LEAD_CHANNEL_SOLID = {
+  META: "#3b82f6",
+  PRESENCIAL: "#10b981",
+  REDE: "#8b5cf6",
+  MESA_LOJISTA: "#f59e0b",
+  ORGANICO: "#14b8a6",
 } as const;
 
 export const LEAD_ORIGIN_LABELS = {

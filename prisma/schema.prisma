@@ -285,6 +285,8 @@ model Contract {
 
 // ─── Comercial (Pipeline) ───────────────────────────────────────────────────
 
+// Origem antiga do lead. Ficou pro histórico: quem entrou antes do CRM novo
+// tem esse campo preenchido. O que vale hoje é o canal.
 enum LeadOrigin {
   INSTAGRAM
   FACEBOOK
@@ -294,10 +296,23 @@ enum LeadOrigin {
   TRAFEGO_PAGO
 }
 
+// Por onde o lead chegou. É essa divisão que o dashboard usa pra abrir os
+// números por canal.
+enum LeadChannel {
+  META
+  PRESENCIAL
+  REDE
+  MESA_LOJISTA
+  ORGANICO
+}
+
+// Etapas do funil, na ordem. Batem com os números do dashboard: cada coluna
+// que o cartão passa vira uma linha lá.
 enum LeadStage {
   LEAD
-  CONTATO
-  REUNIAO
+  QUALIFICADO
+  REUNIAO_AGENDADA
+  REUNIAO_REALIZADA
   PROPOSTA
   NEGOCIACAO
   FECHADO
@@ -305,20 +320,60 @@ enum LeadStage {
 }
 
 model Lead {
-  id          String     @id @default(cuid())
+  id          String      @id @default(cuid())
   companyName String
   contactName String
   city        String?
   phone       String?
-  origin      LeadOrigin
-  stage       LeadStage  @default(LEAD)
+  origin      LeadOrigin?
+  channel     LeadChannel @default(ORGANICO)
+  stage       LeadStage   @default(LEAD)
+  // Ordem do cartão dentro da coluna — é o que o arrastar pra cima/baixo grava.
+  position    Int         @default(0)
   notes       String?
   ownerId     String?
-  owner       User?      @relation("LeadOwner", fields: [ownerId], references: [id])
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  owner       User?       @relation("LeadOwner", fields: [ownerId], references: [id])
 
+  // Marcos do funil. Guardamos a data de cada passo em vez de só a etapa atual:
+  // um lead fechado continua tendo que contar como reunião realizada no mês em
+  // que a reunião aconteceu. Voltar o cartão de coluna não apaga o que já foi.
+  qualifiedAt    DateTime?
+  meetingSetAt   DateTime?
+  meetingHeldAt  DateTime?
+  noShowAt       DateTime?
+  proposalAt     DateTime?
+  wonAt          DateTime?
+  lostAt         DateTime?
+  lostReason     String?
+
+  // Fechou: quanto entra por mês, quanto entra de uma vez e por quantos meses.
+  monthlyValue   Decimal @default(0) @db.Decimal(12, 2)
+  setupValue     Decimal @default(0) @db.Decimal(12, 2)
+  contractMonths Int     @default(12)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  saleEvent CommercialEvent?
+
+  @@index([stage, position])
+  @@index([channel, createdAt])
   @@map("leads")
+}
+
+// Quanto cada canal entregou de impressão e consumiu de verba no mês. É o que
+// transforma o funil em custo: sem isso não existe CPL, custo por reunião, CAC.
+model ChannelMonth {
+  id          String      @id @default(cuid())
+  month       String // aaaa-mm
+  channel     LeadChannel
+  impressions Int         @default(0)
+  investment  Decimal     @default(0) @db.Decimal(12, 2)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([month, channel])
+  @@map("channel_months")
 }
 
 // ─── Operações (Tarefas) ────────────────────────────────────────────────────
@@ -607,6 +662,10 @@ model CommercialEvent {
   type        CommercialEventType
   companyName String
   value       Decimal             @db.Decimal(12, 2)
+  // Venda que nasceu de um lead do quadro. Serve pra não lançar a mesma venda
+  // duas vezes: fechou o cartão, o evento aparece sozinho aqui.
+  leadId      String?             @unique
+  lead        Lead?               @relation(fields: [leadId], references: [id], onDelete: Cascade)
   createdAt   DateTime            @default(now())
 
   @@index([type, createdAt])

@@ -7,6 +7,7 @@ export interface LeadDoQuadro {
   companyName: string;
   contactName: string;
   city: string | null;
+  state: string | null;
   phone: string | null;
   channel: LeadChannel;
   stage: LeadStage;

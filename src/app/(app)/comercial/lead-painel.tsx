@@ -116,10 +116,21 @@ export function LeadPainel({ lead, aoFechar }: { lead: LeadDoQuadro | "novo"; ao
             </label>
           </div>
 
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-foreground-muted">Cidade</span>
-            <input name="city" defaultValue={dados?.city ?? ""} className={inputClass} />
-          </label>
+          <div className="grid grid-cols-[1fr_5rem] gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-foreground-muted">Cidade</span>
+              <input name="city" defaultValue={dados?.city ?? ""} className={inputClass} />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-foreground-muted">UF</span>
+              <input
+                name="state"
+                maxLength={2}
+                defaultValue={dados?.state ?? ""}
+                className={`${inputClass} uppercase`}
+              />
+            </label>
+          </div>
 
           <div
             className={`rounded-xl border p-4 flex flex-col gap-3 ${

@@ -440,6 +440,7 @@ function Cartao({
           {lead.city && (
             <span className="inline-flex items-center gap-1 truncate">
               <MapPin size={10} className="shrink-0" /> {lead.city}
+              {lead.state ? `/${lead.state}` : ""}
             </span>
           )}
           {lead.phone && (

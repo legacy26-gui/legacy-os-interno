@@ -324,6 +324,9 @@ model Lead {
   companyName String
   contactName String
   city        String?
+  // UF. Quem chega pelo formulário da landing informa o estado, e sem isso a
+  // cidade fica ambígua — tem São Miguel em meio Brasil.
+  state       String?
   phone       String?
   origin      LeadOrigin?
   channel     LeadChannel @default(ORGANICO)
@@ -359,6 +362,19 @@ model Lead {
   @@index([stage, position])
   @@index([channel, createdAt])
   @@map("leads")
+}
+
+// Cada envio do formulário público, guardado só pra segurar o limite por IP.
+// Fica no banco em vez de na memória porque na Vercel cada requisição pode cair
+// numa instância diferente, e elas reiniciam a cada deploy: contador em memória
+// não segura nada de verdade. Linha com mais de um dia é apagada.
+model TentativaLead {
+  id        String   @id @default(cuid())
+  ip        String
+  createdAt DateTime @default(now())
+
+  @@index([ip, createdAt])
+  @@map("tentativas_lead")
 }
 
 // Quanto cada canal entregou de impressão e consumiu de verba no mês. É o que

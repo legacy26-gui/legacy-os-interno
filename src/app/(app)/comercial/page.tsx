@@ -17,6 +17,7 @@ export default async function ComercialPage() {
     companyName: l.companyName,
     contactName: l.contactName,
     city: l.city,
+    state: l.state,
     phone: l.phone,
     channel: l.channel,
     stage: l.stage,

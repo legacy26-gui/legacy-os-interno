@@ -23,6 +23,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { avisarTodos } from '@/lib/push';
 
 /* ------------------------------------------------------------------ *
  * CORS — sem isso o navegador bloqueia antes de chegar aqui
@@ -273,10 +274,12 @@ function montaProtocolo(id: string | number) {
  * Notificar a equipe
  * Nunca deixar a notificação derrubar a resposta: o lead já está salvo.
  *
- * O sistema ainda não tem canal próprio de aviso (WhatsApp, e-mail ou push).
- * Enquanto não tiver, o aviso sai no log da Vercel e, se existir a variável
- * LEAD_WEBHOOK_URL, vai também num POST pra ela — serve pra plugar Zapier,
- * Make ou API de WhatsApp sem mexer nesta rota de novo.
+ * Caminho principal: push no celular de quem ligou o aviso no Legacy OS. É o
+ * único que acorda alguém de madrugada — lead que só é visto no dia seguinte
+ * já está frio.
+ *
+ * Além disso: log da Vercel sempre, e um POST pra LEAD_WEBHOOK_URL se ela
+ * existir — serve pra plugar Zapier, Make ou API de WhatsApp sem mexer aqui.
  * ------------------------------------------------------------------ */
 
 async function notificar(d: LeadLimpo, protocolo: string, p: string) {
@@ -293,6 +296,22 @@ async function notificar(d: LeadLimpo, protocolo: string, p: string) {
 
   const mensagem = linhas.join('\n');
   console.log(mensagem);
+
+  // O título é o que aparece na tela de bloqueio; o corpo tem o que decide
+  // quem atende primeiro, sem precisar abrir o sistema.
+  await avisarTodos({
+    titulo: `🚗 Lead ${p} · ${d.loja}`,
+    corpo: [
+      `${d.nome} · ${d.cidade}/${d.estado} · ${d.whatsapp}`,
+      `Estoque ${d.estoque} · vende ${d.vendas}/mês`,
+      d.investimento ? `Investe: ${d.investimento}` : `Tráfego pago: ${d.trafego}`,
+      `Desafio: ${d.desafio}`,
+    ].join('\n'),
+    url: '/comercial',
+    // Aviso de lead nunca substitui o anterior: dois leads seguidos são dois
+    // avisos, senão o segundo apaga o primeiro antes de alguém ver.
+    tag: `lead-${protocolo}`,
+  });
 
   const destino = process.env.LEAD_WEBHOOK_URL?.trim();
   if (!destino) return;

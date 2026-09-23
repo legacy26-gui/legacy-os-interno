@@ -6,7 +6,7 @@
 // arquivos estáticos com hash no nome (que nunca mudam de conteúdo) e a
 // página de aviso de offline.
 
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC_CACHE = `legacyos-static-${VERSION}`;
 const OFFLINE_URL = "/offline";
 
@@ -80,4 +80,53 @@ self.addEventListener("fetch", (event) => {
   }
 
   // Todo o resto (RSC, API, dados) passa direto pela rede, sem cache.
+});
+
+// ── Aviso no celular ────────────────────────────────────────────────────────
+// Chega mesmo com o app fechado: quem entrega é o sistema operacional. Serve
+// pra lead novo da landing, que não pode esperar alguém abrir o sistema.
+
+self.addEventListener("push", (event) => {
+  let dados = {};
+  try {
+    dados = event.data ? event.data.json() : {};
+  } catch {
+    dados = { titulo: "Legacy OS", corpo: event.data ? event.data.text() : "" };
+  }
+
+  const titulo = dados.titulo || "Legacy OS";
+  event.waitUntil(
+    self.registration.showNotification(titulo, {
+      body: dados.corpo || "",
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      // Vibra pra chamar atenção mesmo com o celular no bolso.
+      vibrate: [180, 80, 180],
+      // Aviso do mesmo assunto substitui o anterior em vez de empilhar.
+      tag: dados.tag || "legacyos",
+      renotify: true,
+      data: { url: dados.url || "/" },
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const destino = new URL(event.notification.data?.url || "/", self.location.origin).href;
+
+  event.waitUntil(
+    (async () => {
+      const janelas = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      // App já aberto: leva a aba existente pro lugar certo em vez de abrir
+      // outra por cima.
+      for (const janela of janelas) {
+        if ("focus" in janela) {
+          await janela.focus();
+          if ("navigate" in janela) await janela.navigate(destino).catch(() => {});
+          return;
+        }
+      }
+      await self.clients.openWindow(destino);
+    })()
+  );
 });

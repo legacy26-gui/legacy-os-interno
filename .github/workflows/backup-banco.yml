@@ -1,0 +1,102 @@
+# Backup diário do banco, guardado FORA do Neon e FORA da Vercel.
+#
+# A janela de histórico do Neon protege de erro recente (6h no plano grátis,
+# 1 dia no pago). Não protege de problema na conta nem de algo que só se
+# descobre duas semanas depois. Por isso existe esta cópia independente.
+#
+# Precisa de dois segredos no repositório
+# (Settings → Secrets and variables → Actions → New repository secret):
+#   DATABASE_URL        a string de conexão do Neon (a mesma que está na Vercel)
+#   BACKUP_PASSPHRASE   uma senha forte, guardada no seu gerenciador de senhas
+#
+# Sem a senha o arquivo não abre — nem por você. Guarde-a antes de precisar.
+
+name: Backup do banco
+
+on:
+  schedule:
+    # 06:00 UTC = 03:00 em Brasília, quando ninguém está mexendo no sistema.
+    - cron: "0 6 * * *"
+  # Permite rodar na mão pelo botão "Run workflow", pra testar ou pra tirar
+  # uma cópia antes de uma mudança grande.
+  workflow_dispatch:
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Instalar o cliente do Postgres 17
+        # O pg_dump precisa ser igual ou mais novo que o servidor, senão ele
+        # se recusa a rodar. O que vem na imagem do runner é mais antigo.
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+            https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: Conferir a conexão
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Falta o segredo DATABASE_URL no repositório."
+            exit 1
+          fi
+          echo "Servidor: $(psql "$DATABASE_URL" -tAc 'select version()')"
+
+      - name: Gerar o dump
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          ARQUIVO="legacyos-$(date -u +%Y-%m-%d).dump"
+          echo "ARQUIVO=$ARQUIVO" >> "$GITHUB_ENV"
+          # Formato custom (-Fc): já vem compactado e permite restaurar tabela
+          # por tabela. Sem dono e sem permissões, pra restaurar em qualquer
+          # banco novo sem depender dos papéis do Neon.
+          pg_dump "$DATABASE_URL" --no-owner --no-privileges --format=custom --file="$ARQUIVO"
+          ls -lh "$ARQUIVO"
+
+      - name: Conferir que o dump não veio vazio
+        run: |
+          set -euo pipefail
+          TAMANHO=$(stat -c%s "$ARQUIVO")
+          echo "Tamanho: $TAMANHO bytes"
+          # Backup que "deu certo" mas veio vazio é pior que backup que falhou,
+          # porque ninguém percebe até precisar dele.
+          if [ "$TAMANHO" -lt 10240 ]; then
+            echo "::error::Dump com $TAMANHO bytes — pequeno demais pra ser um backup de verdade."
+            exit 1
+          fi
+          # Lista o que entrou, como prova do que foi salvo.
+          pg_restore --list "$ARQUIVO" | grep -c "TABLE DATA" | xargs echo "Tabelas com dados:"
+
+      - name: Criptografar
+        env:
+          SENHA: ${{ secrets.BACKUP_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SENHA" ]; then
+            echo "::error::Falta o segredo BACKUP_PASSPHRASE no repositório."
+            exit 1
+          fi
+          # O arquivo tem dado de cliente: não pode ficar guardado em claro.
+          gpg --batch --yes --symmetric --cipher-algo AES256 \
+              --passphrase "$SENHA" --output "$ARQUIVO.gpg" "$ARQUIVO"
+          rm -f "$ARQUIVO"
+          ls -lh "$ARQUIVO.gpg"
+
+      - name: Guardar
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_id }}
+          path: ${{ env.ARQUIVO }}.gpg
+          retention-days: 30
+          if-no-files-found: error

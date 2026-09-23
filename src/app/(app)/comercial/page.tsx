@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { AtivarAvisos } from "@/components/ativar-avisos";
 import { AbasComercial } from "./abas";
 import { QuadroCrm } from "./quadro";
 import type { LeadDoQuadro } from "./tipos";
@@ -39,7 +40,10 @@ export default async function ComercialPage() {
           <h1 className="text-xl font-semibold">Comercial</h1>
           <p className="text-sm text-foreground-muted mt-0.5">Funil de vendas da agência</p>
         </div>
-        <AbasComercial />
+        <div className="flex items-center gap-2">
+          <AtivarAvisos />
+          <AbasComercial />
+        </div>
       </div>
 
       <QuadroCrm leads={doQuadro} />

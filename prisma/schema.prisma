@@ -42,6 +42,7 @@ model User {
   playbooks        Playbook[]
   agendaItems      AgendaItem[]     @relation("AgendaOwner")
   salesRegistered  ClientSale[]     @relation("SaleCreator")
+  pushSubscriptions PushSubscription[]
 
   @@map("users")
 }
@@ -362,6 +363,23 @@ model Lead {
   @@index([stage, position])
   @@index([channel, createdAt])
   @@map("leads")
+}
+
+// Aparelho que aceitou receber aviso do Legacy OS. É o navegador quem gera o
+// endereço e as chaves; guardamos pra conseguir empurrar a notificação depois,
+// mesmo com o app fechado. Assinatura que o navegador cancela vira 404/410 no
+// envio e é apagada na hora.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@map("push_subscriptions")
 }
 
 // Cada envio do formulário público, guardado só pra segurar o limite por IP.

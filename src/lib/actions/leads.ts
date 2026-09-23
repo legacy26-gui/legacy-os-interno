@@ -2,8 +2,10 @@
 
 import * as z from "zod";
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { avisarMetaDaEtapa } from "@/lib/meta-capi";
 import type { LeadStage } from "@/generated/prisma/enums";
 
 const CANAIS = ["META", "PRESENCIAL", "REDE", "MESA_LOJISTA", "ORGANICO"] as const;
@@ -83,6 +85,7 @@ export async function updateLead(
 
   const lead = await prisma.lead.update({ where: { id: leadId }, data: parsed.data });
   await sincronizarEventoDaVenda(lead);
+  after(() => avisarMetaDaEtapa(leadId).catch((e) => console.error("[meta] aviso falhou", e)));
   revalidar();
   return { ok: true };
 }
@@ -156,6 +159,10 @@ export async function moverLead(leadId: string, etapa: string, indice: number) {
   });
 
   await sincronizarEventoDaVenda(atualizado);
+  // A Meta precisa saber que o lead andou no funil — é o que faz o anúncio
+  // otimizar por venda em vez de por formulário preenchido. Roda DEPOIS da
+  // resposta: arrastar cartão não pode ficar esperando a Meta responder.
+  after(() => avisarMetaDaEtapa(leadId).catch((e) => console.error("[meta] aviso falhou", e)));
   revalidar();
 }
 

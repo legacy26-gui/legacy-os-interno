@@ -355,14 +355,47 @@ model Lead {
   setupValue     Decimal @default(0) @db.Decimal(12, 2)
   contractMonths Int     @default(12)
 
+  // Rastro do anúncio, pra Meta conseguir ligar este lead ao clique que o
+  // trouxe. Sem isso a Conversions API manda evento que não casa com ninguém e
+  // o anúncio continua otimizando no escuro.
+  fbclid          String?
+  fbc             String?
+  fbp             String?
+  landingUrl      String?
+  clientIp        String?
+  clientUserAgent String?
+  // O mesmo id que o Pixel usou no navegador. É ele que faz a Meta entender
+  // que o evento do site e o nosso são o mesmo lead, e não dois.
+  pixelEventId    String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  saleEvent CommercialEvent?
+  saleEvent  CommercialEvent?
+  metaEvents MetaCapiEvent[]
 
   @@index([stage, position])
   @@index([channel, createdAt])
   @@map("leads")
+}
+
+// Cada aviso mandado pra Meta pela Conversions API. Existe porque envio de
+// evento é invisível: sem registro, ninguém descobre que parou de funcionar
+// até o anúncio começar a otimizar errado. Também segura a repetição — evento
+// já enviado com sucesso não vai de novo.
+model MetaCapiEvent {
+  id        String   @id @default(cuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  eventName String
+  eventId   String
+  sucesso   Boolean  @default(false)
+  resposta  String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@unique([leadId, eventName])
+  @@index([createdAt])
+  @@map("meta_capi_events")
 }
 
 // Aparelho que aceitou receber aviso do Legacy OS. É o navegador quem gera o

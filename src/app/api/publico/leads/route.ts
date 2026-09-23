@@ -21,9 +21,10 @@
  * chave colocada nela ficaria visível no navegador do visitante.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { avisarTodos } from '@/lib/push';
+import { enviarEventoMeta } from '@/lib/meta-capi';
 
 /* ------------------------------------------------------------------ *
  * CORS — sem isso o navegador bloqueia antes de chegar aqui
@@ -116,6 +117,8 @@ type LeadLimpo = {
   utmSource: string; utmMedium: string; utmCampaign: string;
   utmContent: string; utmTerm: string; utmId: string; src: string;
   pagina: string; referencia: string; enviadoEm: Date;
+  // Rastro do clique no anúncio e o id que o Pixel usou no navegador.
+  fbclid: string; fbc: string; fbp: string; eventId: string;
 };
 
 function texto(v: unknown, max = 120) {
@@ -172,6 +175,13 @@ function valida(corpo: Record<string, unknown> | null): Resultado {
       pagina: texto(corpo?.pagina, 400),
       referencia: texto(corpo?.referencia, 400),
       enviadoEm: new Date(),
+      fbclid: texto(corpo?.fbclid, 500),
+      fbc: texto(corpo?.fbc, 500),
+      fbp: texto(corpo?.fbp, 200),
+      // O Pixel já disparou "Lead" no navegador com este id. Mandar o mesmo id
+      // no evento do servidor é o que faz a Meta entender que é UM lead, e não
+      // dois — sem isso o CPL sai pela metade do que é de verdade.
+      eventId: texto(corpo?.event_id, 100),
     },
   };
 }
@@ -215,9 +225,17 @@ function prioridade(d: LeadLimpo): 'alta' | 'media' | 'baixa' {
  * landing é lead, e tem que aparecer no mesmo funil do resto.
  * ------------------------------------------------------------------ */
 
+// A Meta quer o endereço completo da página onde o lead aconteceu. A landing
+// manda o caminho; se vier só isso, completa com o domínio dela.
+function enderecoDaPagina(pagina: string) {
+  if (!pagina) return 'https://legacyautomotivo.com.br/';
+  if (/^https?:\/\//i.test(pagina)) return pagina;
+  return `https://legacyautomotivo.com.br${pagina.startsWith('/') ? '' : '/'}${pagina}`;
+}
+
 async function salvarLead(
   d: LeadLimpo,
-  extra: { ip: string; prioridade: string; canal: 'META' | 'ORGANICO' }
+  extra: { ip: string; prioridade: string; canal: 'META' | 'ORGANICO'; userAgent: string | null }
 ) {
   // Entra no topo da coluna "Lead", igual ao que é cadastrado na mão — é onde
   // o olho procura quem acabou de chegar.
@@ -238,11 +256,24 @@ async function salvarLead(
       channel: extra.canal, // META ou ORGANICO, conforme a UTM
       position: (primeiro?.position ?? 0) - 1,
       notes: resumo(d, extra),
+      // Guardado pra Conversions API conseguir casar este lead com o clique
+      // que o trouxe, agora e nas etapas seguintes do funil.
+      fbclid: d.fbclid || null,
+      fbc: d.fbc || null,
+      fbp: d.fbp || null,
+      pixelEventId: d.eventId || null,
+      landingUrl: enderecoDaPagina(d.pagina),
+      clientIp: extra.ip !== 'desconhecido' ? extra.ip : null,
+      clientUserAgent: extra.userAgent,
     },
-    select: { id: true },
+    select: {
+      id: true, contactName: true, phone: true, city: true, state: true,
+      fbc: true, fbp: true, fbclid: true, landingUrl: true,
+      clientIp: true, clientUserAgent: true, pixelEventId: true,
+    },
   });
 
-  return lead.id;
+  return lead;
 }
 
 /* Os campos de qualificação não existem no modelo de lead do CRM e não vale
@@ -373,19 +404,31 @@ export async function POST(req: NextRequest) {
   const p = prioridade(dados);
   const c = canal(dados);
 
-  let id: string | number;
+  let lead: Awaited<ReturnType<typeof salvarLead>>;
   try {
-    id = await salvarLead(dados, { ip, prioridade: p, canal: c });
+    lead = await salvarLead(dados, {
+      ip,
+      prioridade: p,
+      canal: c,
+      userAgent: req.headers.get('user-agent')?.slice(0, 500) ?? null,
+    });
   } catch (e) {
     console.error('[lead-publico] falha ao salvar', e);
     // 5xx faz a landing cair no plano B do WhatsApp — o lead não se perde.
     return NextResponse.json({ erro: 'falha ao gravar' }, { status: 500, headers: cors });
   }
 
-  const protocolo = montaProtocolo(id);
+  const protocolo = montaProtocolo(lead.id);
 
-  // Notificação não bloqueia a resposta nem derruba o lead já salvo.
-  notificar(dados, protocolo, p).catch((e) => console.error('[lead-publico] notificação falhou', e));
+  // Aviso e Meta rodam DEPOIS da resposta: a landing recebe o protocolo na
+  // hora, e nenhum dos dois derruba o lead que já está salvo.
+  after(async () => {
+    await notificar(dados, protocolo, p).catch((e) => console.error('[lead-publico] notificação falhou', e));
+    // Lead sem rastro de anúncio não tem o que casar na Meta.
+    if (dados.fbc || dados.fbp || dados.fbclid) {
+      await enviarEventoMeta(lead, 'Lead').catch((e) => console.error('[lead-publico] Meta falhou', e));
+    }
+  });
 
   return NextResponse.json({ protocolo }, { status: 201, headers: cors });
 }

@@ -36,6 +36,7 @@ import { AbasComercial } from "../abas";
 import { DeleteEventoButton } from "../delete-evento-button";
 import { SalesGoalForm } from "../sales-goal-form";
 import { VerbaForm } from "./verba-form";
+import { StatusMeta } from "./status-meta";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -314,6 +315,9 @@ export default async function ComercialDashboardPage({
         </div>
         <VerbaForm month={month} linhas={verba} />
       </div>
+
+      {/* ── A Meta está recebendo? ──────────────────────────────────────── */}
+      <StatusMeta />
 
       {/* ── Meta e eventos (o que já existia) ───────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

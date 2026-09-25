@@ -1,6 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { PAYMENT_DAYS } from "@/lib/labels";
+import { CARTEIRA_COBRAVEL } from "@/lib/carteira";
 import type { RevenueModel } from "@/generated/prisma/models";
 
 // Marca as receitas geradas automaticamente a partir do MRR, para diferenciar
@@ -19,8 +20,10 @@ function dueDateForMonth(ref: Date, dueDay: number | null) {
   return new Date(Date.UTC(year, month, day));
 }
 
-// Garante que todo cliente ativo com mensalidade tenha uma receita "[MRR]"
-// lançada para o mês de referência (idempotente — não duplica se já existir).
+// Garante que todo cliente da carteira com mensalidade tenha uma receita
+// "[MRR]" lançada para o mês de referência (idempotente — não duplica se já
+// existir). Quem foi tirado do fluxo na mão (billingActive = false) não gera
+// cobrança, mas continua contando no faturamento.
 export async function ensureMonthlyMrrRevenues(ref: Date = new Date()): Promise<number> {
   const monthStart = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), 1));
   const monthEnd = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 1));
@@ -28,7 +31,7 @@ export async function ensureMonthlyMrrRevenues(ref: Date = new Date()): Promise<
 
   const [clients, existing] = await Promise.all([
     prisma.client.findMany({
-      where: { status: "ATIVO", monthlyValue: { gt: 0 }, billingActive: true },
+      where: { ...CARTEIRA_COBRAVEL, monthlyValue: { gt: 0 } },
       select: { id: true, monthlyValue: true, dueDay: true },
     }),
     prisma.revenue.findMany({

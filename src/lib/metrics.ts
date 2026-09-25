@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { CARTEIRA } from "@/lib/carteira";
 
 function monthRange(month: string) {
   const [y, m] = month.split("-").map(Number);
@@ -23,7 +24,9 @@ export async function getFinanceOverview(refDate = new Date()) {
     dueToday,
     dueSoon,
   ] = await Promise.all([
-      prisma.client.findMany({ where: { status: "ATIVO", billingActive: true } }),
+      // Carteira inteira: tirar alguém do fluxo de cobrança não pode apagar o
+      // cliente do faturamento, e cliente pausado continua sendo cliente.
+      prisma.client.findMany({ where: CARTEIRA }),
       // Faturado do mês = cobranças daquele mês que já foram confirmadas
       // ("Confirmar"/"marcar como pago"). Usa dueDate — e não paidDate — pra
       // que dar baixa retroativa num mês passado entre no faturado daquele

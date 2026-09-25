@@ -3,7 +3,7 @@ import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckC
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { getFinanceOverview, getRevenueByClient, getRevenueByCity } from "@/lib/metrics";
-import { formatCurrency, formatDate, REVENUE_STATUS_LABELS, REVENUE_STATUS_COLORS } from "@/lib/labels";
+import { formatCurrency, formatDate, REVENUE_STATUS_LABELS, REVENUE_STATUS_COLORS, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/lib/labels";
 import {
   markRevenuePaid,
   deleteRevenue,
@@ -15,6 +15,7 @@ import {
 } from "@/lib/actions/financeiro";
 import { ensureMonthlyMrrRevenues, getMonthlyMrrRevenues } from "@/lib/mrr-revenue";
 import { ensureMonthlyFixedExpenses } from "@/lib/fixed-expenses";
+import { CARTEIRA } from "@/lib/carteira";
 import { RevenueForm } from "../revenue-form";
 import { ExpenseForm } from "../expense-form";
 import { FixedExpenseForm } from "../fixed-expense-form";
@@ -66,8 +67,8 @@ export default async function FinanceiroPage({
     prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } }, orderBy: { date: "asc" } }),
     prisma.fixedExpense.findMany({ orderBy: { description: "asc" } }),
     prisma.client.findMany({
-      where: { billingActive: false, status: "ATIVO" },
-      select: { id: true, companyName: true, monthlyValue: true },
+      where: { ...CARTEIRA, billingActive: false },
+      select: { id: true, companyName: true, monthlyValue: true, status: true },
       orderBy: { companyName: "asc" },
     }),
   ]);
@@ -186,13 +187,24 @@ export default async function FinanceiroPage({
       {excludedFromBilling.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3">
           <div>
-            <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Excluídos do fluxo de pagamento</p>
-            <p className="text-xs text-foreground-muted mt-0.5">Clientes ativos que não entram mais na cobrança mensal automática.</p>
+            <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Fora da cobrança mensal</p>
+            <p className="text-xs text-foreground-muted mt-0.5">
+              Não recebem a cobrança automática do mês — mas <strong className="text-foreground">continuam
+              contando no faturamento</strong>, porque ainda são clientes da casa. Só sai do faturamento quem
+              for cancelado.
+            </p>
           </div>
           <div className="flex flex-col divide-y divide-border">
             {excludedFromBilling.map((c) => (
               <div key={c.id} className="flex items-center justify-between gap-2 py-2 text-sm">
-                <span>{c.companyName}</span>
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="truncate">{c.companyName}</span>
+                  {c.status !== "ATIVO" && (
+                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CLIENT_STATUS_COLORS[c.status]}`}>
+                      {CLIENT_STATUS_LABELS[c.status]}
+                    </span>
+                  )}
+                </span>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-foreground-muted">{formatCurrency(c.monthlyValue.toString())}</span>
                   <form action={includeClientInBilling.bind(null, c.id)}>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { CARTEIRA } from "@/lib/carteira";
 
 const MRR_TAG = "[MRR]";
 
@@ -22,12 +23,12 @@ export async function GET(request: NextRequest) {
 
   const [activeClients, excludedFromBilling, mrrRevenues] = await Promise.all([
     prisma.client.findMany({
-      where: { status: "ATIVO", billingActive: true },
+      where: { ...CARTEIRA, billingActive: true },
       select: { id: true, companyName: true, monthlyValue: true },
       orderBy: { companyName: "asc" },
     }),
     prisma.client.findMany({
-      where: { status: "ATIVO", billingActive: false },
+      where: { ...CARTEIRA, billingActive: false },
       select: { companyName: true, monthlyValue: true },
       orderBy: { companyName: "asc" },
     }),

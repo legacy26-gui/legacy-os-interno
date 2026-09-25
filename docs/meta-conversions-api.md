@@ -17,7 +17,19 @@ pra Meta o que aconteceu com aquela pessoa.
 | Cartão chegou em Fechado | `Purchase` | `system_generated` | mensalidade × meses + entrada |
 
 O `Lead` é `website` porque aconteceu no site de verdade. Os outros dois
-nascem aqui dentro, então são `system_generated`.
+nascem aqui dentro, então são `system_generated` e seguem o guia de leads
+qualificados da Meta: vão com `custom_data.event_source: "crm"` e
+`custom_data.lead_event_source: "Legacy OS"`. Sem esses dois campos a Meta não
+trata o evento como vindo de CRM.
+
+O `event_time` é a hora em que o marco aconteecu de verdade (quando o cartão
+mudou de coluna), não a hora do envio. A Meta descarta evento com mais de 7
+dias, então um marco mais antigo que isso é puxado pra dentro da janela em vez
+de se perder — cartão que ficou parado um mês ainda conta.
+
+Não mandamos `lead_id` (isso é dos formulários nativos da Meta; os nossos leads
+vêm do site) nem `em` (não coletamos e-mail, de propósito). A correspondência
+vai por telefone com hash, `fbc` e `fbp`.
 
 Todos levam `event_source_url`, o `fbc` e o `fbp` guardados no lead, e o
 telefone com SHA-256 em E.164 sem o `+` (`5542999016794`) — é assim que a Meta

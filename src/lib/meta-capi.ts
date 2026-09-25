@@ -119,6 +119,19 @@ export interface ResultadoEnvio {
   motivo?: string;
 }
 
+// A Meta descarta evento com mais de 7 dias. Mandamos a hora em que o marco
+// aconteceu de verdade — é o que descreve o funil com honestidade — mas
+// puxamos pra dentro da janela quando o cartão ficou parado tempo demais, pra
+// não perder o evento inteiro. Data no futuro também não existe.
+const JANELA_DA_META_MS = 7 * 24 * 60 * 60 * 1000;
+
+function momentoDoEvento(quando?: Date | null) {
+  const agora = Date.now();
+  const limite = agora - JANELA_DA_META_MS + 60_000; // um minuto de folga
+  const escolhido = quando ? Math.min(quando.getTime(), agora) : agora;
+  return Math.floor(Math.max(escolhido, limite) / 1000);
+}
+
 /**
  * Manda um evento pra Meta. Nunca lança: falar com a Meta não pode derrubar o
  * CRM. O resultado fica gravado em meta_capi_events pra dar pra conferir depois.
@@ -128,7 +141,7 @@ export interface ResultadoEnvio {
 export async function enviarEventoMeta(
   lead: DadosDoLead,
   evento: EventoMeta,
-  opcoes: { valor?: number; moeda?: string } = {}
+  opcoes: { valor?: number; moeda?: string; quando?: Date | null } = {}
 ): Promise<ResultadoEnvio> {
   if (!metaConfigurada()) {
     console.warn(`[meta] sem META_PIXEL_ID/META_CAPI_TOKEN — ${evento} não enviado`);
@@ -146,7 +159,7 @@ export async function enviarEventoMeta(
 
   const dados: Record<string, unknown> = {
     event_name: evento,
-    event_time: Math.floor(Date.now() / 1000),
+    event_time: momentoDoEvento(opcoes.quando),
     event_id: eventId,
     // O Lead aconteceu no site; qualificação e venda acontecem aqui dentro.
     action_source: naWeb ? "website" : "system_generated",
@@ -154,9 +167,19 @@ export async function enviarEventoMeta(
   };
 
   if (lead.landingUrl) dados.event_source_url = lead.landingUrl;
-  if (opcoes.valor && opcoes.valor > 0) {
-    dados.custom_data = { value: Number(opcoes.valor.toFixed(2)), currency: opcoes.moeda ?? "BRL" };
+
+  const custom: Record<string, unknown> = {};
+  if (!naWeb) {
+    // O guia de leads qualificados pede que o evento diga de onde veio a
+    // mudança de estágio. Sem isso a Meta não trata como evento de CRM.
+    custom.event_source = "crm";
+    custom.lead_event_source = "Legacy OS";
   }
+  if (opcoes.valor && opcoes.valor > 0) {
+    custom.value = Number(opcoes.valor.toFixed(2));
+    custom.currency = opcoes.moeda ?? "BRL";
+  }
+  if (Object.keys(custom).length) dados.custom_data = custom;
 
   const corpo: Record<string, unknown> = { data: [dados] };
   // Só em teste: faz o evento aparecer na aba "Eventos de teste" do Gerenciador.
@@ -222,13 +245,15 @@ export async function avisarMetaDaEtapa(leadId: string) {
   // clique pra casar, e evento sem par só suja a conta.
   if (!lead.fbc && !lead.fbp && !lead.fbclid) return;
 
-  if (lead.qualifiedAt) await enviarEventoMeta(lead, "QualifiedLead");
+  // A hora que vai no evento é a do marco, não a de agora: o que interessa pra
+  // Meta é quando o lead virou de estágio.
+  if (lead.qualifiedAt) await enviarEventoMeta(lead, "QualifiedLead", { quando: lead.qualifiedAt });
 
   if (lead.wonAt) {
     // Valor do contrato: o que entra por mês durante o contrato, mais a
     // entrada. É esse número que a Meta usa pra otimizar por retorno.
     const valor =
       Number(lead.monthlyValue) * lead.contractMonths + Number(lead.setupValue);
-    await enviarEventoMeta(lead, "Purchase", { valor });
+    await enviarEventoMeta(lead, "Purchase", { valor, quando: lead.wonAt });
   }
 }

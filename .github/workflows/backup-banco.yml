@@ -39,7 +39,11 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
           sudo apt-get install -y -qq postgresql-client-17
-          pg_dump --version
+          # O runner já vem com o cliente 16 e ele continua ganhando no PATH.
+          # Apontar pro caminho exato é o que garante que o dump use o 17 —
+          # pg_dump mais velho que o servidor se recusa a rodar.
+          echo "PG_BIN=/usr/lib/postgresql/17/bin" >> "$GITHUB_ENV"
+          /usr/lib/postgresql/17/bin/pg_dump --version
 
       - name: Conferir a conexão
         env:
@@ -49,7 +53,7 @@ jobs:
             echo "::error::Falta o segredo DATABASE_URL no repositório."
             exit 1
           fi
-          echo "Servidor: $(psql "$DATABASE_URL" -tAc 'select version()')"
+          echo "Servidor: $("$PG_BIN/psql" "$DATABASE_URL" -tAc 'select version()')"
 
       - name: Gerar o dump
         env:
@@ -61,7 +65,7 @@ jobs:
           # Formato custom (-Fc): já vem compactado e permite restaurar tabela
           # por tabela. Sem dono e sem permissões, pra restaurar em qualquer
           # banco novo sem depender dos papéis do Neon.
-          pg_dump "$DATABASE_URL" --no-owner --no-privileges --format=custom --file="$ARQUIVO"
+          "$PG_BIN/pg_dump" "$DATABASE_URL" --no-owner --no-privileges --format=custom --file="$ARQUIVO"
           ls -lh "$ARQUIVO"
 
       - name: Conferir que o dump não veio vazio
@@ -76,7 +80,7 @@ jobs:
             exit 1
           fi
           # Lista o que entrou, como prova do que foi salvo.
-          pg_restore --list "$ARQUIVO" | grep -c "TABLE DATA" | xargs echo "Tabelas com dados:"
+          "$PG_BIN/pg_restore" --list "$ARQUIVO" | grep -c "TABLE DATA" | xargs echo "Tabelas com dados:"
 
       - name: Criptografar
         env:

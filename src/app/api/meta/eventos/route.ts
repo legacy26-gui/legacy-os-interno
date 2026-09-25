@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { metaConfigurada, enviarEventoMeta, avisarMetaDaEtapa, telefoneParaMeta } from "@/lib/meta-capi";
+import { metaConfigurada, pixelId, enviarEventoMeta, avisarMetaDaEtapa, telefoneParaMeta } from "@/lib/meta-capi";
 
 // Conferência da Conversions API, protegida pelo SETUP_SECRET.
 //
@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     configurada: metaConfigurada(),
-    pixelId: process.env.META_PIXEL_ID?.trim() ?? null,
+    pixelId: pixelId(),
     tokenConfigurado: !!process.env.META_CAPI_TOKEN?.trim(),
     versaoDaApi: process.env.META_API_VERSION?.trim() || "v21.0",
     modoDeTeste: !!process.env.META_TEST_EVENT_CODE?.trim(),

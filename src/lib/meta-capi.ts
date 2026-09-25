@@ -16,8 +16,18 @@ const BASE = process.env.META_GRAPH_BASE?.trim() || "https://graph.facebook.com"
 
 export type EventoMeta = "Lead" | "QualifiedLead" | "Purchase";
 
+// Pixel da Legacy Automotivo (conjunto de dados "Serviços profissionais"). Não
+// é segredo — ele já aparece no código da landing. Fica aqui como padrão pra
+// que só o token, que é segredo de verdade, precise ser configurado.
+// META_PIXEL_ID sobrepõe, se um dia o Pixel mudar.
+const PIXEL_PADRAO = "1795537647563349";
+
+export function pixelId() {
+  return process.env.META_PIXEL_ID?.trim() || PIXEL_PADRAO;
+}
+
 export function metaConfigurada() {
-  return !!(process.env.META_PIXEL_ID?.trim() && process.env.META_CAPI_TOKEN?.trim());
+  return !!(pixelId() && process.env.META_CAPI_TOKEN?.trim());
 }
 
 /** SHA-256 em minúsculo, que é o formato que a Meta espera. */
@@ -158,7 +168,7 @@ export async function enviarEventoMeta(
 
   try {
     const r = await fetch(
-      `${BASE}/${VERSAO}/${process.env.META_PIXEL_ID!.trim()}/events?access_token=${encodeURIComponent(
+      `${BASE}/${VERSAO}/${pixelId()}/events?access_token=${encodeURIComponent(
         process.env.META_CAPI_TOKEN!.trim()
       )}`,
       {

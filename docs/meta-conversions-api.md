@@ -51,8 +51,8 @@ vezes. O sistema também guarda o que já enviou e não repete.
 
 | Variável | O que é |
 |---|---|
-| `META_PIXEL_ID` | O ID do Pixel/Dataset |
-| `META_CAPI_TOKEN` | Token de acesso gerado no Gerenciador de Eventos |
+| `META_CAPI_TOKEN` | **A única obrigatória.** Token de acesso gerado no Gerenciador de Eventos |
+| `META_PIXEL_ID` | Opcional. O padrão já é `1795537647563349` (conjunto "Serviços profissionais"). Só preencha se o Pixel mudar |
 | `META_TEST_EVENT_CODE` | **Só em teste.** Faz o evento aparecer na aba "Eventos de teste". Remover depois |
 | `META_API_VERSION` | Opcional. Padrão `v21.0` |
 
@@ -73,6 +73,12 @@ só não sai evento.
 
 ## Detalhes que importam
 
+- **O IP e o navegador mandados são os do visitante**, lidos dos cabeçalhos da
+  requisição que a landing faz pelo navegador do lojista — nunca os do nosso
+  servidor. A ordem de leitura é `x-vercel-forwarded-for` (escrito pela Vercel,
+  não dá pra forjar), depois `x-forwarded-for` e `x-real-ip`. Os eventos de
+  estágio reusam o IP e o navegador guardados na hora do cadastro: são da
+  pessoa, não de quem arrastou o cartão.
 - **Lead sem rastro de anúncio não vira evento.** Quem chegou por indicação ou
   presencialmente não tem clique pra casar; mandar assim só sujaria a conta.
 - Se a landing mandar `fbclid` mas não `fbc`, o sistema remonta o `fbc` no

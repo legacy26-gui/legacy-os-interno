@@ -53,6 +53,30 @@ export async function OPTIONS(req: NextRequest) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Quem está do outro lado
+ *
+ * O IP e o navegador que a Meta precisa são os DO VISITANTE, não os do nosso
+ * servidor. Como a landing chama esta rota do navegador do lojista, eles vêm
+ * nos cabeçalhos da própria requisição.
+ *
+ * `x-vercel-forwarded-for` vem primeiro porque é a Vercel que escreve: o
+ * `x-forwarded-for` comum pode ser forjado por quem manda o POST.
+ * ------------------------------------------------------------------ */
+
+function ipDoVisitante(req: NextRequest) {
+  const candidatos = [
+    req.headers.get('x-vercel-forwarded-for'),
+    req.headers.get('x-forwarded-for')?.split(',')[0],
+    req.headers.get('x-real-ip'),
+  ];
+  for (const c of candidatos) {
+    const ip = c?.trim();
+    if (ip) return ip;
+  }
+  return 'desconhecido';
+}
+
+/* ------------------------------------------------------------------ *
  * Limite de envio por IP
  * Fica no Postgres, não na memória: na Vercel cada requisição pode cair numa
  * instância diferente, e elas reiniciam a cada deploy — contador em memória
@@ -377,7 +401,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ erro: 'origem não autorizada' }, { status: 403, headers: cors });
   }
 
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'desconhecido';
+  const ip = ipDoVisitante(req);
   if (await passouDoLimite(ip)) {
     return NextResponse.json({ erro: 'muitos envios' }, { status: 429, headers: cors });
   }

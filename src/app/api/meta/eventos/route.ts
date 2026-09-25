@@ -6,6 +6,10 @@ import { metaConfigurada, pixelId, enviarEventoMeta, avisarMetaDaEtapa, telefone
 //
 //   GET  ?key=...                 → configuração e últimos envios
 //   POST ?key=...&lead=<id>       → reenvia os eventos daquele lead
+//   POST ?key=...&lead=<id>&ajustar_data=1
+//        → manda mesmo se o marco for mais velho que 7 dias, com a data puxada
+//          pro limite da janela. É pra carga histórica, e só: a data chega
+//          imprecisa e a Meta pode creditar a conversão ao clique errado.
 //
 // Existe porque envio de evento é invisível: sem isso, só se descobre que
 // parou de funcionar quando o anúncio já está otimizando errado.
@@ -77,8 +81,11 @@ export async function POST(request: NextRequest) {
   // o que falhou.
   await prisma.metaCapiEvent.deleteMany({ where: { leadId } });
 
+  // Escolha consciente de quem chama: sem isso, marco velho não é enviado.
+  const ajustarData = request.nextUrl.searchParams.get("ajustar_data") === "1";
+
   const resultado = await enviarEventoMeta(lead, "Lead");
-  await avisarMetaDaEtapa(leadId);
+  await avisarMetaDaEtapa(leadId, { ajustarData });
 
   const registros = await prisma.metaCapiEvent.findMany({
     where: { leadId },
@@ -87,6 +94,7 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({
     lead: lead.companyName,
+    dataAjustada: ajustarData,
     telefoneParaMeta: telefoneParaMeta(lead.phone),
     temRastro: !!(lead.fbc || lead.fbp || lead.fbclid),
     leadEnviado: resultado,

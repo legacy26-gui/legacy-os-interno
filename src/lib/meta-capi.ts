@@ -119,17 +119,33 @@ export interface ResultadoEnvio {
   motivo?: string;
 }
 
-// A Meta descarta evento com mais de 7 dias. Mandamos a hora em que o marco
-// aconteceu de verdade — é o que descreve o funil com honestidade — mas
-// puxamos pra dentro da janela quando o cartão ficou parado tempo demais, pra
-// não perder o evento inteiro. Data no futuro também não existe.
+// A Meta só aceita evento dos últimos 7 dias, e usa o event_time pra decidir a
+// qual clique creditar a conversão.
+//
+// Por isso NÃO empurramos marco antigo pra dentro da janela por padrão: a data
+// chegaria falsa, a conversão poderia ser creditada ao anúncio errado e a
+// otimização aprenderia torto — sem ninguém perceber. Melhor não mandar e
+// deixar o motivo visível.
+//
+// No dia a dia isso nunca acontece: o evento sai no instante em que o cartão
+// muda de coluna. O caso real é carga histórica, e aí quem manda escolhe
+// conscientemente (`ajustarData`), sabendo que aquela leva chega com data
+// imprecisa.
 const JANELA_DA_META_MS = 7 * 24 * 60 * 60 * 1000;
 
-function momentoDoEvento(quando?: Date | null) {
+type Momento = { ok: true; timestamp: number } | { ok: false; diasDeIdade: number };
+
+function momentoDoEvento(quando: Date | null | undefined, ajustarData: boolean): Momento {
   const agora = Date.now();
+  if (!quando) return { ok: true, timestamp: Math.floor(agora / 1000) };
+
+  // Data no futuro não existe: relógio torto vira "agora".
+  const escolhido = Math.min(quando.getTime(), agora);
   const limite = agora - JANELA_DA_META_MS + 60_000; // um minuto de folga
-  const escolhido = quando ? Math.min(quando.getTime(), agora) : agora;
-  return Math.floor(Math.max(escolhido, limite) / 1000);
+
+  if (escolhido >= limite) return { ok: true, timestamp: Math.floor(escolhido / 1000) };
+  if (ajustarData) return { ok: true, timestamp: Math.floor(limite / 1000) };
+  return { ok: false, diasDeIdade: Math.floor((agora - escolhido) / 86_400_000) };
 }
 
 /**
@@ -141,7 +157,7 @@ function momentoDoEvento(quando?: Date | null) {
 export async function enviarEventoMeta(
   lead: DadosDoLead,
   evento: EventoMeta,
-  opcoes: { valor?: number; moeda?: string; quando?: Date | null } = {}
+  opcoes: { valor?: number; moeda?: string; quando?: Date | null; ajustarData?: boolean } = {}
 ): Promise<ResultadoEnvio> {
   if (!metaConfigurada()) {
     console.warn(`[meta] sem META_PIXEL_ID/META_CAPI_TOKEN — ${evento} não enviado`);
@@ -157,9 +173,27 @@ export async function enviarEventoMeta(
   const eventId = idDoEvento(lead, evento);
   const naWeb = evento === "Lead";
 
+  // Marco velho demais: não manda com data inventada. Registra o porquê, pra
+  // aparecer no painel em vez de virar silêncio.
+  const momento = momentoDoEvento(opcoes.quando, opcoes.ajustarData ?? false);
+  if (!momento.ok) {
+    const motivo =
+      `Marco de ${momento.diasDeIdade} dias atrás — fora da janela de 7 dias da Meta. ` +
+      `Não enviado pra não mandar data falsa, que faria a conversão ser creditada ao anúncio errado.`;
+    console.warn(`[meta] ${evento} do lead ${lead.id} ignorado: ${motivo}`);
+    await prisma.metaCapiEvent
+      .upsert({
+        where: { leadId_eventName: { leadId: lead.id, eventName: evento } },
+        create: { leadId: lead.id, eventName: evento, eventId, sucesso: false, resposta: motivo },
+        update: { eventId, sucesso: false, resposta: motivo, createdAt: new Date() },
+      })
+      .catch(() => {});
+    return { enviado: false, motivo };
+  }
+
   const dados: Record<string, unknown> = {
     event_name: evento,
-    event_time: momentoDoEvento(opcoes.quando),
+    event_time: momento.timestamp,
     event_id: eventId,
     // O Lead aconteceu no site; qualificação e venda acontecem aqui dentro.
     action_source: naWeb ? "website" : "system_generated",
@@ -227,7 +261,7 @@ export async function enviarEventoMeta(
  * movimento de cartão. Não espera resposta de propósito em quem chama: o CRM
  * não pode ficar lento por causa de anúncio.
  */
-export async function avisarMetaDaEtapa(leadId: string) {
+export async function avisarMetaDaEtapa(leadId: string, opcoes: { ajustarData?: boolean } = {}) {
   if (!metaConfigurada()) return;
 
   const lead = await prisma.lead.findUnique({
@@ -247,13 +281,14 @@ export async function avisarMetaDaEtapa(leadId: string) {
 
   // A hora que vai no evento é a do marco, não a de agora: o que interessa pra
   // Meta é quando o lead virou de estágio.
-  if (lead.qualifiedAt) await enviarEventoMeta(lead, "QualifiedLead", { quando: lead.qualifiedAt });
+  if (lead.qualifiedAt)
+    await enviarEventoMeta(lead, "QualifiedLead", { quando: lead.qualifiedAt, ...opcoes });
 
   if (lead.wonAt) {
     // Valor do contrato: o que entra por mês durante o contrato, mais a
     // entrada. É esse número que a Meta usa pra otimizar por retorno.
     const valor =
       Number(lead.monthlyValue) * lead.contractMonths + Number(lead.setupValue);
-    await enviarEventoMeta(lead, "Purchase", { valor, quando: lead.wonAt });
+    await enviarEventoMeta(lead, "Purchase", { valor, quando: lead.wonAt, ...opcoes });
   }
 }

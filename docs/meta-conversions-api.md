@@ -22,10 +22,20 @@ qualificados da Meta: vão com `custom_data.event_source: "crm"` e
 `custom_data.lead_event_source: "Legacy OS"`. Sem esses dois campos a Meta não
 trata o evento como vindo de CRM.
 
-O `event_time` é a hora em que o marco aconteecu de verdade (quando o cartão
-mudou de coluna), não a hora do envio. A Meta descarta evento com mais de 7
-dias, então um marco mais antigo que isso é puxado pra dentro da janela em vez
-de se perder — cartão que ficou parado um mês ainda conta.
+O `event_time` é a hora em que o marco aconteceu de verdade (quando o cartão
+mudou de coluna), não a hora do envio.
+
+**Marco com mais de 7 dias não é enviado.** A Meta só aceita essa janela e usa
+o `event_time` pra decidir a qual clique creditar a conversão: mandar um marco
+antigo com data de hoje faria a venda ser creditada ao anúncio errado e a
+otimização aprenderia torto — em silêncio. O motivo fica registrado e aparece
+no painel do Comercial.
+
+No dia a dia isso nunca acontece, porque o evento sai no instante em que o
+cartão muda de coluna. O caso real é **carga histórica**: aí `&ajustar_data=1`
+na rota de reenvio manda mesmo assim, com a data puxada pro limite da janela.
+É escolha consciente de quem chama, sabendo que aquela leva chega com data
+imprecisa.
 
 Não mandamos `lead_id` (isso é dos formulários nativos da Meta; os nossos leads
 vêm do site) nem `em` (não coletamos e-mail, de propósito). A correspondência

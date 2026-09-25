@@ -16,6 +16,9 @@ const NOMES: Record<string, string> = {
 // Traduz o erro da Meta pra algo que dá pra agir.
 function explicar(resposta: string | null) {
   const t = (resposta ?? "").toLowerCase();
+  if (t.includes("fora da janela de 7 dias")) {
+    return "Esse passo do funil aconteceu há mais de 7 dias, que é o limite da Meta. Não foi enviado de propósito: mandar com data de hoje faria a Meta creditar a venda ao anúncio errado. Não afeta os leads do dia a dia.";
+  }
   if (t.includes("access token") || t.includes("oauth") || t.includes("session has expired")) {
     return "O token da Meta está inválido ou venceu. Gere outro no Gerenciador de Eventos e troque na Vercel.";
   }
@@ -115,7 +118,11 @@ export async function StatusMeta() {
 
         {ultimaFalha && (
           <div className="rounded-xl border border-red-500/30 bg-red-500/5 p-3.5 flex flex-col gap-1.5">
-            <p className="text-sm font-medium text-red-500">O que a Meta respondeu no último erro</p>
+            <p className="text-sm font-medium text-red-500">
+              {ultimaFalha.resposta?.includes("fora da janela de 7 dias")
+                ? "Por que o último evento não foi enviado"
+                : "O que a Meta respondeu no último erro"}
+            </p>
             {explicar(ultimaFalha.resposta) && (
               <p className="text-sm">{explicar(ultimaFalha.resposta)}</p>
             )}

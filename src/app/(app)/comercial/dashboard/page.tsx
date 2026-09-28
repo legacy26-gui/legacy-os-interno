@@ -37,6 +37,7 @@ import { DeleteEventoButton } from "../delete-evento-button";
 import { SalesGoalForm } from "../sales-goal-form";
 import { VerbaForm } from "./verba-form";
 import { StatusMeta } from "./status-meta";
+import { EnviosRecusados } from "./recusados";
 
 const MESES = [
   "janeiro", "fevereiro", "março", "abril", "maio", "junho",
@@ -315,6 +316,9 @@ export default async function ComercialDashboardPage({
         </div>
         <VerbaForm month={month} linhas={verba} />
       </div>
+
+      {/* ── Lead que a landing mandou e não chegou ──────────────────────── */}
+      <EnviosRecusados />
 
       {/* ── A Meta está recebendo? ──────────────────────────────────────── */}
       <StatusMeta />

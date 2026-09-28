@@ -415,6 +415,23 @@ model PushSubscription {
   @@map("push_subscriptions")
 }
 
+// Caixa preta do formulário público: tudo que chegou e NÃO virou lead fica
+// aqui, com o corpo cru. Existe porque lead perdido some sem deixar rastro —
+// cinco pessoas preencheram, o Pixel contou, e não havia onde olhar. Com isto,
+// dá pra ver o que a landing mandou e recuperar o contato na mão.
+model LeadRecusado {
+  id        String   @id @default(cuid())
+  motivo    String
+  status    Int
+  origem    String?
+  ip        String?
+  corpo     String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("leads_recusados")
+}
+
 // Cada envio do formulário público, guardado só pra segurar o limite por IP.
 // Fica no banco em vez de na memória porque na Vercel cada requisição pode cair
 // numa instância diferente, e elas reiniciam a cada deploy: contador em memória

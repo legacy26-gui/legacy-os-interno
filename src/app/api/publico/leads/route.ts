@@ -136,8 +136,9 @@ type Resultado = { ok: true; dados: LeadLimpo } | { ok: false; erro: string };
 type LeadLimpo = {
   nome: string; whatsapp: string; whatsappDigitos: string;
   loja: string; cidade: string; estado: string;
-  estoque: string; vendas: string; trafego: string;
-  verba: string | null; desafio: string; investimento: string | null;
+  estoque: string | null; vendas: string | null; trafego: string | null;
+  verba: string | null; desafio: string | null; investimento: string | null;
+  naoReconhecido: string[];
   utmSource: string; utmMedium: string; utmCampaign: string;
   utmContent: string; utmTerm: string; utmId: string; src: string;
   pagina: string; referencia: string; enviadoEm: Date;
@@ -149,18 +150,43 @@ function texto(v: unknown, max = 120) {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
 }
 
+// Compara opção de lista sem brigar com tipografia: travessão x hífen, acento,
+// espaço, ponto de milhar, "R$". A landing pode digitar "21-40" e a lista aqui
+// ter "21–40" — isso não pode custar um lead.
+function chave(v: string) {
+  return v
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[\u2012\u2013\u2014\u2015\u2212]/g, '-')
+    .replace(/r\$/g, '')
+    .replace(/[.\s]/g, '');
+}
+
+function daLista(lista: string[], valor: string) {
+  if (!valor) return null;
+  const k = chave(valor);
+  return lista.find((o) => chave(o) === k) ?? null;
+}
+
+/**
+ * Regra de recusa, decidida na marra depois de perder cinco leads de anúncio:
+ * só barra o que impede de atender a pessoa — nome, loja e um WhatsApp
+ * discável. Todo o resto é melhor esforço.
+ *
+ * Uma resposta de múltipla escolha que não bate com a lista NÃO derruba o
+ * envio: o valor cru vai pras anotações do cartão. Um lead que custou dinheiro
+ * de anúncio não pode ser jogado fora porque veio "21-40" em vez de "21–40".
+ * Contra robô quem trabalha é o Origin, o limite por IP e o honeypot.
+ */
 function valida(corpo: Record<string, unknown> | null): Resultado {
   const nome = texto(corpo?.nome, 120);
   const loja = texto(corpo?.loja, 120);
-  const cidade = texto(corpo?.cidade, 80);
-  const estado = texto(corpo?.estado, 2).toUpperCase();
-  const whatsapp = texto(corpo?.whatsapp, 20);
+  const whatsapp = texto(corpo?.whatsapp, 20) || texto(corpo?.telefone, 20);
   const digitos = whatsapp.replace(/\D/g, '');
 
   if (nome.length < 2) return { ok: false, erro: 'nome' };
   if (loja.length < 2) return { ok: false, erro: 'loja' };
-  if (cidade.length < 2) return { ok: false, erro: 'cidade' };
-  if (!UFS.includes(estado)) return { ok: false, erro: 'estado' };
 
   // 10 ou 11 dígitos, DDD entre 11 e 99.
   const ddd = Number(digitos.slice(0, 2));
@@ -168,27 +194,51 @@ function valida(corpo: Record<string, unknown> | null): Resultado {
     return { ok: false, erro: 'whatsapp' };
   }
 
-  const estoque = texto(corpo?.estoque, 20);
-  const vendas = texto(corpo?.vendas, 20);
-  const trafego = texto(corpo?.trafego, 10);
-  const desafio = texto(corpo?.desafio, 60);
+  const cidade = texto(corpo?.cidade, 80);
+  const estadoBruto = texto(corpo?.estado, 2).toUpperCase() || texto(corpo?.uf, 2).toUpperCase();
+  const estado = UFS.includes(estadoBruto) ? estadoBruto : '';
 
-  if (!ESTOQUE.includes(estoque)) return { ok: false, erro: 'estoque' };
-  if (!VENDAS.includes(vendas)) return { ok: false, erro: 'vendas' };
-  if (trafego !== 'Sim' && trafego !== 'Não') return { ok: false, erro: 'trafego' };
-  if (!DESAFIOS.includes(desafio)) return { ok: false, erro: 'desafio' };
+  const brutos = {
+    estoque: texto(corpo?.estoque, 40),
+    vendas: texto(corpo?.vendas, 40),
+    trafego: texto(corpo?.trafego, 10),
+    desafio: texto(corpo?.desafio, 60),
+    verba: texto(corpo?.verba, 40),
+    investimento: texto(corpo?.investimento, 40),
+  };
 
-  // verba só existe quando trafego === 'Sim'; investimento é desligável na landing
-  const verbaBruta = texto(corpo?.verba, 30);
-  const verba = trafego === 'Sim' && VERBA.includes(verbaBruta) ? verbaBruta : null;
-  const invBruto = texto(corpo?.investimento, 30);
-  const investimento = INVESTIMENTO.includes(invBruto) ? invBruto : null;
+  const estoque = daLista(ESTOQUE, brutos.estoque);
+  const vendas = daLista(VENDAS, brutos.vendas);
+  const desafio = daLista(DESAFIOS, brutos.desafio);
+  const trafegoK = chave(brutos.trafego);
+  const trafego = ['sim', 'true', '1'].includes(trafegoK)
+    ? 'Sim'
+    : ['nao', 'false', '0'].includes(trafegoK)
+      ? 'Não'
+      : null;
+  const verba = daLista(VERBA, brutos.verba);
+  const investimento = daLista(INVESTIMENTO, brutos.investimento);
+
+  // O que chegou fora da lista não some: vai pra anotação, pra equipe ver e
+  // pra gente descobrir o que a landing está mandando de diferente.
+  const naoReconhecido: string[] = [];
+  const anota = (rotulo: string, bruto: string, casou: string | null) => {
+    if (bruto && !casou) naoReconhecido.push(`${rotulo}: ${bruto}`);
+  };
+  anota('estoque', brutos.estoque, estoque);
+  anota('vendas', brutos.vendas, vendas);
+  anota('desafio', brutos.desafio, desafio);
+  anota('tráfego', brutos.trafego, trafego);
+  anota('verba', brutos.verba, verba);
+  anota('investimento', brutos.investimento, investimento);
+  if (estadoBruto && !estado) naoReconhecido.push(`UF: ${estadoBruto}`);
 
   return {
     ok: true,
     dados: {
       nome, whatsapp, whatsappDigitos: digitos, loja, cidade, estado,
       estoque, vendas, trafego, verba, desafio, investimento,
+      naoReconhecido,
       utmSource: texto(corpo?.utm_source, 180),
       utmMedium: texto(corpo?.utm_medium, 180),
       utmCampaign: texto(corpo?.utm_campaign, 180),
@@ -236,8 +286,8 @@ function canal(d: LeadLimpo): 'META' | 'ORGANICO' {
 
 function prioridade(d: LeadLimpo): 'alta' | 'media' | 'baixa' {
   let p = 0;
-  if (['41–70', '71–100', '+100'].includes(d.estoque)) p += 2;
-  if (['21–40', '41–70', '+70'].includes(d.vendas)) p += 2;
+  if (d.estoque && ['41–70', '71–100', '+100'].includes(d.estoque)) p += 2;
+  if (d.vendas && ['21–40', '41–70', '+70'].includes(d.vendas)) p += 2;
   if (d.trafego === 'Sim') p += 1;
   if (d.investimento && d.investimento !== 'Até R$ 1.500') p += 2;
   return p >= 5 ? 'alta' : p >= 3 ? 'media' : 'baixa';
@@ -274,8 +324,8 @@ async function salvarLead(
       companyName: d.loja,
       contactName: d.nome,
       phone: d.whatsappDigitos, // só dígitos, pronto para disparo
-      city: d.cidade,
-      state: d.estado,
+      city: d.cidade || null,
+      state: d.estado || null,
       stage: 'LEAD', // padrão do pipeline
       channel: extra.canal, // META ou ORGANICO, conforme a UTM
       position: (primeiro?.position ?? 0) - 1,
@@ -307,10 +357,12 @@ async function salvarLead(
 function resumo(d: LeadLimpo, extra: { prioridade: string }) {
   return [
     `Veio da landing (formulário de diagnóstico) · prioridade ${extra.prioridade}`,
-    `Estoque: ${d.estoque} · vende ${d.vendas}/mês`,
-    `Tráfego pago: ${d.trafego}${d.verba ? ` — ${d.verba}/mês` : ''}`,
+    `Estoque: ${d.estoque ?? '—'} · vende ${d.vendas ?? '—'}/mês`,
+    `Tráfego pago: ${d.trafego ?? '—'}${d.verba ? ` — ${d.verba}/mês` : ''}`,
     d.investimento ? `Disposto a investir: ${d.investimento}/mês` : null,
-    `Maior desafio: ${d.desafio}`,
+    `Maior desafio: ${d.desafio ?? '—'}`,
+    // Resposta que não bateu com a lista não some: fica aqui, legível.
+    d.naoReconhecido.length ? `Respostas fora do padrão — ${d.naoReconhecido.join(' · ')}` : null,
     '',
     d.utmCampaign || d.utmSource
       ? `Campanha: ${d.utmSource || '—'} / ${d.utmCampaign || '—'} / ${d.utmContent || '—'}`
@@ -341,11 +393,11 @@ async function notificar(d: LeadLimpo, protocolo: string, p: string) {
   const linhas = [
     `🚗 LEAD NOVO · prioridade ${p.toUpperCase()} · ${protocolo}`,
     `${d.nome} — ${d.loja}`,
-    `${d.cidade}/${d.estado} · ${d.whatsapp}`,
-    `Estoque ${d.estoque} · vende ${d.vendas}/mês`,
-    `Tráfego: ${d.trafego}${d.verba ? ` (${d.verba})` : ''}`,
+    `${d.cidade || '—'}${d.estado ? '/' + d.estado : ''} · ${d.whatsapp}`,
+    `Estoque ${d.estoque ?? '—'} · vende ${d.vendas ?? '—'}/mês`,
+    `Tráfego: ${d.trafego ?? '—'}${d.verba ? ` (${d.verba})` : ''}`,
     d.investimento ? `Disposto a investir: ${d.investimento}` : '',
-    `Desafio: ${d.desafio}`,
+    `Desafio: ${d.desafio ?? '—'}`,
     d.utmCampaign ? `Campanha: ${d.utmCampaign} / ${d.utmContent}` : 'Origem: direto',
   ].filter(Boolean);
 
@@ -357,10 +409,10 @@ async function notificar(d: LeadLimpo, protocolo: string, p: string) {
   await avisarTodos({
     titulo: `🚗 Lead ${p} · ${d.loja}`,
     corpo: [
-      `${d.nome} · ${d.cidade}/${d.estado} · ${d.whatsapp}`,
-      `Estoque ${d.estoque} · vende ${d.vendas}/mês`,
-      d.investimento ? `Investe: ${d.investimento}` : `Tráfego pago: ${d.trafego}`,
-      `Desafio: ${d.desafio}`,
+      `${d.nome} · ${d.cidade || '—'}${d.estado ? '/' + d.estado : ''} · ${d.whatsapp}`,
+      `Estoque ${d.estoque ?? '—'} · vende ${d.vendas ?? '—'}/mês`,
+      d.investimento ? `Investe: ${d.investimento}` : `Tráfego pago: ${d.trafego ?? '—'}`,
+      `Desafio: ${d.desafio ?? '—'}`,
     ].join('\n'),
     url: '/comercial',
     // Aviso de lead nunca substitui o anterior: dois leads seguidos são dois
@@ -390,6 +442,56 @@ async function notificar(d: LeadLimpo, protocolo: string, p: string) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Caixa preta
+ *
+ * Tudo que chega e NÃO vira lead fica guardado com o corpo cru. Foi escrito
+ * depois de perder cinco leads de anúncio sem deixar rastro: o Pixel contou os
+ * cinco envios e não havia onde olhar pra saber o que tinha acontecido.
+ * Guardar custa quase nada; perder um lead pago custa caro.
+ * ------------------------------------------------------------------ */
+
+async function registrarRecusa(
+  req: NextRequest,
+  status: number,
+  motivo: string,
+  corpo: unknown
+) {
+  try {
+    await prisma.leadRecusado.create({
+      data: {
+        motivo,
+        status,
+        origem: req.headers.get('origin')?.slice(0, 200) ?? null,
+        ip: ipDoVisitante(req),
+        corpo: (typeof corpo === 'string' ? corpo : JSON.stringify(corpo ?? null)).slice(0, 10_000),
+      },
+    });
+  } catch (e) {
+    // Guardar o problema não pode virar outro problema.
+    console.error('[lead-publico] não consegui registrar a recusa', e);
+  }
+  console.warn(`[lead-publico] recusado (${status}): ${motivo}`);
+}
+
+/**
+ * Lê o corpo da requisição. Tenta JSON e, se não for, tenta formulário comum —
+ * uma landing que mude o jeito de enviar não pode derrubar a captação.
+ */
+async function lerCorpo(texto: string): Promise<Record<string, unknown> | null> {
+  try {
+    return JSON.parse(texto);
+  } catch {
+    try {
+      const params = new URLSearchParams(texto);
+      if ([...params.keys()].length === 0) return null;
+      return Object.fromEntries(params.entries());
+    } catch {
+      return null;
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * A rota
  * ------------------------------------------------------------------ */
 
@@ -398,18 +500,21 @@ export async function POST(req: NextRequest) {
   const cors = cabecalhosCors(origem);
 
   if (!origem || !ORIGENS_LIBERADAS.has(origem)) {
+    await registrarRecusa(req, 403, `origem não autorizada: ${origem ?? 'sem Origin'}`, await req.text().catch(() => ''));
     return NextResponse.json({ erro: 'origem não autorizada' }, { status: 403, headers: cors });
   }
 
   const ip = ipDoVisitante(req);
+  const bruto = await req.text().catch(() => '');
+
   if (await passouDoLimite(ip)) {
+    await registrarRecusa(req, 429, 'passou do limite de envios por IP', bruto);
     return NextResponse.json({ erro: 'muitos envios' }, { status: 429, headers: cors });
   }
 
-  let corpo: Record<string, unknown> | null;
-  try {
-    corpo = await req.json();
-  } catch {
+  const corpo = await lerCorpo(bruto);
+  if (!corpo) {
+    await registrarRecusa(req, 400, 'corpo ilegível (nem JSON nem formulário)', bruto);
     return NextResponse.json({ erro: 'json inválido' }, { status: 400, headers: cors });
   }
 
@@ -421,6 +526,7 @@ export async function POST(req: NextRequest) {
 
   const resultado = valida(corpo);
   if (!resultado.ok) {
+    await registrarRecusa(req, 422, `campo inválido: ${resultado.erro}`, bruto);
     return NextResponse.json({ erro: `campo inválido: ${resultado.erro}` }, { status: 422, headers: cors });
   }
 
@@ -438,6 +544,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error('[lead-publico] falha ao salvar', e);
+    // Mesmo sem conseguir gravar o lead, o que a pessoa digitou fica guardado:
+    // dá pra ligar pra ela na mão em vez de perder o contato.
+    await registrarRecusa(req, 500, `falha ao gravar: ${e instanceof Error ? e.message : String(e)}`, bruto);
     // 5xx faz a landing cair no plano B do WhatsApp — o lead não se perde.
     return NextResponse.json({ erro: 'falha ao gravar' }, { status: 500, headers: cors });
   }

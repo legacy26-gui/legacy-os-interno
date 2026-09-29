@@ -12,17 +12,14 @@ import type { Prisma } from "@/generated/prisma/client";
 //     conta no MRR desde que entra, não a partir do dia em que a operação
 //     engrena.
 //
-// `billingActive` NÃO entra aqui de propósito. Ele responde outra pergunta —
-// "gera a cobrança deste mês?" — e não "este cliente conta no faturamento?".
-// Misturar as duas fazia tirar alguém do fluxo de cobrança apagar o cliente do
-// faturamento junto, que é justamente o que a gente não quer.
+// Tirar da cobrança não entra aqui de propósito: é decisão de UM mês, não do
+// cliente. Misturar as duas fazia pular a cobrança de um mês apagar o cliente
+// do faturamento pra sempre.
 export const CARTEIRA: Prisma.ClientWhereInput = {
   status: { in: ["ATIVO", "PAUSADO", "IMPLANTACAO"] },
 };
 
-// Quem recebe cobrança mensal automática: a carteira, menos quem foi tirado do
-// fluxo na mão (acordo especial, cortesia, negociação em curso).
-export const CARTEIRA_COBRAVEL: Prisma.ClientWhereInput = {
-  ...CARTEIRA,
-  billingActive: true,
-};
+// Quem recebe cobrança mensal é a carteira inteira. Quem foi pulado num mês
+// específico sai pela tabela cobrancas_puladas, que depende do mês — por isso
+// não dá pra filtrar aqui.
+export const CARTEIRA_COBRAVEL = CARTEIRA;

@@ -22,14 +22,17 @@ function dueDateForMonth(ref: Date, dueDay: number | null) {
 
 // Garante que todo cliente da carteira com mensalidade tenha uma receita
 // "[MRR]" lançada para o mês de referência (idempotente — não duplica se já
-// existir). Quem foi tirado do fluxo na mão (billingActive = false) não gera
-// cobrança, mas continua contando no faturamento.
+// existir). Quem foi tirado da cobrança daquele mês específico não gera
+// cobrança naquele mês — mas volta no mês seguinte e continua contando no
+// faturamento o tempo todo.
 export async function ensureMonthlyMrrRevenues(ref: Date = new Date()): Promise<number> {
   const monthStart = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), 1));
   const monthEnd = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 1));
   const label = monthLabel(ref);
 
-  const [clients, existing] = await Promise.all([
+  const mes = ref.toISOString().slice(0, 7);
+
+  const [clients, existing, pulados] = await Promise.all([
     prisma.client.findMany({
       where: { ...CARTEIRA_COBRAVEL, monthlyValue: { gt: 0 } },
       select: { id: true, monthlyValue: true, dueDay: true },
@@ -38,10 +41,13 @@ export async function ensureMonthlyMrrRevenues(ref: Date = new Date()): Promise<
       where: { dueDate: { gte: monthStart, lt: monthEnd }, description: { startsWith: MRR_TAG } },
       select: { clientId: true },
     }),
+    // Quem foi tirado da cobrança DESTE mês. No mês seguinte volta sozinho.
+    prisma.cobrancaPulada.findMany({ where: { month: mes }, select: { clientId: true } }),
   ]);
 
   const already = new Set(existing.map((r) => r.clientId));
-  const toCreate = clients.filter((c) => !already.has(c.id));
+  const pular = new Set(pulados.map((p) => p.clientId));
+  const toCreate = clients.filter((c) => !already.has(c.id) && !pular.has(c.id));
   if (toCreate.length === 0) return 0;
 
   await prisma.revenue.createMany({

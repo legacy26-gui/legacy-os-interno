@@ -67,21 +67,43 @@ export async function updateRevenueDueDate(revenueId: string, dueDate: string) {
 // Exclui um cliente do fluxo de pagamento mensal (Financeiro) sem mexer no
 // status dele em Clientes — some do quadro de MRR e apaga as cobranças
 // pendentes deste mês em diante. Cobranças já pagas continuam no histórico.
-export async function excludeClientFromBilling(clientId: string) {
+/**
+ * Tira o cliente da cobrança de UM mês — o mês que está aberto na tela.
+ *
+ * Não desliga o cliente: ele continua no faturamento e volta a ser cobrado no
+ * mês seguinte sozinho. Pra parar de vez, o caminho é mudar o status em
+ * Clientes; este botão é pro mês em que se negociou, deu cortesia ou pulou.
+ */
+export async function excludeClientFromBilling(clientId: string, month: string) {
   await requireModuleAccess("financeiro");
-  await prisma.client.update({ where: { id: clientId }, data: { billingActive: false } });
+  if (!/^\d{4}-\d{2}$/.test(month)) return;
 
-  const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+  await prisma.cobrancaPulada.upsert({
+    where: { clientId_month: { clientId, month } },
+    create: { clientId, month },
+    update: {},
+  });
+
+  // Apaga só a cobrança em aberto DAQUELE mês. Cobrança já paga fica: ela
+  // aconteceu, e mês seguinte não é da conta deste botão.
+  const inicio = new Date(`${month}-01T00:00:00.000Z`);
+  const fim = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth() + 1, 1));
   await prisma.revenue.deleteMany({
-    where: { clientId, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart } },
+    where: {
+      clientId,
+      status: { in: ["PENDENTE", "ATRASADO"] },
+      dueDate: { gte: inicio, lt: fim },
+    },
   });
 
   revalidatePath("/financeiro", "layout");
 }
 
-export async function includeClientInBilling(clientId: string) {
+/** Volta o cliente pra cobrança daquele mês. A cobrança é recriada sozinha. */
+export async function includeClientInBilling(clientId: string, month: string) {
   await requireModuleAccess("financeiro");
-  await prisma.client.update({ where: { id: clientId }, data: { billingActive: true } });
+  if (!/^\d{4}-\d{2}$/.test(month)) return;
+  await prisma.cobrancaPulada.deleteMany({ where: { clientId, month } });
   revalidatePath("/financeiro", "layout");
 }
 

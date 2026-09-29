@@ -66,10 +66,12 @@ export default async function FinanceiroPage({
     }),
     prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } }, orderBy: { date: "asc" } }),
     prisma.fixedExpense.findMany({ orderBy: { description: "asc" } }),
-    prisma.client.findMany({
-      where: { ...CARTEIRA, billingActive: false },
-      select: { id: true, companyName: true, monthlyValue: true, status: true },
-      orderBy: { companyName: "asc" },
+    // Quem foi tirado da cobrança DESTE mês — a lista muda conforme o mês
+    // que está aberto na tela.
+    prisma.cobrancaPulada.findMany({
+      where: { month: monthParam(refDate) },
+      select: { client: { select: { id: true, companyName: true, monthlyValue: true, status: true } } },
+      orderBy: { client: { companyName: "asc" } },
     }),
   ]);
 
@@ -178,6 +180,7 @@ export default async function FinanceiroPage({
 
       <MrrBoard
         monthLabel={monthLabel}
+        month={monthParam(refDate)}
         groups={mrrBoard.groups}
         totalMonth={mrrBoard.totalMonth}
         paidTotal={mrrBoard.paidTotal}
@@ -187,15 +190,17 @@ export default async function FinanceiroPage({
       {excludedFromBilling.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3">
           <div>
-            <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">Fora da cobrança mensal</p>
+            <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">
+              Sem cobrança em {monthLabel}
+            </p>
             <p className="text-xs text-foreground-muted mt-0.5">
-              Não recebem a cobrança automática do mês — mas <strong className="text-foreground">continuam
-              contando no faturamento</strong>, porque ainda são clientes da casa. Só sai do faturamento quem
-              for cancelado.
+              Vale <strong className="text-foreground">só para este mês</strong>: no mês seguinte voltam a ser
+              cobrados sozinhos. Continuam contando no faturamento o tempo todo — quem sai do faturamento é
+              só cliente cancelado, pela tela de Clientes.
             </p>
           </div>
           <div className="flex flex-col divide-y divide-border">
-            {excludedFromBilling.map((c) => (
+            {excludedFromBilling.map(({ client: c }) => (
               <div key={c.id} className="flex items-center justify-between gap-2 py-2 text-sm">
                 <span className="flex items-center gap-2 min-w-0">
                   <span className="truncate">{c.companyName}</span>
@@ -207,13 +212,13 @@ export default async function FinanceiroPage({
                 </span>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="text-foreground-muted">{formatCurrency(c.monthlyValue.toString())}</span>
-                  <form action={includeClientInBilling.bind(null, c.id)}>
+                  <form action={includeClientInBilling.bind(null, c.id, monthParam(refDate))}>
                     <button
                       type="submit"
                       className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border hover:bg-surface-muted text-xs font-medium"
-                      title="Voltar pro fluxo de pagamento"
+                      title="Voltar a cobrar neste mês"
                     >
-                      <UserCheck size={13} /> Reativar
+                      <UserCheck size={13} /> Voltar a cobrar
                     </button>
                   </form>
                 </div>

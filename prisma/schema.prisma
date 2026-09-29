@@ -117,6 +117,7 @@ model Client {
   sales           ClientSale[]
   pinnedInfo      ClientPinnedInfo[]
   onboardings     ClientOnboarding[]
+  cobrancasPuladas CobrancaPulada[]
 
   @@map("clients")
 }
@@ -413,6 +414,22 @@ model PushSubscription {
   createdAt DateTime @default(now())
 
   @@map("push_subscriptions")
+}
+
+// Cliente tirado da cobrança de UM mês específico. É por mês de propósito: o
+// botão do quadro serve pra "esse mês não cobra" (negociação, cortesia, mês
+// pulado), não pra desligar o cliente. No mês seguinte ele volta sozinho.
+// Pra parar de vez, o caminho é mudar o status em Clientes.
+model CobrancaPulada {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  month     String // aaaa-mm
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, month])
+  @@index([month])
+  @@map("cobrancas_puladas")
 }
 
 // Caixa preta do formulário público: tudo que chegou e NÃO virou lead fica

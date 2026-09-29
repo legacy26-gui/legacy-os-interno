@@ -11,12 +11,14 @@ type MrrItem = MrrRevenueGroup["items"][number];
 
 export function MrrBoard({
   monthLabel,
+  month,
   groups,
   totalMonth,
   paidTotal,
   pendingTotal,
 }: {
   monthLabel: string;
+  month: string;
   groups: MrrRevenueGroup[];
   totalMonth: number;
   paidTotal: number;
@@ -90,7 +92,7 @@ export function MrrBoard({
             ) : (
               <div className="flex flex-col gap-1.5">
                 {g.items.map((r) => (
-                  <MrrCard key={r.id} r={r} moving={movingId === r.id} />
+                  <MrrCard key={r.id} r={r} moving={movingId === r.id} month={month} monthLabel={monthLabel} />
                 ))}
               </div>
             )}
@@ -101,7 +103,7 @@ export function MrrBoard({
   );
 }
 
-function MrrCard({ r, moving }: { r: MrrItem; moving: boolean }) {
+function MrrCard({ r, moving, month, monthLabel }: { r: MrrItem; moving: boolean; month: string; monthLabel: string }) {
   return (
     <div
       draggable
@@ -116,16 +118,22 @@ function MrrCard({ r, moving }: { r: MrrItem; moving: boolean }) {
           <span className="text-sm truncate">{r.client.companyName}</span>
         </div>
         <form
-          action={excludeClientFromBilling.bind(null, r.clientId)}
+          action={excludeClientFromBilling.bind(null, r.clientId, month)}
           onSubmit={(e) => {
-            if (!window.confirm(`Excluir "${r.client.companyName}" do fluxo de pagamento mensal? Ele some do quadro de MRR (cobranças pendentes deste mês em diante são apagadas). Pode reativar depois.`)) {
+            if (
+              !window.confirm(
+                `Não cobrar "${r.client.companyName}" em ${monthLabel}?\n\n` +
+                  `Vale só para este mês: no mês seguinte ele volta a ser cobrado normalmente, e o faturamento não muda.\n\n` +
+                  `Para pausar ou encerrar o cliente de vez, use a tela de Clientes.`
+              )
+            ) {
               e.preventDefault();
             }
           }}
         >
           <button
             type="submit"
-            title="Excluir do fluxo de pagamento"
+            title="Não cobrar neste mês"
             className="p-0.5 rounded hover:bg-red-500/10 text-foreground-muted hover:text-red-500 shrink-0"
           >
             <UserX size={13} />

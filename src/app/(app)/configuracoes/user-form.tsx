@@ -4,6 +4,7 @@ import { useActionState, useRef } from "react";
 import { UserPlus } from "lucide-react";
 import { createUser } from "@/lib/actions/users";
 import { ROLE_LABELS } from "@/lib/permissions";
+import { EMPRESAS, EMPRESA_LABELS } from "@/lib/empresa";
 
 const inputClass =
   "rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent/40";
@@ -35,6 +36,25 @@ export function UserForm() {
           ))}
         </select>
       </div>
+      {/* Em quais empresas do grupo a pessoa vai trabalhar. Quem fica só no
+          Treinamentos não vê nada da agência — a conferência é no banco, não
+          no menu. Sem marcar nada, entra só na agência. */}
+      <fieldset className="flex flex-wrap items-center gap-3">
+        <legend className="sr-only">Empresas</legend>
+        <span className="text-xs text-foreground-muted">Trabalha em:</span>
+        {EMPRESAS.map((e) => (
+          <label key={e} className="flex items-center gap-1.5 text-xs">
+            <input
+              type="checkbox"
+              name="empresas"
+              value={e}
+              defaultChecked={e === "AGENCIA"}
+              className="accent-[var(--accent)]"
+            />
+            {EMPRESA_LABELS[e]}
+          </label>
+        ))}
+      </fieldset>
       {state?.error && <p className="text-xs text-red-500">{state.error}</p>}
       {state?.tempPassword && (
         <p className="text-xs text-emerald-500 bg-emerald-500/10 border border-emerald-500/20 rounded-lg px-3 py-2">

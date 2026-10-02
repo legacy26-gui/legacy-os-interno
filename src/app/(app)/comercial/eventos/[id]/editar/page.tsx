@@ -3,13 +3,17 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { EventoForm } from "../../../evento-form";
 import { updateCommercialEvent } from "@/lib/actions/commercial";
 
 export default async function EditarEventoComercialPage({ params }: { params: Promise<{ id: string }> }) {
   await requireModuleAccess("comercial");
   const { id } = await params;
-  const event = await prisma.commercialEvent.findUnique({ where: { id } });
+  // A empresa entra na busca, não numa conferência depois: evento de outra
+  // empresa simplesmente não é encontrado, e a página dá 404 igual a um id que
+  // não existe — sem confirmar que o registro existe em algum lugar.
+  const event = await prisma.commercialEvent.findFirst({ where: { id, empresa: await empresaAtual() } });
   if (!event) notFound();
 
   const boundUpdate = updateCommercialEvent.bind(null, id);

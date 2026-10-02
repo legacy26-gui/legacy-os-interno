@@ -21,7 +21,8 @@ export async function GET(request: NextRequest) {
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 
   const stale = await prisma.revenue.findMany({
-    where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: monthStart } },
+    // Manutenção da carteira de mensalidade, que é da agência.
+    where: { empresa: "AGENCIA", status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: monthStart } },
     select: {
       id: true,
       value: true,
@@ -51,7 +52,7 @@ export async function GET(request: NextRequest) {
       totalValue,
       porMes: [...byMonth.entries()].map(([month, v]) => ({ month, ...v })),
       items: stale.map((r) => ({
-        client: r.client.companyName,
+        client: r.client?.companyName ?? "—",
         description: r.description,
         value: r.value,
         dueDate: r.dueDate,
@@ -60,7 +61,7 @@ export async function GET(request: NextRequest) {
   }
 
   const result = await prisma.revenue.deleteMany({
-    where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: monthStart } },
+    where: { empresa: "AGENCIA", status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: monthStart } },
   });
 
   return NextResponse.json({

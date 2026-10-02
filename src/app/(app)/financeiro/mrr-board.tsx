@@ -115,14 +115,14 @@ function MrrCard({ r, moving, month, monthLabel }: { r: MrrItem; moving: boolean
       <div className="flex items-center justify-between gap-1.5">
         <div className="flex items-center gap-1.5 min-w-0">
           <GripVertical size={13} className="text-foreground-muted shrink-0" />
-          <span className="text-sm truncate">{r.client.companyName}</span>
+          <span className="text-sm truncate">{r.client?.companyName ?? r.description}</span>
         </div>
         <form
-          action={excludeClientFromBilling.bind(null, r.clientId, month)}
+          action={excludeClientFromBilling.bind(null, r.clientId ?? "", month)}
           onSubmit={(e) => {
             if (
               !window.confirm(
-                `Não cobrar "${r.client.companyName}" em ${monthLabel}?\n\n` +
+                `Não cobrar "${r.client?.companyName ?? r.description}" em ${monthLabel}?\n\n` +
                   `Vale só para este mês: no mês seguinte ele volta a ser cobrado normalmente, e o faturamento não muda.\n\n` +
                   `Para pausar ou encerrar o cliente de vez, use a tela de Clientes.`
               )

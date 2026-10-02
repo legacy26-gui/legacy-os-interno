@@ -85,7 +85,8 @@ export async function createClient(_prevState: ClientFormState, formData: FormDa
   // Cada cliente adicionado é uma venda — alimenta o painel de números do
   // Comercial automaticamente.
   await prisma.commercialEvent.create({
-    data: { type: "VENDA", companyName: client.companyName, value: client.monthlyValue },
+    // Cliente é da carteira da agência, então a venda dele é da agência.
+    data: { empresa: "AGENCIA", type: "VENDA", companyName: client.companyName, value: client.monthlyValue },
   });
 
   // Cliente ativo com mensalidade já entra automaticamente no Financeiro,
@@ -128,7 +129,7 @@ export async function updateClient(
   // Comercial automaticamente.
   if (previous?.status !== "CANCELADO" && client.status === "CANCELADO") {
     await prisma.commercialEvent.create({
-      data: { type: "CHURN", companyName: client.companyName, value: client.monthlyValue },
+      data: { empresa: "AGENCIA", type: "CHURN", companyName: client.companyName, value: client.monthlyValue },
     });
     revalidatePath("/comercial");
   }
@@ -140,7 +141,7 @@ export async function updateClient(
   if (previous?.status === "ATIVO" && client.status !== "ATIVO") {
     const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
     await prisma.revenue.deleteMany({
-      where: { clientId, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart } },
+      where: { empresa: "AGENCIA", clientId, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart } },
     });
   }
 
@@ -157,6 +158,7 @@ export async function updateClient(
     const monthEnd = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1));
     await prisma.revenue.updateMany({
       where: {
+        empresa: "AGENCIA",
         clientId,
         status: { in: ["PENDENTE", "ATRASADO"] },
         dueDate: { gte: monthStart, lt: monthEnd },
@@ -190,7 +192,7 @@ export async function deleteClient(clientId: string) {
   // Cancelado antes (aí o churn já foi contado na hora do cancelamento).
   if (client && client.status !== "CANCELADO") {
     await prisma.commercialEvent.create({
-      data: { type: "CHURN", companyName: client.companyName, value: client.monthlyValue },
+      data: { empresa: "AGENCIA", type: "CHURN", companyName: client.companyName, value: client.monthlyValue },
     });
     revalidatePath("/comercial");
   }

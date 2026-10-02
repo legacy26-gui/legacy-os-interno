@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import type { LeadChannel } from "@/generated/prisma/enums";
+import type { Empresa, LeadChannel } from "@/generated/prisma/enums";
 
 // Números do comercial. Tudo é contado por DATA DE MARCO, não pela coluna onde
 // o cartão está hoje: a reunião que aconteceu em agosto continua sendo de
@@ -117,7 +117,7 @@ export interface DashboardComercial {
   canaisSemVerba: LeadChannel[];
 }
 
-export async function getComercialDashboard(month: string): Promise<DashboardComercial> {
+export async function getComercialDashboard(empresa: Empresa, month: string): Promise<DashboardComercial> {
   const inicio = new Date(`${month}-01T00:00:00.000Z`);
   const fim = new Date(Date.UTC(inicio.getUTCFullYear(), inicio.getUTCMonth() + 1, 1));
   const janela = { gte: inicio, lt: fim };
@@ -125,6 +125,7 @@ export async function getComercialDashboard(month: string): Promise<DashboardCom
   const [linhas, canais] = await Promise.all([
     prisma.lead.findMany({
       where: {
+        empresa,
         OR: [
           { createdAt: janela },
           { qualifiedAt: janela },
@@ -149,7 +150,7 @@ export async function getComercialDashboard(month: string): Promise<DashboardCom
         contractMonths: true,
       },
     }),
-    prisma.channelMonth.findMany({ where: { month } }),
+    prisma.channelMonth.findMany({ where: { empresa, month } }),
   ]);
 
   // Cada marco só conta no mês em que aconteceu — por isso a data que cai fora
@@ -204,8 +205,8 @@ export async function getComercialDashboard(month: string): Promise<DashboardCom
   };
 }
 
-export async function getVerbaDoMes(month: string) {
-  const linhas = await prisma.channelMonth.findMany({ where: { month } });
+export async function getVerbaDoMes(empresa: Empresa, month: string) {
+  const linhas = await prisma.channelMonth.findMany({ where: { empresa, month } });
   return CANAIS.map((canal) => {
     const l = linhas.find((x) => x.channel === canal);
     return { canal, impressions: l?.impressions ?? 0, investment: Number(l?.investment ?? 0) };

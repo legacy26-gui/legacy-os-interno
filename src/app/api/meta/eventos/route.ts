@@ -38,8 +38,11 @@ export async function GET(request: NextRequest) {
         lead: { select: { companyName: true, stage: true } },
       },
     }),
-    prisma.lead.count({ where: { OR: [{ fbc: { not: null } }, { fbp: { not: null } }, { fbclid: { not: null } }] } }),
-    prisma.lead.count({ where: { fbc: null, fbp: null, fbclid: null } }),
+    // O Pixel e a landing são da agência; o contador é dela.
+    prisma.lead.count({
+      where: { empresa: "AGENCIA", OR: [{ fbc: { not: null } }, { fbp: { not: null } }, { fbclid: { not: null } }] },
+    }),
+    prisma.lead.count({ where: { empresa: "AGENCIA", fbc: null, fbp: null, fbclid: null } }),
   ]);
 
   return NextResponse.json({

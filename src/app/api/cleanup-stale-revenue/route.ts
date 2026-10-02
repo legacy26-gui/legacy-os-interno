@@ -20,6 +20,8 @@ export async function GET(request: NextRequest) {
 
   const stale = await prisma.revenue.findMany({
     where: {
+      // Manutenção da carteira de mensalidade, que é da agência.
+      empresa: "AGENCIA",
       status: { in: ["PENDENTE", "ATRASADO"] },
       dueDate: { gte: monthStart },
       client: { status: { not: "ATIVO" } },
@@ -42,8 +44,8 @@ export async function GET(request: NextRequest) {
       count: stale.length,
       totalValue,
       items: stale.map((r) => ({
-        client: r.client.companyName,
-        clientStatus: r.client.status,
+        client: r.client?.companyName ?? "—",
+        clientStatus: r.client?.status ?? "—",
         description: r.description,
         value: r.value,
         dueDate: r.dueDate,

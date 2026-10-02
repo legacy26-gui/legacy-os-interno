@@ -5,8 +5,13 @@ import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { avisarMetaDaEtapa } from "@/lib/meta-capi";
-import type { LeadStage } from "@/generated/prisma/enums";
+import type { Empresa, LeadStage } from "@/generated/prisma/enums";
+
+// O funil é de uma empresa só. Toda busca e toda gravação daqui levam a empresa
+// aberta na tela, e quem mexe num cartão existente confere primeiro que o
+// cartão é dela — o id vem do navegador e não serve de prova de nada.
 
 const CANAIS = ["META", "PRESENCIAL", "REDE", "MESA_LOJISTA", "ORGANICO"] as const;
 const ETAPAS = [
@@ -60,15 +65,17 @@ export async function createLead(_prevState: LeadFormState, formData: FormData):
   const parsed = lerFormulario(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
+  const empresa = await empresaAtual();
+
   // Entra no topo da primeira coluna, que é onde o olho procura o lead novo.
   const primeiro = await prisma.lead.findFirst({
-    where: { stage: "LEAD" },
+    where: { empresa, stage: "LEAD" },
     orderBy: { position: "asc" },
     select: { position: true },
   });
 
   await prisma.lead.create({
-    data: { ...parsed.data, ownerId: user.id, position: (primeiro?.position ?? 0) - 1 },
+    data: { ...parsed.data, empresa, ownerId: user.id, position: (primeiro?.position ?? 0) - 1 },
   });
   revalidar();
   return { ok: true };
@@ -83,7 +90,11 @@ export async function updateLead(
   const parsed = lerFormulario(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
-  const lead = await prisma.lead.update({ where: { id: leadId }, data: parsed.data });
+  const empresa = await empresaAtual();
+  const { count } = await prisma.lead.updateMany({ where: { id: leadId, empresa }, data: parsed.data });
+  if (count === 0) return { error: "Lead não encontrado." };
+
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
   await sincronizarEventoDaVenda(lead);
   after(() => avisarMetaDaEtapa(leadId).catch((e) => console.error("[meta] aviso falhou", e)));
   revalidar();
@@ -118,7 +129,8 @@ export async function moverLead(leadId: string, etapa: string, indice: number) {
   if (!ETAPAS.includes(etapa as (typeof ETAPAS)[number])) return;
   const destino = etapa as LeadStage;
 
-  const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+  const empresa = await empresaAtual();
+  const lead = await prisma.lead.findFirst({ where: { id: leadId, empresa } });
   if (!lead) return;
 
   const agora = new Date();
@@ -145,7 +157,7 @@ export async function moverLead(leadId: string, etapa: string, indice: number) {
 
     // Reordena a coluna de destino colocando o cartão no lugar onde foi solto.
     const vizinhos = await tx.lead.findMany({
-      where: { stage: destino, id: { not: leadId } },
+      where: { empresa, stage: destino, id: { not: leadId } },
       orderBy: [{ position: "asc" }, { createdAt: "desc" }],
       select: { id: true },
     });
@@ -169,8 +181,9 @@ export async function moverLead(leadId: string, etapa: string, indice: number) {
 /** A reunião estava marcada e o lojista não apareceu. */
 export async function marcarNoShow(leadId: string) {
   await requireModuleAccess("comercial");
-  await prisma.lead.update({
-    where: { id: leadId },
+  const empresa = await empresaAtual();
+  await prisma.lead.updateMany({
+    where: { id: leadId, empresa },
     data: { noShowAt: new Date(), stage: "REUNIAO_AGENDADA", meetingHeldAt: null },
   });
   revalidar();
@@ -179,8 +192,9 @@ export async function marcarNoShow(leadId: string) {
 /** Remarcou depois do furo: limpa o no-show e conta como agendamento novo. */
 export async function reagendarReuniao(leadId: string) {
   await requireModuleAccess("comercial");
-  await prisma.lead.update({
-    where: { id: leadId },
+  const empresa = await empresaAtual();
+  await prisma.lead.updateMany({
+    where: { id: leadId, empresa },
     data: { noShowAt: null, meetingSetAt: new Date(), stage: "REUNIAO_AGENDADA" },
   });
   revalidar();
@@ -188,17 +202,21 @@ export async function reagendarReuniao(leadId: string) {
 
 export async function marcarPerdido(leadId: string, motivo: string) {
   await requireModuleAccess("comercial");
-  const lead = await prisma.lead.update({
-    where: { id: leadId },
+  const empresa = await empresaAtual();
+  const { count } = await prisma.lead.updateMany({
+    where: { id: leadId, empresa },
     data: { stage: "PERDIDO", lostAt: new Date(), wonAt: null, lostReason: motivo.trim() || null },
   });
+  if (count === 0) return;
+  const lead = await prisma.lead.findUniqueOrThrow({ where: { id: leadId } });
   await sincronizarEventoDaVenda(lead);
   revalidar();
 }
 
 export async function deleteLead(leadId: string) {
   await requireModuleAccess("comercial");
-  await prisma.lead.delete({ where: { id: leadId } });
+  const empresa = await empresaAtual();
+  await prisma.lead.deleteMany({ where: { id: leadId, empresa } });
   revalidar();
 }
 
@@ -209,6 +227,7 @@ export async function deleteLead(leadId: string) {
  */
 async function sincronizarEventoDaVenda(lead: {
   id: string;
+  empresa: Empresa;
   stage: LeadStage;
   companyName: string;
   monthlyValue: unknown;
@@ -218,6 +237,8 @@ async function sincronizarEventoDaVenda(lead: {
       where: { leadId: lead.id },
       create: {
         leadId: lead.id,
+        // O evento é da mesma empresa do lead que o gerou, não da tela aberta.
+        empresa: lead.empresa,
         type: "VENDA",
         companyName: lead.companyName,
         value: Number(lead.monthlyValue),

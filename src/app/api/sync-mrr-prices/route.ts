@@ -24,6 +24,7 @@ export async function GET(request: NextRequest) {
 
   const revenues = await prisma.revenue.findMany({
     where: {
+      empresa: "AGENCIA",
       status: { in: ["PENDENTE", "ATRASADO"] },
       dueDate: { gte: monthStart, lt: monthEnd },
       description: { startsWith: MRR_TAG },
@@ -32,7 +33,9 @@ export async function GET(request: NextRequest) {
     select: { id: true, value: true, client: { select: { companyName: true, monthlyValue: true } } },
   });
 
-  const outOfSync = revenues.filter((r) => Number(r.value) !== Number(r.client.monthlyValue));
+  // A rota olha só cobrança de MRR, que sempre tem cliente — o `?.` é pro
+  // TypeScript, que não sabe disso pelo filtro.
+  const outOfSync = revenues.filter((r) => r.client && Number(r.value) !== Number(r.client.monthlyValue));
 
   if (!confirm) {
     return NextResponse.json({
@@ -40,14 +43,15 @@ export async function GET(request: NextRequest) {
       message: "Prévia — chame com ?confirm=1 pra aplicar.",
       count: outOfSync.length,
       items: outOfSync.map((r) => ({
-        client: r.client.companyName,
+        client: r.client?.companyName ?? "—",
         valorNaCobranca: r.value,
-        precoAtualDoCliente: r.client.monthlyValue,
+        precoAtualDoCliente: r.client?.monthlyValue ?? 0,
       })),
     });
   }
 
   for (const r of outOfSync) {
+    if (!r.client) continue;
     await prisma.revenue.update({ where: { id: r.id }, data: { value: r.client.monthlyValue } });
   }
 

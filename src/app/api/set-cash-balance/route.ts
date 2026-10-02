@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 // abrir a tela. Mesma coisa que o formulário em /financeiro/dfc faz — existe
 // pra permitir cadastrar/corrigir o saldo remotamente.
 // Uso: ?key=SETUP_SECRET&balance=2089&date=2026-08-15&confirm=1
+//      &empresa=AGENCIA|TREINAMENTOS (sem isso, mexe no caixa da agência)
 export async function GET(request: NextRequest) {
   const configuredSecret = process.env.SETUP_SECRET;
   if (!configuredSecret) {
@@ -15,7 +16,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Chave inválida." }, { status: 403 });
   }
 
-  const atual = await prisma.cashSetting.findUnique({ where: { id: "default" } });
+  // Cada empresa tem o saldo inicial dela. Sem o parâmetro, assume a agência —
+  // é o caixa que já existia antes de o Treinamentos entrar no sistema.
+  const empresaRaw = params.get("empresa")?.toUpperCase();
+  if (empresaRaw && empresaRaw !== "AGENCIA" && empresaRaw !== "TREINAMENTOS") {
+    return NextResponse.json({ error: "empresa deve ser AGENCIA ou TREINAMENTOS." }, { status: 400 });
+  }
+  const empresa = (empresaRaw ?? "AGENCIA") as "AGENCIA" | "TREINAMENTOS";
+
+  const atual = await prisma.cashSetting.findUnique({ where: { empresa } });
 
   const balanceRaw = params.get("balance");
   const dateRaw = params.get("date");
@@ -40,14 +49,14 @@ export async function GET(request: NextRequest) {
       preview: true,
       message: "Prévia — chame com confirm=1 pra gravar.",
       saldoAtual: atual,
-      vaiGravar: { openingBalance, openingDate },
+      vaiGravar: { empresa, openingBalance, openingDate },
     });
   }
 
   const saved = await prisma.cashSetting.upsert({
-    where: { id: "default" },
+    where: { empresa },
     update: { openingBalance, openingDate },
-    create: { id: "default", openingBalance, openingDate },
+    create: { id: empresa.toLowerCase(), empresa, openingBalance, openingDate },
   });
 
   return NextResponse.json({ message: "Saldo em banco gravado.", saldo: saved });

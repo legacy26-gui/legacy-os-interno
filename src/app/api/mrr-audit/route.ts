@@ -32,8 +32,9 @@ export async function GET(request: NextRequest) {
       select: { companyName: true, monthlyValue: true },
       orderBy: { companyName: "asc" },
     }),
+    // A mensalidade recorrente é da carteira da agência.
     prisma.revenue.findMany({
-      where: { dueDate: { gte: monthStart, lt: monthEnd }, description: { startsWith: MRR_TAG } },
+      where: { empresa: "AGENCIA", dueDate: { gte: monthStart, lt: monthEnd }, description: { startsWith: MRR_TAG } },
       select: {
         id: true,
         clientId: true,
@@ -56,8 +57,12 @@ export async function GET(request: NextRequest) {
     .map((c) => ({ companyName: c.companyName, monthlyValue: c.monthlyValue }));
 
   const lancamentoDeClienteNaoAtivo = mrrRevenues
-    .filter((r) => !activeClientIds.has(r.clientId))
-    .map((r) => ({ companyName: r.client.companyName, status: r.client.status, value: r.value }));
+    .filter((r) => !r.clientId || !activeClientIds.has(r.clientId))
+    .map((r) => ({
+      companyName: r.client?.companyName ?? "—",
+      status: r.client?.status ?? "—",
+      value: r.value,
+    }));
 
   const precoDesatualizado = activeClients
     .filter((c) => {

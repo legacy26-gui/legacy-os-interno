@@ -18,6 +18,15 @@ enum Role {
   GESTOR_TRAFEGO
 }
 
+// As duas empresas do grupo. O sistema é o mesmo; o que muda é de quem é o
+// dinheiro, o funil e a meta. Separação vale na consulta ao banco, não no
+// menu: o sócio do Treinamentos não pode ver o caixa da agência nem digitando
+// a URL na mão.
+enum Empresa {
+  AGENCIA
+  TREINAMENTOS
+}
+
 model User {
   id           String   @id @default(cuid())
   name         String
@@ -26,6 +35,9 @@ model User {
   role         Role
   active       Boolean  @default(true)
   mustChangePassword Boolean @default(true)
+  // Em quais empresas a pessoa trabalha. Quem tem as duas vê o grupo inteiro;
+  // quem tem uma só nem sabe que a outra existe.
+  empresas     Empresa[] @default([AGENCIA])
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -188,8 +200,12 @@ enum RevenueStatus {
 
 model Revenue {
   id          String        @id @default(cuid())
-  clientId    String
-  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  empresa     Empresa       @default(AGENCIA)
+  // Entrada sem cliente na carteira existe: o Treinamentos vende curso, não
+  // mensalidade de loja, e nem toda entrada da agência nasce de um contrato.
+  // Nesses casos quem identifica a entrada é a descrição.
+  clientId    String?
+  client      Client?       @relation(fields: [clientId], references: [id], onDelete: Cascade)
   description String
   value       Decimal       @db.Decimal(12, 2)
   dueDate     DateTime
@@ -203,6 +219,7 @@ model Revenue {
 
 model Expense {
   id             String        @id @default(cuid())
+  empresa        Empresa       @default(AGENCIA)
   description    String
   category       String
   value          Decimal       @db.Decimal(12, 2)
@@ -218,7 +235,7 @@ model Expense {
   paidDate       DateTime?
   createdAt      DateTime      @default(now())
 
-  @@index([date, paid])
+  @@index([empresa, date, paid])
   @@map("expenses")
 }
 
@@ -226,6 +243,7 @@ model Expense {
 // mensalidade do cliente pro MRR, gera automaticamente o lançamento do mês.
 model FixedExpense {
   id          String    @id @default(cuid())
+  empresa     Empresa   @default(AGENCIA)
   description String
   category    String
   value       Decimal   @db.Decimal(12, 2)
@@ -323,6 +341,7 @@ enum LeadStage {
 
 model Lead {
   id          String      @id @default(cuid())
+  empresa     Empresa     @default(AGENCIA)
   companyName String
   contactName String
   city        String?
@@ -375,8 +394,8 @@ model Lead {
   saleEvent  CommercialEvent?
   metaEvents MetaCapiEvent[]
 
-  @@index([stage, position])
-  @@index([channel, createdAt])
+  @@index([empresa, stage, position])
+  @@index([empresa, channel, createdAt])
   @@map("leads")
 }
 
@@ -466,6 +485,7 @@ model TentativaLead {
 // transforma o funil em custo: sem isso não existe CPL, custo por reunião, CAC.
 model ChannelMonth {
   id          String      @id @default(cuid())
+  empresa     Empresa     @default(AGENCIA)
   month       String // aaaa-mm
   channel     LeadChannel
   impressions Int         @default(0)
@@ -473,7 +493,9 @@ model ChannelMonth {
   createdAt   DateTime    @default(now())
   updatedAt   DateTime    @updatedAt
 
-  @@unique([month, channel])
+  // Cada empresa lança a verba dela: as duas anunciam no mesmo canal no mesmo
+  // mês, e somar as duas faria o CPL de cada uma sair errado.
+  @@unique([empresa, month, channel])
   @@map("channel_months")
 }
 
@@ -635,6 +657,9 @@ model SupportTicket {
 // saídas posteriores a ela mexem no saldo (as anteriores já estão dentro dele).
 model CashSetting {
   id             String   @id @default("default")
+  // Saldo inicial é por empresa: o caixa do treinamentos não começa com o
+  // dinheiro da agência. Uma linha por empresa, por isso o @unique.
+  empresa        Empresa  @unique @default(AGENCIA)
   openingBalance Decimal  @db.Decimal(12, 2)
   openingDate    DateTime @db.Date
   updatedAt      DateTime @updatedAt
@@ -644,13 +669,17 @@ model CashSetting {
 
 model MonthlyGoal {
   id               String   @id @default(cuid())
-  month            String   @unique // YYYY-MM
+  empresa          Empresa  @default(AGENCIA)
+  month            String   // YYYY-MM
   targetRevenue    Decimal  @db.Decimal(12, 2)
   targetSalesQty   Int?
   targetSalesValue Decimal? @db.Decimal(12, 2)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
+  // Cada empresa tem a meta dela pro mesmo mês — a agência pode querer 50 mil
+  // em outubro e o treinamentos 12 mil, e as duas linhas convivem.
+  @@unique([empresa, month])
   @@map("monthly_goals")
 }
 
@@ -760,6 +789,7 @@ enum CommercialEventType {
 // continuar existindo (guarda o nome e valor no momento do evento).
 model CommercialEvent {
   id          String              @id @default(cuid())
+  empresa     Empresa             @default(AGENCIA)
   type        CommercialEventType
   companyName String
   value       Decimal             @db.Decimal(12, 2)
@@ -769,7 +799,7 @@ model CommercialEvent {
   lead        Lead?               @relation(fields: [leadId], references: [id], onDelete: Cascade)
   createdAt   DateTime            @default(now())
 
-  @@index([type, createdAt])
+  @@index([empresa, type, createdAt])
   @@map("commercial_events")
 }
 

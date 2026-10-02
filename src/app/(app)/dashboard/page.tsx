@@ -4,22 +4,37 @@ import {
   CalendarCheck, FileText, FileSignature, Handshake, Bell,
 } from "lucide-react";
 import { getCurrentUser } from "@/lib/dal";
+import { EMPRESA_LABELS } from "@/lib/empresa";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { canAccessModule } from "@/lib/permissions";
 import { getFinanceOverview, getOperationsOverview, getCommercialOverview, getAutomationAlerts } from "@/lib/metrics";
 import { formatCurrency } from "@/lib/labels";
 
-export default async function DashboardPage() {
+const AVISOS: Record<string, string> = {
+  "acesso-negado": "Essa tela não está liberada pro seu nível de acesso.",
+  "outra-empresa":
+    "Essa tela é da outra empresa do grupo. Troque a empresa no topo da página pra abrir.",
+};
+
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ erro?: string }>;
+}) {
   const user = await getCurrentUser();
+  const empresa = await empresaAtual();
+  const { erro } = await searchParams;
+  const aviso = erro ? AVISOS[erro] : undefined;
 
   const showFinance = canAccessModule(user.role, "financeiro");
   const showCommercial = canAccessModule(user.role, "comercial");
   const showContracts = canAccessModule(user.role, "contratos");
 
   const [finance, operations, commercial, allAlerts] = await Promise.all([
-    showFinance ? getFinanceOverview() : null,
-    getOperationsOverview(),
-    showCommercial ? getCommercialOverview() : null,
-    getAutomationAlerts(),
+    showFinance ? getFinanceOverview(empresa) : null,
+    getOperationsOverview(empresa),
+    showCommercial ? getCommercialOverview(empresa) : null,
+    getAutomationAlerts(empresa),
   ]);
 
   const alerts = allAlerts.filter((a) => {
@@ -32,8 +47,17 @@ export default async function DashboardPage() {
     <div className="flex flex-col gap-8">
       <div>
         <h1 className="text-xl font-semibold">Olá, {user.name.split(" ")[0]}</h1>
-        <p className="text-sm text-foreground-muted mt-0.5">Visão geral da Legacy Digital</p>
+        <p className="text-sm text-foreground-muted mt-0.5">
+          Visão geral — {EMPRESA_LABELS[empresa]}
+        </p>
       </div>
+
+      {aviso && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 px-5 py-4 flex items-start gap-2.5">
+          <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-sm">{aviso}</p>
+        </div>
+      )}
 
       {alerts.length > 0 && (
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-5">
@@ -63,13 +87,23 @@ export default async function DashboardPage() {
         </Section>
       )}
 
-      <Section title="Operação">
-        <Card icon={Megaphone} label="Campanhas ativas" value={operations.activeCampaigns.toString()} />
-        <Card icon={FileBarChart} label="Relatórios gerados" value={operations.pendingReports.toString()} />
-        <Card icon={ListChecks} label="Demandas pendentes" value={operations.pendingTasks.toString()} />
-        <Card icon={UserX} label="Clientes sem atendimento" value={operations.clientsWithoutRecentContact.toString()} accent={operations.clientsWithoutRecentContact > 0} />
-        <Card icon={UserPlus} label="Leads gerados no mês" value={operations.leadsThisMonth.toString()} />
-      </Section>
+      {/* Campanha, relatório e atendimento de loja são da operação da agência.
+          Com o Treinamentos aberto, esse bloco mostraria número da outra
+          empresa — então ele some em vez de mentir. */}
+      {empresa === "AGENCIA" ? (
+        <Section title="Operação">
+          <Card icon={Megaphone} label="Campanhas ativas" value={operations.activeCampaigns.toString()} />
+          <Card icon={FileBarChart} label="Relatórios gerados" value={operations.pendingReports.toString()} />
+          <Card icon={ListChecks} label="Demandas pendentes" value={operations.pendingTasks.toString()} />
+          <Card icon={UserX} label="Clientes sem atendimento" value={operations.clientsWithoutRecentContact.toString()} accent={operations.clientsWithoutRecentContact > 0} />
+          <Card icon={UserPlus} label="Leads gerados no mês" value={operations.leadsThisMonth.toString()} />
+        </Section>
+      ) : (
+        <Section title="Operação">
+          <Card icon={ListChecks} label="Demandas pendentes" value={operations.pendingTasks.toString()} />
+          <Card icon={UserPlus} label="Leads gerados no mês" value={operations.leadsThisMonth.toString()} />
+        </Section>
+      )}
 
       {commercial && (
         <Section title="Comercial">

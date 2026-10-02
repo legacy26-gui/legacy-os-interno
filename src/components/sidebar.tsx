@@ -9,8 +9,9 @@ import {
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
   Trophy,
 } from "lucide-react";
-import type { Role } from "@/generated/prisma/enums";
-import { canAccessModule, type ModuleKey } from "@/lib/permissions";
+import type { Empresa, Role } from "@/generated/prisma/enums";
+import { canAccessModule, moduleServesEmpresa, type ModuleKey } from "@/lib/permissions";
+import { EMPRESA_CURTA } from "@/lib/empresa";
 
 type NavLeaf = { href: string; label: string; icon: typeof LayoutDashboard; module: ModuleKey | null };
 type NavGroup = { label: string; items: NavLeaf[] };
@@ -85,7 +86,15 @@ function NavLink({ href, label, icon: Icon, active, onClick }: NavLeaf & { activ
   );
 }
 
-export function Sidebar({ role, email }: { role: Role; email?: string }) {
+export function Sidebar({
+  role,
+  email,
+  empresa,
+}: {
+  role: Role;
+  email?: string;
+  empresa: Empresa;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -99,14 +108,20 @@ export function Sidebar({ role, email }: { role: Role; email?: string }) {
 
   const isEmployee = role === "GESTOR_TRAFEGO";
 
-  const topItems = TOP_ITEMS.filter((item) => !isEmployee && (!item.module || canAccessModule(role, item.module, email)));
+  // Duas perguntas por item: o cargo abre esse módulo, e esse módulo existe na
+  // empresa que está aberta? Gestão de conta de loja, por exemplo, não existe
+  // no Treinamentos.
+  const liberado = (item: NavLeaf) =>
+    !item.module || (canAccessModule(role, item.module, email) && moduleServesEmpresa(item.module, empresa));
+
+  const topItems = TOP_ITEMS.filter((item) => !isEmployee && liberado(item));
   const employeeItems = [
-    ...EMPLOYEE_ITEMS.filter((item) => !item.module || canAccessModule(role, item.module, email)),
-    ...EXTRA_ITEMS.filter((item) => item.module && canAccessModule(role, item.module, email)),
+    ...EMPLOYEE_ITEMS.filter(liberado),
+    ...EXTRA_ITEMS.filter((item) => item.module && liberado(item)),
   ];
   const groups = NAV_GROUPS.map((g) => ({
     ...g,
-    items: g.items.filter((item) => !item.module || canAccessModule(role, item.module, email)),
+    items: g.items.filter(liberado),
   })).filter((g) => g.items.length > 0);
 
   return (
@@ -134,7 +149,9 @@ export function Sidebar({ role, email }: { role: Role; email?: string }) {
           <span className="text-white font-black text-lg tracking-tight leading-none">
             LEGACY<span className="text-accent">OS</span>
           </span>
-          <span className="text-zinc-500 text-[10px] font-medium tracking-[0.25em] mt-1">LEGACY DIGITAL</span>
+          <span className="text-zinc-500 text-[10px] font-medium tracking-[0.25em] mt-1">
+            {EMPRESA_CURTA[empresa].toUpperCase()}
+          </span>
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-0.5">

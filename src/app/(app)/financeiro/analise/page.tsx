@@ -2,6 +2,7 @@ import Link from "next/link";
 import { AlertTriangle, TrendingUp, TrendingDown, Wallet, Target, Trash2, CheckCircle2, Clock, ChevronLeft, ChevronRight, Pause, Play, UserCheck, Repeat, Receipt, Percent } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { getFinanceOverview, getRevenueByClient, getRevenueByCity } from "@/lib/metrics";
 import { formatCurrency, formatDate, REVENUE_STATUS_LABELS, REVENUE_STATUS_COLORS, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/lib/labels";
 import {
@@ -34,6 +35,7 @@ export default async function FinanceiroPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   await requireModuleAccess("financeiro");
+  const empresa = await empresaAtual();
   const { month } = await searchParams;
 
   // Gera automaticamente (idempotente) a receita do mês para cada cliente
@@ -41,7 +43,7 @@ export default async function FinanceiroPage({
   // sempre pro mês real de hoje, independente de qual mês está sendo
   // visualizado abaixo.
   const now = new Date();
-  await Promise.all([ensureMonthlyMrrRevenues(now), ensureMonthlyFixedExpenses(now)]);
+  await Promise.all([ensureMonthlyMrrRevenues(now), ensureMonthlyFixedExpenses(empresa, now)]);
 
   const refDate = month && /^\d{4}-\d{2}$/.test(month) ? new Date(`${month}-01T00:00:00Z`) : now;
   const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));
@@ -54,20 +56,28 @@ export default async function FinanceiroPage({
   const monthLabelRaw = refDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
   const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1);
 
-  const overview = await getFinanceOverview(refDate);
+  const overview = await getFinanceOverview(empresa, refDate);
   const [revenueByClient, revenueByCity, clients, revenues, expenses, fixedExpenses, excludedFromBilling] = await Promise.all([
-    getRevenueByClient(),
-    getRevenueByCity(),
-    prisma.client.findMany({ select: { id: true, companyName: true }, orderBy: { companyName: "asc" } }),
+    getRevenueByClient(empresa),
+    getRevenueByCity(empresa),
+    // A loja só existe na carteira da agência — no Treinamentos a entrada é
+    // identificada pela descrição, não por cliente.
+    empresa === "AGENCIA"
+      ? prisma.client.findMany({ select: { id: true, companyName: true }, orderBy: { companyName: "asc" } })
+      : [],
     prisma.revenue.findMany({
-      where: { dueDate: { gte: monthStart, lt: monthEnd } },
+      where: { empresa, dueDate: { gte: monthStart, lt: monthEnd } },
       include: { client: { select: { companyName: true } } },
       orderBy: { dueDate: "asc" },
     }),
-    prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd } }, orderBy: { date: "asc" } }),
-    prisma.fixedExpense.findMany({ orderBy: { description: "asc" } }),
+    prisma.expense.findMany({
+      where: { empresa, date: { gte: monthStart, lt: monthEnd } },
+      orderBy: { date: "asc" },
+    }),
+    prisma.fixedExpense.findMany({ where: { empresa }, orderBy: { description: "asc" } }),
     // Quem foi tirado da cobrança DESTE mês — a lista muda conforme o mês
     // que está aberto na tela.
+    // Pular cobrança é coisa da carteira de mensalidade, que é da agência.
     prisma.cobrancaPulada.findMany({
       where: { month: monthParam(refDate) },
       select: { client: { select: { id: true, companyName: true, monthlyValue: true, status: true } } },
@@ -236,17 +246,17 @@ export default async function FinanceiroPage({
           <div className="flex flex-col gap-1.5 text-sm">
             {overdue.map((r) => (
               <p key={r.id}>
-                <span className="text-red-500 font-medium">Atrasado:</span> {r.client.companyName} — {formatCurrency(r.value.toString())} (venceu {formatDate(r.dueDate)})
+                <span className="text-red-500 font-medium">Atrasado:</span> {r.client?.companyName ?? r.description} — {formatCurrency(r.value.toString())} (venceu {formatDate(r.dueDate)})
               </p>
             ))}
             {dueToday.map((r) => (
               <p key={r.id}>
-                <span className="text-amber-500 font-medium">Vence hoje:</span> {r.client.companyName} — {formatCurrency(r.value.toString())}
+                <span className="text-amber-500 font-medium">Vence hoje:</span> {r.client?.companyName ?? r.description} — {formatCurrency(r.value.toString())}
               </p>
             ))}
             {dueSoon.filter((r) => !dueToday.some((d) => d.id === r.id)).map((r) => (
               <p key={r.id}>
-                <span className="text-foreground-muted font-medium">Vence em breve:</span> {r.client.companyName} — {formatCurrency(r.value.toString())} ({formatDate(r.dueDate)})
+                <span className="text-foreground-muted font-medium">Vence em breve:</span> {r.client?.companyName ?? r.description} — {formatCurrency(r.value.toString())} ({formatDate(r.dueDate)})
               </p>
             ))}
           </div>
@@ -324,7 +334,7 @@ export default async function FinanceiroPage({
           <tbody className="divide-y divide-border">
             {revenues.map((r) => (
               <tr key={r.id} className="hover:bg-surface-muted transition-colors">
-                <td className="px-5 py-3">{r.client.companyName}</td>
+                <td className="px-5 py-3">{r.client?.companyName ?? "—"}</td>
                 <td className="px-5 py-3 text-foreground-muted">{r.description}</td>
                 <td className="px-5 py-3 text-foreground-muted">
                   <DueDateInput revenueId={r.id} dueDate={r.dueDate} />

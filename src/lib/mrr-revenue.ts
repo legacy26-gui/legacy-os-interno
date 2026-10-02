@@ -4,6 +4,12 @@ import { PAYMENT_DAYS } from "@/lib/labels";
 import { CARTEIRA_COBRAVEL } from "@/lib/carteira";
 import type { RevenueModel } from "@/generated/prisma/models";
 
+// A mensalidade recorrente é da agência: é ela que tem carteira de cliente com
+// contrato mensal. O Treinamentos vende curso (avulso, parcelado, assinatura)
+// e isso ganha tela própria. Por isso as duas funções daqui gravam e leem
+// sempre com empresa AGENCIA — e não "a empresa aberta na tela".
+const EMPRESA_DA_CARTEIRA = "AGENCIA" as const;
+
 // Marca as receitas geradas automaticamente a partir do MRR, para diferenciar
 // de lançamentos manuais e permitir checagem idempotente por mês.
 const MRR_TAG = "[MRR]";
@@ -38,7 +44,11 @@ export async function ensureMonthlyMrrRevenues(ref: Date = new Date()): Promise<
       select: { id: true, monthlyValue: true, dueDay: true },
     }),
     prisma.revenue.findMany({
-      where: { dueDate: { gte: monthStart, lt: monthEnd }, description: { startsWith: MRR_TAG } },
+      where: {
+        empresa: EMPRESA_DA_CARTEIRA,
+        dueDate: { gte: monthStart, lt: monthEnd },
+        description: { startsWith: MRR_TAG },
+      },
       select: { clientId: true },
     }),
     // Quem foi tirado da cobrança DESTE mês. No mês seguinte volta sozinho.
@@ -53,6 +63,7 @@ export async function ensureMonthlyMrrRevenues(ref: Date = new Date()): Promise<
   await prisma.revenue.createMany({
     data: toCreate.map((c) => ({
       clientId: c.id,
+      empresa: EMPRESA_DA_CARTEIRA,
       description: `${MRR_TAG} Mensalidade — ${label}`,
       value: c.monthlyValue,
       dueDate: dueDateForMonth(ref, c.dueDay),
@@ -65,7 +76,7 @@ export async function ensureMonthlyMrrRevenues(ref: Date = new Date()): Promise<
 
 export interface MrrRevenueGroup {
   day: number;
-  items: (RevenueModel & { client: { companyName: string } })[];
+  items: (RevenueModel & { client: { companyName: string } | null })[];
 }
 
 // Busca as receitas de MRR do mês de referência, agrupadas por dia de
@@ -80,12 +91,16 @@ export async function getMonthlyMrrRevenues(ref: Date = new Date()): Promise<{
   const monthEnd = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 1));
 
   const revenues = await prisma.revenue.findMany({
-    where: { dueDate: { gte: monthStart, lt: monthEnd }, description: { startsWith: MRR_TAG } },
+    where: {
+      empresa: EMPRESA_DA_CARTEIRA,
+      dueDate: { gte: monthStart, lt: monthEnd },
+      description: { startsWith: MRR_TAG },
+    },
     include: { client: { select: { companyName: true } } },
     orderBy: [{ dueDate: "asc" }, { client: { companyName: "asc" } }],
   });
 
-  const byDay = new Map<number, (RevenueModel & { client: { companyName: string } })[]>();
+  const byDay = new Map<number, (RevenueModel & { client: { companyName: string } | null })[]>();
   for (const r of revenues) {
     const day = r.dueDate.getUTCDate();
     if (!byDay.has(day)) byDay.set(day, []);

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/dal";
+import { empresaAtual, minhasEmpresas } from "@/lib/empresa-atual";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 
@@ -10,13 +11,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     redirect("/trocar-senha");
   }
 
+  const [empresa, empresas] = await Promise.all([empresaAtual(), minhasEmpresas()]);
+
   return (
     // h-dvh em vez de h-screen: no celular a altura útil muda quando a barra do
     // navegador aparece/desaparece, e h-screen (100vh) deixava a tela cortada.
     <div className="flex flex-1 h-dvh bg-background overflow-hidden">
-      <Sidebar role={user.role} email={user.email} />
+      <Sidebar role={user.role} email={user.email} empresa={empresa} />
       <div className="flex-1 flex flex-col min-w-0 h-dvh overflow-hidden">
-        <Topbar name={user.name} role={user.role} />
+        <Topbar name={user.name} role={user.role} empresa={empresa} empresas={empresas} />
         {/* O padding de baixo reserva a barra de gestos do celular, senão o
             último botão da tela fica embaixo dela. */}
         <main className="flex-1 p-4 md:p-8 pb-[calc(1rem_+_env(safe-area-inset-bottom,0px))] md:pb-[calc(2rem_+_env(safe-area-inset-bottom,0px))] overflow-y-auto">

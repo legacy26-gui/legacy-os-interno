@@ -1,6 +1,12 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
 import { CARTEIRA } from "@/lib/carteira";
+import type { Empresa } from "@/generated/prisma/enums";
+
+// Toda função daqui recebe a empresa e leva o filtro pra dentro da consulta.
+// É de propósito que não exista valor padrão: função de dinheiro sem empresa
+// definida somaria o caixa das duas, e é exatamente isso que não pode
+// acontecer. Quem chama é a página, que pega a empresa de @/lib/empresa.
 
 function monthRange(month: string) {
   const [y, m] = month.split("-").map(Number);
@@ -9,7 +15,7 @@ function monthRange(month: string) {
   return { start, end };
 }
 
-export async function getFinanceOverview(refDate = new Date()) {
+export async function getFinanceOverview(empresa: Empresa, refDate = new Date()) {
   const month = refDate.toISOString().slice(0, 7);
   const { start: monthStart, end: monthEnd } = monthRange(month);
 
@@ -26,26 +32,35 @@ export async function getFinanceOverview(refDate = new Date()) {
   ] = await Promise.all([
       // Carteira inteira: tirar alguém do fluxo de cobrança não pode apagar o
       // cliente do faturamento, e cliente pausado continua sendo cliente.
-      prisma.client.findMany({ where: CARTEIRA }),
+      //
+      // A carteira de mensalidade é da agência. O Treinamentos vende curso, não
+      // tem cliente de mensalidade na tabela de clientes — por isso a consulta
+      // não roda pra ele em vez de somar a carteira da agência por engano.
+      empresa === "AGENCIA" ? prisma.client.findMany({ where: CARTEIRA }) : [],
       // Faturado do mês = cobranças daquele mês que já foram confirmadas
       // ("Confirmar"/"marcar como pago"). Usa dueDate — e não paidDate — pra
       // que dar baixa retroativa num mês passado entre no faturado daquele
       // mês, e pra bater com o "confirmado" do quadro de MRR.
-      prisma.revenue.findMany({ where: { status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } } }),
+      prisma.revenue.findMany({ where: { empresa, status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } } }),
       // Só saída confirmada entra em custo e lucro. As não confirmadas viram
       // "a pagar", medido separadamente abaixo.
-      prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd }, paid: true } }),
-      prisma.expense.findMany({ where: { date: { gte: monthStart, lt: monthEnd }, paid: false } }),
-      prisma.monthlyGoal.findUnique({ where: { month } }),
+      prisma.expense.findMany({ where: { empresa, date: { gte: monthStart, lt: monthEnd }, paid: true } }),
+      prisma.expense.findMany({ where: { empresa, date: { gte: monthStart, lt: monthEnd }, paid: false } }),
+      prisma.monthlyGoal.findUnique({ where: { empresa_month: { empresa, month } } }),
       prisma.revenue.findMany({
-        where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
+        where: { empresa, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
       }),
       prisma.revenue.findMany({
-        where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: new Date(new Date().toDateString()) } },
+        where: {
+          empresa,
+          status: { in: ["PENDENTE", "ATRASADO"] },
+          dueDate: { lt: new Date(new Date().toDateString()) },
+        },
         include: { client: { select: { companyName: true } } },
       }),
       prisma.revenue.findMany({
         where: {
+          empresa,
           status: { in: ["PENDENTE", "ATRASADO"] },
           dueDate: { gte: new Date(new Date().toDateString()), lt: new Date(new Date().toDateString() + " 23:59:59") },
         },
@@ -53,6 +68,7 @@ export async function getFinanceOverview(refDate = new Date()) {
       }),
       prisma.revenue.findMany({
         where: {
+          empresa,
           status: { in: ["PENDENTE", "ATRASADO"] },
           dueDate: { gte: new Date(), lt: new Date(Date.now() + 3 * 86400000) },
         },
@@ -140,24 +156,24 @@ export interface DreMonth {
 
 // Monta o DRE de um mês: receita confirmada, impostos, despesas operacionais
 // (fixas e variáveis, por categoria), EBITDA, EBIT e lucro líquido.
-export async function getDreMonth(refDate: Date): Promise<DreMonth> {
+export async function getDreMonth(empresa: Empresa, refDate: Date): Promise<DreMonth> {
   const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));
   const monthEnd = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
   const monthLabelRaw = refDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 
   const [paid, pending, expenses] = await Promise.all([
     prisma.revenue.findMany({
-      where: { status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } },
+      where: { empresa, status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } },
       select: { clientId: true, value: true },
     }),
     prisma.revenue.findMany({
-      where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
+      where: { empresa, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
       select: { clientId: true, value: true },
     }),
     // DRE conta só saída confirmada — despesa fixa aguardando confirmação
     // ainda não é custo do mês.
     prisma.expense.findMany({
-      where: { date: { gte: monthStart, lt: monthEnd }, paid: true },
+      where: { empresa, date: { gte: monthStart, lt: monthEnd }, paid: true },
       select: { category: true, value: true, fixedExpenseId: true },
     }),
   ]);
@@ -269,26 +285,26 @@ export interface CashFlow {
 // com saldo acumulado. O saldo inicial de cada mês é tudo que entrou menos
 // tudo que saiu antes dele — o sistema não tem saldo bancário de abertura,
 // então o acumulado começa do primeiro lançamento registrado.
-export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFlow> {
+export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 6): Promise<CashFlow> {
   const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));
   const monthEnd = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
   const windowStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() - (monthsBack - 1), 1));
 
   const [paid, expenses, pendingThisMonth, cashSetting] = await Promise.all([
     prisma.revenue.findMany({
-      where: { status: "PAGO", dueDate: { lt: monthEnd } },
+      where: { empresa, status: "PAGO", dueDate: { lt: monthEnd } },
       select: { value: true, dueDate: true, description: true },
     }),
     // Fluxo de caixa é dinheiro que saiu de verdade: só saída confirmada.
     prisma.expense.findMany({
-      where: { date: { lt: monthEnd }, paid: true },
+      where: { empresa, date: { lt: monthEnd }, paid: true },
       select: { value: true, date: true, category: true, fixedExpenseId: true },
     }),
     prisma.revenue.findMany({
-      where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
+      where: { empresa, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
       select: { value: true },
     }),
-    prisma.cashSetting.findUnique({ where: { id: "default" } }),
+    prisma.cashSetting.findUnique({ where: { empresa } }),
   ]);
 
   const key = (d: Date) => d.toISOString().slice(0, 7);
@@ -391,29 +407,32 @@ export async function getCashFlow(refDate: Date, monthsBack = 6): Promise<CashFl
   };
 }
 
-export async function getRevenueByClient() {
+export async function getRevenueByClient(empresa: Empresa) {
   const revenues = await prisma.revenue.groupBy({
     by: ["clientId"],
     _sum: { value: true },
-    where: { status: "PAGO" },
+    // Entrada avulsa não tem cliente, e "faturamento por cliente" sem cliente
+    // não quer dizer nada — ela aparece no total do mês, não nesta lista.
+    where: { empresa, status: "PAGO", clientId: { not: null } },
   });
+  const ids = revenues.map((r) => r.clientId).filter((id): id is string => id !== null);
   const clients = await prisma.client.findMany({
-    where: { id: { in: revenues.map((r) => r.clientId) } },
+    where: { id: { in: ids } },
     select: { id: true, companyName: true, city: true },
   });
   const clientMap = new Map(clients.map((c) => [c.id, c]));
   return revenues
     .map((r) => ({
-      clientId: r.clientId,
-      companyName: clientMap.get(r.clientId)?.companyName ?? "—",
-      city: clientMap.get(r.clientId)?.city ?? "—",
+      clientId: r.clientId ?? "",
+      companyName: (r.clientId && clientMap.get(r.clientId)?.companyName) || "—",
+      city: (r.clientId && clientMap.get(r.clientId)?.city) || "—",
       total: Number(r._sum.value ?? 0),
     }))
     .sort((a, b) => b.total - a.total);
 }
 
-export async function getRevenueByCity() {
-  const byClient = await getRevenueByClient();
+export async function getRevenueByCity(empresa: Empresa) {
+  const byClient = await getRevenueByClient(empresa);
   const map = new Map<string, number>();
   for (const c of byClient) {
     const key = c.city || "Não informado";
@@ -424,7 +443,7 @@ export async function getRevenueByCity() {
     .sort((a, b) => b.total - a.total);
 }
 
-export async function getOperationsOverview() {
+export async function getOperationsOverview(empresa: Empresa) {
   const [activeCampaigns, pendingReports, pendingTasks, clientsWithoutRecentContact, leadsThisMonth] =
     await Promise.all([
       prisma.campaign.count({ where: { periodEnd: { gte: new Date() } } }),
@@ -436,21 +455,23 @@ export async function getOperationsOverview() {
           history: { none: { createdAt: { gte: new Date(Date.now() - 14 * 86400000) } } },
         },
       }),
-      prisma.lead.count({ where: { createdAt: { gte: new Date(new Date().toISOString().slice(0, 7) + "-01") } } }),
+      prisma.lead.count({
+        where: { empresa, createdAt: { gte: new Date(new Date().toISOString().slice(0, 7) + "-01") } },
+      }),
     ]);
 
   return { activeCampaigns, pendingReports, pendingTasks, clientsWithoutRecentContact, leadsThisMonth };
 }
 
-export async function getCommercialOverview() {
+export async function getCommercialOverview(empresa: Empresa) {
   const monthStart = new Date(new Date().toISOString().slice(0, 7) + "-01");
   const [newLeads, meetings, proposals, contractsAwaitingSignature, closedDeals] = await Promise.all([
-    prisma.lead.count({ where: { createdAt: { gte: monthStart } } }),
-    prisma.lead.count({ where: { stage: { in: ["REUNIAO_AGENDADA", "REUNIAO_REALIZADA"] } } }),
-    prisma.lead.count({ where: { stage: "PROPOSTA" } }),
+    prisma.lead.count({ where: { empresa, createdAt: { gte: monthStart } } }),
+    prisma.lead.count({ where: { empresa, stage: { in: ["REUNIAO_AGENDADA", "REUNIAO_REALIZADA"] } } }),
+    prisma.lead.count({ where: { empresa, stage: "PROPOSTA" } }),
     prisma.contract.count({ where: { status: "AGUARDANDO_ASSINATURA" } }),
     // Venda do mês é pela data em que fechou, não pela última mexida no cartão.
-    prisma.lead.count({ where: { wonAt: { gte: monthStart } } }),
+    prisma.lead.count({ where: { empresa, wonAt: { gte: monthStart } } }),
   ]);
 
   return { newLeads, meetings, proposals, contractsAwaitingSignature, closedDeals };
@@ -458,16 +479,16 @@ export async function getCommercialOverview() {
 
 // Painel de números do Comercial — vendas e churn, atualizado automaticamente
 // a cada cliente adicionado, cancelado ou excluído (ver src/lib/actions/clients.ts).
-export async function getCommercialPanel() {
+export async function getCommercialPanel(empresa: Empresa) {
   const month = new Date().toISOString().slice(0, 7);
   const monthStart = new Date(month + "-01");
 
   const [vendasMes, churnMes, vendasTotal, churnTotal, goal] = await Promise.all([
-    prisma.commercialEvent.findMany({ where: { type: "VENDA", createdAt: { gte: monthStart } } }),
-    prisma.commercialEvent.findMany({ where: { type: "CHURN", createdAt: { gte: monthStart } } }),
-    prisma.commercialEvent.findMany({ where: { type: "VENDA" } }),
-    prisma.commercialEvent.findMany({ where: { type: "CHURN" } }),
-    prisma.monthlyGoal.findUnique({ where: { month } }),
+    prisma.commercialEvent.findMany({ where: { empresa, type: "VENDA", createdAt: { gte: monthStart } } }),
+    prisma.commercialEvent.findMany({ where: { empresa, type: "CHURN", createdAt: { gte: monthStart } } }),
+    prisma.commercialEvent.findMany({ where: { empresa, type: "VENDA" } }),
+    prisma.commercialEvent.findMany({ where: { empresa, type: "CHURN" } }),
+    prisma.monthlyGoal.findUnique({ where: { empresa_month: { empresa, month } } }),
   ]);
 
   const sum = (events: { value: unknown }[]) => events.reduce((s, e) => s + Number(e.value), 0);
@@ -498,34 +519,48 @@ export interface AutomationAlert {
   message: string;
 }
 
-export async function getAutomationAlerts(): Promise<AutomationAlert[]> {
+export async function getAutomationAlerts(empresa: Empresa): Promise<AutomationAlert[]> {
   const now = new Date();
+  // Contrato, campanha e relatório são da operação de loja, que é da agência.
+  // Com o Treinamentos aberto, sobra só o aviso de cobrança em atraso dele.
+  const daAgencia = empresa === "AGENCIA";
   const threeDaysAgo = new Date(now.getTime() - 3 * 86400000);
   const fourteenDaysAgo = new Date(now.getTime() - 14 * 86400000);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
 
   const [overdueRevenues, staleContracts, staleCampaigns, activeClients, recentReports] = await Promise.all([
     prisma.revenue.findMany({
-      where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: now } },
+      where: { empresa, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: now } },
       include: { client: { select: { companyName: true } } },
     }),
-    prisma.contract.findMany({
-      where: { status: "AGUARDANDO_ASSINATURA", sentAt: { lt: threeDaysAgo } },
-      include: { client: { select: { companyName: true } } },
-    }),
-    prisma.campaign.findMany({
-      where: { periodEnd: { gte: now }, updatedAt: { lt: fourteenDaysAgo } },
-      include: { client: { select: { companyName: true } } },
-    }),
-    prisma.client.findMany({ where: { status: "ATIVO" }, select: { id: true, companyName: true } }),
-    prisma.report.findMany({ where: { createdAt: { gte: thirtyDaysAgo } }, select: { clientId: true } }),
+    daAgencia
+      ? prisma.contract.findMany({
+          where: { status: "AGUARDANDO_ASSINATURA", sentAt: { lt: threeDaysAgo } },
+          include: { client: { select: { companyName: true } } },
+        })
+      : [],
+    daAgencia
+      ? prisma.campaign.findMany({
+          where: { periodEnd: { gte: now }, updatedAt: { lt: fourteenDaysAgo } },
+          include: { client: { select: { companyName: true } } },
+        })
+      : [],
+    daAgencia
+      ? prisma.client.findMany({ where: { status: "ATIVO" }, select: { id: true, companyName: true } })
+      : [],
+    daAgencia
+      ? prisma.report.findMany({ where: { createdAt: { gte: thirtyDaysAgo } }, select: { clientId: true } })
+      : [],
   ]);
 
   const recentReportClientIds = new Set(recentReports.map((r) => r.clientId));
   const alerts: AutomationAlert[] = [];
 
   for (const r of overdueRevenues) {
-    alerts.push({ type: "inadimplencia", message: `${r.client.companyName} está com pagamento em atraso.` });
+    alerts.push({
+      type: "inadimplencia",
+      message: `${r.client?.companyName ?? r.description} está com pagamento em atraso.`,
+    });
   }
   for (const c of staleContracts) {
     alerts.push({ type: "contrato", message: `Contrato de ${c.client.companyName} aguardando assinatura há mais de 3 dias.` });

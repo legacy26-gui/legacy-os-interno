@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { getComercialDashboard, getVerbaDoMes } from "@/lib/comercial-metrics";
 import { getCommercialPanel } from "@/lib/metrics";
 import { deleteCommercialEvent } from "@/lib/actions/commercial";
@@ -68,14 +69,15 @@ export default async function ComercialDashboardPage({
   searchParams: Promise<{ mes?: string }>;
 }) {
   await requireModuleAccess("comercial");
+  const empresa = await empresaAtual();
   const { mes } = await searchParams;
   const month = /^\d{4}-\d{2}$/.test(mes ?? "") ? mes! : new Date().toISOString().slice(0, 7);
 
   const [dados, verba, panel, eventos] = await Promise.all([
-    getComercialDashboard(month),
-    getVerbaDoMes(month),
-    getCommercialPanel(),
-    prisma.commercialEvent.findMany({ orderBy: { createdAt: "desc" }, take: 15 }),
+    getComercialDashboard(empresa, month),
+    getVerbaDoMes(empresa, month),
+    getCommercialPanel(empresa),
+    prisma.commercialEvent.findMany({ where: { empresa }, orderBy: { createdAt: "desc" }, take: 15 }),
   ]);
 
   const m = dados.geral;
@@ -317,11 +319,17 @@ export default async function ComercialDashboardPage({
         <VerbaForm month={month} linhas={verba} />
       </div>
 
-      {/* ── Lead que a landing mandou e não chegou ──────────────────────── */}
-      <EnviosRecusados />
+      {/* ── Lead que a landing mandou e não chegou ────────────────────────
+          A landing e o Pixel são da agência. No funil do Treinamentos esses
+          dois painéis não dizem nada, então nem aparecem. */}
+      {empresa === "AGENCIA" && (
+        <>
+          <EnviosRecusados />
 
-      {/* ── A Meta está recebendo? ──────────────────────────────────────── */}
-      <StatusMeta />
+          {/* ── A Meta está recebendo? ────────────────────────────────── */}
+          <StatusMeta />
+        </>
+      )}
 
       {/* ── Meta e eventos (o que já existia) ───────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

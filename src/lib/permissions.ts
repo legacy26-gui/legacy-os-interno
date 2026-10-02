@@ -1,4 +1,4 @@
-import type { Role } from "@/generated/prisma/enums";
+import type { Empresa, Role } from "@/generated/prisma/enums";
 
 export const MODULES = [
   "dashboard",
@@ -41,6 +41,29 @@ const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   playbooks: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   configuracoes: ["ADMIN"],
 };
+
+// Telas que só existem na agência, porque dependem da carteira de lojas: a
+// ficha do cliente, o contrato dele, a campanha, o relatório, a gestão da
+// conta. O Legacy Treinamentos vende curso — não tem loja pra gerir.
+//
+// Quem só trabalha no Treinamentos nunca vê essas abas; quem tem as duas vê
+// enquanto estiver com a agência aberta. Isso é só o menu — o que protege o
+// dado é o filtro na consulta (ver src/lib/empresa-atual.ts).
+const MODULOS_SO_DA_AGENCIA: ModuleKey[] = [
+  "clientes",
+  "formularios",
+  "contratos",
+  "operacoes",
+  "trafego",
+  "relatorios",
+  "gestao-contas",
+  "marketing",
+];
+
+export function moduleServesEmpresa(module: ModuleKey, empresa: Empresa): boolean {
+  if (empresa === "AGENCIA") return true;
+  return !MODULOS_SO_DA_AGENCIA.includes(module);
+}
 
 const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   { prefix: "/clientes", module: "clientes" },

@@ -2,8 +2,10 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { ROLE_LABELS } from "@/lib/permissions";
+import { EMPRESAS, EMPRESA_LABELS, empresasPermitidas } from "@/lib/empresa";
 import { UserForm } from "./user-form";
 import { UserRowActions } from "./user-row-actions";
+import { EmpresasDoUsuario } from "./empresas-do-usuario";
 
 export default async function ConfiguracoesPage() {
   const user = await getCurrentUser();
@@ -15,7 +17,9 @@ export default async function ConfiguracoesPage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-semibold">Configurações</h1>
-        <p className="text-sm text-foreground-muted mt-0.5">Gestão de usuários e níveis de acesso</p>
+        <p className="text-sm text-foreground-muted mt-0.5">
+          Gestão de usuários, níveis de acesso e empresas do grupo
+        </p>
       </div>
 
       <div className="rounded-2xl border border-border bg-surface p-5">
@@ -29,6 +33,7 @@ export default async function ConfiguracoesPage() {
               <th className="px-5 py-3 font-medium">Nome</th>
               <th className="px-5 py-3 font-medium hidden sm:table-cell">E-mail</th>
               <th className="px-5 py-3 font-medium">Nível</th>
+              <th className="px-5 py-3 font-medium">Empresas</th>
               <th className="px-5 py-3 font-medium">Status</th>
               <th className="px-5 py-3 font-medium" />
             </tr>
@@ -39,6 +44,14 @@ export default async function ConfiguracoesPage() {
                 <td className="px-5 py-3 font-medium">{u.name}</td>
                 <td className="px-5 py-3 text-foreground-muted hidden sm:table-cell">{u.email}</td>
                 <td className="px-5 py-3 text-foreground-muted">{ROLE_LABELS[u.role]}</td>
+                <td className="px-5 py-3">
+                  <EmpresasDoUsuario
+                    userId={u.id}
+                    empresas={EMPRESAS}
+                    atuais={empresasPermitidas(u.empresas)}
+                    rotulos={EMPRESA_LABELS}
+                  />
+                </td>
                 <td className="px-5 py-3">
                   <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${u.active ? "bg-emerald-500/15 text-emerald-500" : "bg-red-500/15 text-red-500"}`}>
                     {u.active ? "Ativo" : "Inativo"}

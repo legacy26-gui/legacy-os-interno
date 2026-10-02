@@ -314,13 +314,17 @@ async function salvarLead(
   // Entra no topo da coluna "Lead", igual ao que é cadastrado na mão — é onde
   // o olho procura quem acabou de chegar.
   const primeiro = await prisma.lead.findFirst({
-    where: { stage: 'LEAD' },
+    where: { empresa: 'AGENCIA', stage: 'LEAD' },
     orderBy: { position: 'asc' },
     select: { position: true },
   });
 
   const lead = await prisma.lead.create({
     data: {
+      // Esta rota é o formulário da landing da agência (legacyautomotivo).
+      // Fica escrito em vez de confiar no padrão do banco: se um dia existir
+      // uma landing do Treinamentos, ela vai ter rota própria e empresa própria.
+      empresa: 'AGENCIA',
       companyName: d.loja,
       contactName: d.nome,
       phone: d.whatsappDigitos, // só dígitos, pronto para disparo

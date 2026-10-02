@@ -50,8 +50,9 @@ export default async function ClientesPage({
       orderBy: { name: "asc" },
     }),
     prisma.client.groupBy({ by: ["status"], _count: true }),
+    // A carteira de mensalidade é da agência; o atraso é dela.
     prisma.revenue.findMany({
-      where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: hoje } },
+      where: { empresa: "AGENCIA", status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: hoje } },
       select: { clientId: true, dueDate: true, value: true },
     }),
   ]);
@@ -59,6 +60,8 @@ export default async function ClientesPage({
   // Por cliente: a cobrança vencida mais antiga manda no tamanho do atraso.
   const atrasoPorCliente = new Map<string, { dias: number; qtd: number; total: number; vencimento: Date }>();
   for (const r of vencidas) {
+    // Entrada avulsa (sem cliente na carteira) não tem como atrasar cliente.
+    if (!r.clientId) continue;
     const dias = Math.floor((hoje.getTime() - r.dueDate.getTime()) / 86_400_000);
     const atual = atrasoPorCliente.get(r.clientId);
     atrasoPorCliente.set(r.clientId, {

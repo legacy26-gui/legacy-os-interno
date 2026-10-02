@@ -1,10 +1,22 @@
 import { LogOut } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SeletorEmpresa } from "@/components/seletor-empresa";
 import { logout } from "@/lib/actions/auth";
 import { ROLE_LABELS } from "@/lib/permissions";
-import type { Role } from "@/generated/prisma/enums";
+import { EMPRESA_LABELS } from "@/lib/empresa";
+import type { Empresa, Role } from "@/generated/prisma/enums";
 
-export function Topbar({ name, role }: { name: string; role: Role }) {
+export function Topbar({
+  name,
+  role,
+  empresa,
+  empresas,
+}: {
+  name: string;
+  role: Role;
+  empresa: Empresa;
+  empresas: Empresa[];
+}) {
   // O padding de cima é a área do notch: fica 0 no navegador e reserva o espaço
   // do relógio quando o app está instalado na tela de início. A barra em si
   // continua com 64px de altura, dentro.
@@ -14,6 +26,7 @@ export function Topbar({ name, role }: { name: string; role: Role }) {
         <div className="md:hidden w-8" />
         <div className="hidden md:block" />
         <div className="flex items-center gap-3">
+          <SeletorEmpresa atual={empresa} empresas={empresas} rotulos={EMPRESA_LABELS} />
           <ThemeToggle />
           <div className="flex items-center gap-2.5 pl-1">
             <div className="w-8 h-8 rounded-full bg-accent/15 text-accent flex items-center justify-center font-semibold text-xs flex-shrink-0">

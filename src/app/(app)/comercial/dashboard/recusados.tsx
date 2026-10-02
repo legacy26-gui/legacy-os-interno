@@ -44,7 +44,10 @@ export async function EnviosRecusados() {
     // Toda chamada que passou pelo Origin — inclusive as que foram recusadas
     // depois. É o "bateu na porta".
     prisma.tentativaLead.count({ where: { createdAt: { gte: umDia } } }),
-    prisma.lead.count({ where: { createdAt: { gte: umDia }, notes: { contains: "landing" } } }),
+    // A landing que posta nesse endpoint é a da agência.
+    prisma.lead.count({
+      where: { empresa: "AGENCIA", createdAt: { gte: umDia }, notes: { contains: "landing" } },
+    }),
     prisma.leadRecusado.count({ where: { createdAt: { gte: umDia } } }),
     prisma.leadRecusado.findMany({
       where: { createdAt: { gte: trintaDias } },

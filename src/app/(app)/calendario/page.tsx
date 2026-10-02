@@ -16,6 +16,7 @@ import {
 import { ptBR } from "date-fns/locale";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { deleteAgendaItem } from "@/lib/actions/agenda";
 import { AgendaForm } from "./agenda-form";
 
@@ -60,7 +61,7 @@ export default async function CalendarioPage({
       include: { client: { select: { companyName: true } } },
     }),
     prisma.revenue.findMany({
-      where: { dueDate: { gte: gridStart, lte: gridEnd }, status: { not: "PAGO" } },
+      where: { empresa: await empresaAtual(), dueDate: { gte: gridStart, lte: gridEnd }, status: { not: "PAGO" } },
       include: { client: { select: { companyName: true } } },
     }),
     prisma.contract.findMany({
@@ -86,7 +87,7 @@ export default async function CalendarioPage({
     })),
     ...revenues.map((r) => ({
       date: r.dueDate,
-      label: `${r.client.companyName} — ${r.description}`,
+      label: r.client ? `${r.client.companyName} — ${r.description}` : r.description,
       type: "financeiro" as const,
     })),
     ...contracts.map((c) => ({

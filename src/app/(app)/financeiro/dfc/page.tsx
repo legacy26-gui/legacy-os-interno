@@ -10,6 +10,7 @@ import {
   Repeat,
 } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { getCashFlow } from "@/lib/metrics";
 import { formatCurrency, formatDate } from "@/lib/labels";
 import { FinanceTabs } from "../finance-tabs";
@@ -29,6 +30,7 @@ export default async function DfcPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   await requireModuleAccess("financeiro");
+  const empresa = await empresaAtual();
   const { month } = await searchParams;
 
   const now = new Date();
@@ -37,7 +39,7 @@ export default async function DfcPage({
   const nextDate = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
   const isCurrentMonth = monthParam(refDate) === monthParam(now);
 
-  const cf = await getCashFlow(refDate, 6);
+  const cf = await getCashFlow(empresa, refDate, 6);
   const { atual } = cf;
   // Saldo conferido no meio do mês exibido: a conta do mês parte dele, e só
   // conta o que entrou/saiu depois da data da conferência.

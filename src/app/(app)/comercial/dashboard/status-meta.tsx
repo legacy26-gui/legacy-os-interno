@@ -50,7 +50,11 @@ export async function StatusMeta() {
       },
     }),
     prisma.lead.count({
-      where: { OR: [{ fbc: { not: null } }, { fbp: { not: null } }, { fbclid: { not: null } }] },
+      where: {
+        // O Pixel e a landing são da agência.
+        empresa: "AGENCIA",
+        OR: [{ fbc: { not: null } }, { fbp: { not: null } }, { fbclid: { not: null } }],
+      },
     }),
   ]);
 

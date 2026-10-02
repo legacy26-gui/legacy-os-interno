@@ -12,6 +12,7 @@ import {
   PiggyBank,
 } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { getDreMonth } from "@/lib/metrics";
 import { formatCurrency } from "@/lib/labels";
 import { FinanceTabs } from "../finance-tabs";
@@ -40,6 +41,7 @@ export default async function DrePage({
   searchParams: Promise<{ month?: string }>;
 }) {
   await requireModuleAccess("financeiro");
+  const empresa = await empresaAtual();
   const { month } = await searchParams;
 
   const now = new Date();
@@ -48,7 +50,7 @@ export default async function DrePage({
   const nextDate = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
   const isCurrentMonth = monthParam(refDate) === monthParam(now);
 
-  const [cur, prev] = await Promise.all([getDreMonth(refDate), getDreMonth(prevDate)]);
+  const [cur, prev] = await Promise.all([getDreMonth(empresa, refDate), getDreMonth(empresa, prevDate)]);
 
   const receita = cur.receitaConfirmada;
   const lucro = cur.lucroLiquido;

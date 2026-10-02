@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import type { Empresa } from "@/generated/prisma/enums";
 
 function dueDateForMonth(ref: Date, dueDay: number | null) {
   const year = ref.getUTCFullYear();
@@ -11,14 +12,14 @@ function dueDateForMonth(ref: Date, dueDay: number | null) {
 
 // Garante que toda despesa fixa ativa tenha um lançamento no mês de
 // referência (idempotente — não duplica se já existir).
-export async function ensureMonthlyFixedExpenses(ref: Date = new Date()): Promise<number> {
+export async function ensureMonthlyFixedExpenses(empresa: Empresa, ref: Date = new Date()): Promise<number> {
   const monthStart = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), 1));
   const monthEnd = new Date(Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth() + 1, 1));
 
   const [fixedExpenses, existing] = await Promise.all([
-    prisma.fixedExpense.findMany({ where: { active: true } }),
+    prisma.fixedExpense.findMany({ where: { empresa, active: true } }),
     prisma.expense.findMany({
-      where: { date: { gte: monthStart, lt: monthEnd }, fixedExpenseId: { not: null } },
+      where: { empresa, date: { gte: monthStart, lt: monthEnd }, fixedExpenseId: { not: null } },
       select: { fixedExpenseId: true },
     }),
   ]);
@@ -29,6 +30,7 @@ export async function ensureMonthlyFixedExpenses(ref: Date = new Date()): Promis
 
   await prisma.expense.createMany({
     data: toCreate.map((f) => ({
+      empresa,
       description: f.description,
       category: f.category,
       value: f.value,

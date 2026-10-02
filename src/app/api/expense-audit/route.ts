@@ -21,12 +21,14 @@ export async function GET(request: NextRequest) {
   const monthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
   const [fixas, doMes] = await Promise.all([
+    // Rota de conferência das despesas da agência.
     prisma.fixedExpense.findMany({
+      where: { empresa: "AGENCIA" },
       select: { id: true, description: true, category: true, value: true, dueDay: true, active: true },
       orderBy: { description: "asc" },
     }),
     prisma.expense.findMany({
-      where: { date: { gte: monthStart, lt: monthEnd } },
+      where: { empresa: "AGENCIA", date: { gte: monthStart, lt: monthEnd } },
       select: { id: true, description: true, value: true, date: true, paid: true, fixedExpenseId: true },
       orderBy: { date: "asc" },
     }),
@@ -44,7 +46,12 @@ export async function GET(request: NextRequest) {
 
   if (params.get("resetFixas") === "1") {
     const result = await prisma.expense.updateMany({
-      where: { date: { gte: monthStart, lt: monthEnd }, fixedExpenseId: { not: null }, paid: true },
+      where: {
+        empresa: "AGENCIA",
+        date: { gte: monthStart, lt: monthEnd },
+        fixedExpenseId: { not: null },
+        paid: true,
+      },
       data: { paid: false, paidDate: null },
     });
     return NextResponse.json({

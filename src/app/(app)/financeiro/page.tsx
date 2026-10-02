@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { formatCurrency, formatDate } from "@/lib/labels";
 import { getCashFlow } from "@/lib/metrics";
 import { deleteRevenue, deleteExpense, markExpensePaid, markExpenseUnpaid } from "@/lib/actions/financeiro";
@@ -33,10 +34,13 @@ export default async function FinanceiroPage({
   searchParams: Promise<{ month?: string }>;
 }) {
   await requireModuleAccess("financeiro");
+  const empresa = await empresaAtual();
   const { month } = await searchParams;
 
   const now = new Date();
-  await Promise.all([ensureMonthlyMrrRevenues(now), ensureMonthlyFixedExpenses(now)]);
+  // A mensalidade recorrente é da carteira da agência; a despesa fixa é de cada
+  // empresa. Por isso só uma das duas leva a empresa aberta na tela.
+  await Promise.all([ensureMonthlyMrrRevenues(now), ensureMonthlyFixedExpenses(empresa, now)]);
 
   const refDate = month && /^\d{4}-\d{2}$/.test(month) ? new Date(`${month}-01T00:00:00Z`) : now;
   const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));
@@ -48,22 +52,26 @@ export default async function FinanceiroPage({
   const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1);
 
   const [cashFlow, entradas, pendentes, saidas, clients] = await Promise.all([
-    getCashFlow(refDate, 1),
+    getCashFlow(empresa, refDate, 1),
     // Entrada = dinheiro que entrou de verdade (cobrança confirmada).
     prisma.revenue.findMany({
-      where: { status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } },
+      where: { empresa, status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } },
       include: { client: { select: { companyName: true } } },
       orderBy: { dueDate: "asc" },
     }),
     prisma.revenue.findMany({
-      where: { status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
+      where: { empresa, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
       select: { id: true, value: true },
     }),
     prisma.expense.findMany({
-      where: { date: { gte: monthStart, lt: monthEnd } },
+      where: { empresa, date: { gte: monthStart, lt: monthEnd } },
       orderBy: { date: "asc" },
     }),
-    prisma.client.findMany({ select: { id: true, companyName: true }, orderBy: { companyName: "asc" } }),
+    // A lista de clientes só serve pra pendurar a entrada numa loja, e isso só
+    // existe na agência. No Treinamentos a entrada é identificada pela descrição.
+    empresa === "AGENCIA"
+      ? prisma.client.findMany({ select: { id: true, companyName: true }, orderBy: { companyName: "asc" } })
+      : [],
   ]);
 
   // Saída fixa só conta depois de confirmada — antes disso fica como "a pagar".
@@ -210,7 +218,7 @@ export default async function FinanceiroPage({
               {entradas.map((r) => (
                 <div key={r.id} className="flex items-center justify-between gap-3 px-5 py-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{r.client.companyName}</p>
+                    <p className="text-sm font-medium truncate">{r.client?.companyName ?? r.description}</p>
                     <p className="text-xs text-foreground-muted truncate">
                       {r.description} · {formatDate(r.dueDate)}
                     </p>

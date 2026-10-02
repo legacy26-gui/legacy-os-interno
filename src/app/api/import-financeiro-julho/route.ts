@@ -96,14 +96,15 @@ export async function GET(request: NextRequest) {
   const expensesResult: { description: string; action: "created" | "skipped" }[] = [];
   for (const e of EXPENSES_JULHO_2026) {
     const existing = await prisma.expense.findFirst({
-      where: { description: e.description, category: e.category, date: EXPENSE_DATE },
+      // Importação histórica da agência.
+      where: { empresa: "AGENCIA", description: e.description, category: e.category, date: EXPENSE_DATE },
     });
     if (existing) {
       expensesResult.push({ description: e.description, action: "skipped" });
       continue;
     }
     await prisma.expense.create({
-      data: { description: e.description, category: e.category, value: e.value, date: EXPENSE_DATE },
+      data: { empresa: "AGENCIA", description: e.description, category: e.category, value: e.value, date: EXPENSE_DATE },
     });
     expensesResult.push({ description: e.description, action: "created" });
   }

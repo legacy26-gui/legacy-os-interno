@@ -4,6 +4,7 @@ import * as z from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { empresaAtual } from "@/lib/empresa-atual";
 import { CANAIS } from "@/lib/comercial-metrics";
 import type { LeadChannel } from "@/generated/prisma/enums";
 
@@ -24,6 +25,7 @@ export async function salvarVerbaDoMes(
 ): Promise<VerbaFormState> {
   await requireModuleAccess("comercial");
   if (!/^\d{4}-\d{2}$/.test(month)) return { error: "Mês inválido." };
+  const empresa = await empresaAtual();
 
   const linhas: { canal: LeadChannel; impressions: number; investment: number }[] = [];
   for (const canal of CANAIS) {
@@ -38,8 +40,8 @@ export async function salvarVerbaDoMes(
   await prisma.$transaction(
     linhas.map((l) =>
       prisma.channelMonth.upsert({
-        where: { month_channel: { month, channel: l.canal } },
-        create: { month, channel: l.canal, impressions: l.impressions, investment: l.investment },
+        where: { empresa_month_channel: { empresa, month, channel: l.canal } },
+        create: { empresa, month, channel: l.canal, impressions: l.impressions, investment: l.investment },
         update: { impressions: l.impressions, investment: l.investment },
       })
     )

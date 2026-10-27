@@ -55,6 +55,7 @@ model User {
   agendaItems      AgendaItem[]     @relation("AgendaOwner")
   salesRegistered  ClientSale[]     @relation("SaleCreator")
   pushSubscriptions PushSubscription[]
+  gravacoes        Gravacao[]        @relation("GravacaoRegistrada")
 
   @@map("users")
 }
@@ -130,6 +131,7 @@ model Client {
   pinnedInfo      ClientPinnedInfo[]
   onboardings     ClientOnboarding[]
   cobrancasPuladas CobrancaPulada[]
+  gravacoes        Gravacao[]
 
   @@map("clients")
 }
@@ -622,6 +624,49 @@ model ContentItem {
   updatedAt     DateTime      @updatedAt
 
   @@map("content_items")
+}
+
+// ─── Gravação de vídeos ─────────────────────────────────────────────────────
+
+// Uma ida de gravação: a loja, a hora e quantos vídeos saíram dali.
+//
+// Existe porque o controle disso vivia na cabeça de quem gravou. O que a
+// equipe precisa responder é: o que foi gravado hoje, quantos vídeos, e o que
+// vence pra entregar amanhã.
+//
+// O prazo é D+1 — gravou hoje, entrega amanhã. Por isso `entregaEm` é um
+// campo, e não uma conta feita na hora de mostrar: o padrão é um dia depois,
+// mas prazo combinado diferente com a loja tem que poder ser escrito.
+model Gravacao {
+  id       String   @id @default(cuid())
+  empresa  Empresa  @default(AGENCIA)
+  clientId String?
+  client   Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  // O nome da loja fica guardado aqui mesmo com cliente vinculado, igual aos
+  // eventos de venda: se o cliente for renomeado ou sair da carteira, a
+  // gravação continua dizendo pra quem foi. É também o campo de quem grava
+  // pra loja que ainda não está cadastrada.
+  loja     String
+  // Quantos vídeos saíram dessa gravação.
+  quantidade Int    @default(1)
+  // Dia e hora da gravação — a hora importa porque num dia há mais de uma.
+  gravadoEm  DateTime
+  // Quando tem que estar entregue. Nasce como gravadoEm + 1 dia.
+  entregaEm  DateTime
+  // Preenchido quando a entrega sai de verdade. Vazio = ainda devendo.
+  entregueEm DateTime?
+  observacao String?  @db.Text
+
+  // Quem registrou. Não é "quem gravou" — é o rastro de quem lançou na tela.
+  ownerId String?
+  owner   User?   @relation("GravacaoRegistrada", fields: [ownerId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([empresa, gravadoEm])
+  @@index([empresa, entregaEm])
+  @@map("gravacoes")
 }
 
 // ─── Suporte aos clientes ───────────────────────────────────────────────────

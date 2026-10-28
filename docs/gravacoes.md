@@ -1,19 +1,24 @@
-# Gravação de vídeos no calendário
+# Gravações
 
 Onde a equipe marca o que foi gravado, pra qual loja, a que horas e quantos
 vídeos saíram — e o que vence pra entregar.
 
-Fica em **Calendário**, logo abaixo do quadro do mês. Quem tem acesso ao
-Calendário tem acesso a isto, o que inclui o Gestor de Tráfego — foi feito pra
-a Andrielli poder lançar sem depender de ninguém.
+Fica na aba **Gravações**, no menu, logo abaixo do Calendário. São duas telas
+separadas de propósito: o Calendário é prazo, contrato, financeiro e férias da
+equipe; Gravações é produção de vídeo. Juntos, um escondia o outro.
+
+Quem tem acesso ao Calendário tem acesso às Gravações — é a mesma permissão,
+o que inclui o Gestor de Tráfego. Foi feito pra a Andrielli lançar sem
+depender de ninguém.
 
 ## Como se usa
 
-1. Escolhe a loja na lista (é a carteira de clientes). Se a loja ainda não está
+1. Abre **Gravações** no menu.
+2. Escolhe a loja na lista (é a carteira de clientes). Se a loja ainda não está
    cadastrada, escolhe **"Outra loja (digitar o nome)"** e escreve o nome.
-2. O dia já vem com hoje e a hora com 09:00 — ajusta se foi outro horário.
-3. Põe quantos vídeos saíram daquela ida.
-4. Clica em **Registrar gravação**.
+3. O dia já vem com hoje e a hora com 09:00 — ajusta se foi outro horário.
+4. Põe quantos vídeos saíram daquela ida.
+5. Clica em **Registrar gravação**.
 
 Dá pra lançar quantas gravações quiser no mesmo dia, cada uma com seu horário.
 A lista mostra o total do dia ("2 gravações · 7 vídeos") e o total do mês no
@@ -30,6 +35,9 @@ muda ali e muda em todo lugar — inclusive no aviso que aparece na tela antes
 de salvar, porque é a mesma função que calcula e que mostra.
 
 ## O que aparece no quadro do mês
+
+O quadro no alto da tela é só das gravações — o Calendário geral não mostra
+isso, pra cada tela cuidar de um assunto.
 
 - **Roxo (ícone de câmera)** no dia da gravação: `14:30 Jânio Multimarcas — 4 vídeos`
 - **Azul (ícone de pacote)** no dia da entrega: `Entregar Jânio Multimarcas — 4 vídeos`
@@ -81,8 +89,8 @@ outra empresa passando o id na mão.
 | `prisma/schema.prisma` → `model Gravacao` | a tabela |
 | `src/lib/gravacoes.ts` | a regra do D+1, usada no servidor e na tela |
 | `src/lib/actions/gravacoes.ts` | criar, corrigir, marcar entregue, apagar |
-| `src/app/(app)/calendario/gravacao-form.tsx` | o formulário de lançar |
-| `src/app/(app)/calendario/gravacao-linha.tsx` | a linha da lista e a correção |
-| `src/app/(app)/calendario/page.tsx` | as marcas no quadro e a lista do mês |
+| `src/app/(app)/gravacoes/page.tsx` | a tela: quadro do mês, avisos e lista |
+| `src/app/(app)/gravacoes/gravacao-form.tsx` | o formulário de lançar |
+| `src/app/(app)/gravacoes/gravacao-linha.tsx` | a linha da lista e a correção |
 
 Migração: `20261027120000_gravacao_de_videos`.

@@ -46,7 +46,7 @@ function lerFormulario(formData: FormData) {
 }
 
 function revalidar() {
-  revalidatePath("/calendario");
+  revalidatePath("/gravacoes");
   revalidatePath("/meu-dia");
 }
 

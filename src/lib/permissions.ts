@@ -77,6 +77,9 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   { prefix: "/equipe", module: "equipe" },
   { prefix: "/marketing", module: "marketing" },
   { prefix: "/calendario", module: "calendario" },
+  // As gravações saíram do Calendário pra tela própria, mas quem vê é o mesmo
+  // pessoal — inclusive o Gestor de Tráfego, que é quem lança no dia a dia.
+  { prefix: "/gravacoes", module: "calendario" },
   { prefix: "/suporte", module: "suporte" },
   { prefix: "/gestao-contas", module: "gestao-contas" },
   // O ranking das lojas vive fora de /gestao-contas pra ser uma aba própria no

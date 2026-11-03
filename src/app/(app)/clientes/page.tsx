@@ -1,11 +1,13 @@
 import Link from "next/link";
-import { Plus, Search, Pencil, AlertTriangle } from "lucide-react";
+import { Plus, Search, Pencil, AlertTriangle, MapPinCheck } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate } from "@/lib/labels";
 import { deleteClient } from "@/lib/actions/clients";
 import { DeleteClientButton } from "./delete-client-button";
+import { VisitaCliente } from "./visita-cliente";
+import { estadoDaVisita } from "@/lib/visitas";
 import { ManagerSelect } from "../operacoes/manager-select";
 import type { ClientStatus } from "@/generated/prisma/enums";
 
@@ -71,6 +73,14 @@ export default async function ClientesPage({
       vencimento: !atual || r.dueDate < atual.vencimento ? r.dueDate : atual.vencimento,
     });
   }
+  // Quem está há muito tempo sem receber visita. Conta só quem TEM visita
+  // registrada e passou do prazo — no primeiro dia a coluna está vazia em todo
+  // mundo, e abrir a tela com um aviso de "ninguém foi visitado" seria barulho.
+  const semVisitaHaMuito = clients.filter((c) => {
+    const e = estadoDaVisita(c.ultimaVisitaEm?.toISOString() ?? null);
+    return e.tom === "atencao" || e.tom === "urgente";
+  });
+
   const clientesEmAtraso = clients.filter((c) => atrasoPorCliente.has(c.id)).length;
   const atrasoGrave = clients.filter((c) => (atrasoPorCliente.get(c.id)?.dias ?? 0) > 3).length;
 
@@ -100,6 +110,25 @@ export default async function ClientesPage({
             {atrasoGrave > 0 && (
               <span className="text-foreground-muted"> · {atrasoGrave} passando de 3 dias</span>
             )}
+          </p>
+        </div>
+      )}
+
+      {semVisitaHaMuito.length > 0 && (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 px-5 py-3.5 flex items-start gap-2.5">
+          <MapPinCheck size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <p className="text-sm">
+            <span className="font-semibold text-amber-500">
+              {semVisitaHaMuito.length} loja(s) sem visita há mais de 30 dias
+            </span>
+            <span className="text-foreground-muted">
+              {" "}
+              · {semVisitaHaMuito
+                .slice(0, 4)
+                .map((c) => c.companyName)
+                .join(", ")}
+              {semVisitaHaMuito.length > 4 && ` e mais ${semVisitaHaMuito.length - 4}`}
+            </span>
           </p>
         </div>
       )}
@@ -149,6 +178,7 @@ export default async function ClientesPage({
                 <th className="px-5 py-3 font-medium">Gestor</th>
                 <th className="px-5 py-3 font-medium whitespace-nowrap">Vencimento</th>
                 {canSeeValues && <th className="px-5 py-3 font-medium text-right">Mensalidade</th>}
+                <th className="px-5 py-3 font-medium whitespace-nowrap">Última visita</th>
                 <th className="px-5 py-3 font-medium">Status</th>
                 <th className="px-5 py-3 font-medium text-right">Ações</th>
               </tr>
@@ -208,6 +238,15 @@ export default async function ClientesPage({
                   {canSeeValues && (
                     <td className="px-5 py-3.5 text-right font-medium">{formatCurrency(c.monthlyValue.toString())}</td>
                   )}
+                  <td className="px-5 py-3.5">
+                    <VisitaCliente
+                      clientId={c.id}
+                      ultimaVisitaEm={c.ultimaVisitaEm?.toISOString() ?? null}
+                      dataForm={c.ultimaVisitaEm ? c.ultimaVisitaEm.toISOString().slice(0, 10) : ""}
+                      dataLabel={formatDate(c.ultimaVisitaEm)}
+                      compacto
+                    />
+                  </td>
                   <td className="px-5 py-3.5">
                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${CLIENT_STATUS_COLORS[c.status]}`}>
                       {CLIENT_STATUS_LABELS[c.status]}

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, ExternalLink, Building2, Phone, Mail, MapPin, CreditCard } from "lucide-react";
+import { Pencil, ExternalLink, Building2, Phone, Mail, MapPin, CreditCard, MapPinCheck } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
@@ -10,6 +10,7 @@ import { DiagnosticoSection } from "@/components/diagnostico/diagnostico-section
 import { HistoryForm } from "./history-form";
 import { AttachmentForm } from "./attachment-form";
 import { DeleteClientButton } from "../delete-client-button";
+import { VisitaCliente } from "../visita-cliente";
 
 // O botão de regenerar diagnóstico roda a IA nesta rota.
 export const maxDuration = 300;
@@ -91,6 +92,24 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
             <span>CNPJ: {client.cnpj || "—"}</span>
           </div>
         </div>
+      </div>
+
+      {/* Última visita na loja: um botão, apertou marca hoje. */}
+      <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium flex items-center gap-2">
+            <MapPinCheck size={14} /> Última visita na loja
+          </p>
+          <p className="text-xs text-foreground-muted mt-1">
+            Apertou o botão, marca o dia de hoje. No lápis dá pra escrever outra data.
+          </p>
+        </div>
+        <VisitaCliente
+          clientId={client.id}
+          ultimaVisitaEm={client.ultimaVisitaEm?.toISOString() ?? null}
+          dataForm={client.ultimaVisitaEm ? client.ultimaVisitaEm.toISOString().slice(0, 10) : ""}
+          dataLabel={formatDate(client.ultimaVisitaEm)}
+        />
       </div>
 
       {client.onboardings[0] && (

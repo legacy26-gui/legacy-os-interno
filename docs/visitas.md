@@ -23,8 +23,8 @@ seguinte — apertar duas vezes no mesmo dia não faz nada.
 | O que aparece | Significado |
 | --- | --- |
 | **Hoje** / **Ontem** / há poucos dias (verde) | visita recente |
-| **há 30+ dias** (amarelo) | está ficando tempo demais |
-| **há 60+ dias** (vermelho) | abandonado |
+| **há 15+ dias** (amarelo) | está ficando tempo demais |
+| **há 30+ dias** (vermelho) | abandonado |
 | **Sem visita registrada** (cinza) | ninguém marcou visita ainda |
 
 "Sem visita registrada" não quer dizer que nunca se foi na loja — quer dizer
@@ -32,16 +32,17 @@ que ninguém apertou o botão. Por isso ela não entra no aviso do topo.
 
 ## O aviso no topo
 
-Quando alguma loja passa de 30 dias, aparece uma faixa amarela em Clientes:
-*"2 loja(s) sem visita há mais de 30 dias · Garagem do Vale, Auto Center Sul"*.
+Quando alguma loja passa de 15 dias, aparece uma faixa amarela em Clientes:
+*"2 loja(s) sem visita há mais de 15 dias · Garagem do Vale, Auto Center Sul"*.
 
 Conta **só quem tem visita registrada e passou do prazo**. No primeiro dia a
 coluna está vazia em todo mundo, e abrir a tela com um aviso de "ninguém foi
 visitado" seria barulho sem informação.
 
-Os prazos de 30 e 60 dias foram escolhidos como um padrão razoável, não é uma
-regra que veio do Guilherme. Pra mudar, é trocar os dois números no começo de
-`src/lib/visitas.ts` — a tela e o aviso seguem de lá.
+Os prazos são do Guilherme: **15 dias vira amarelo, 30 dias vira vermelho**.
+Pra mudar, é trocar os dois números no começo de `src/lib/visitas.ts` — a
+coluna, o aviso do topo e a ficha do cliente leem de lá, inclusive o número
+escrito no texto do aviso.
 
 ## Decisões
 
@@ -61,7 +62,7 @@ na loja.
 | Arquivo | O que faz |
 | --- | --- |
 | `prisma/schema.prisma` → `Client.ultimaVisitaEm` | o campo |
-| `src/lib/visitas.ts` | "há X dias" e os prazos de 30/60 |
+| `src/lib/visitas.ts` | "há X dias" e os prazos de 15/30 |
 | `src/lib/actions/visitas.ts` | marcar hoje e escrever outra data |
 | `src/app/(app)/clientes/visita-cliente.tsx` | o botão e o campo de data |
 | `src/app/(app)/clientes/page.tsx` | a coluna e o aviso do topo |

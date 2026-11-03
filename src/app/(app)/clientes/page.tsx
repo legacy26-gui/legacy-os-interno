@@ -7,7 +7,7 @@ import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate 
 import { deleteClient } from "@/lib/actions/clients";
 import { DeleteClientButton } from "./delete-client-button";
 import { VisitaCliente } from "./visita-cliente";
-import { estadoDaVisita } from "@/lib/visitas";
+import { estadoDaVisita, DIAS_PARA_ATENCAO } from "@/lib/visitas";
 import { ManagerSelect } from "../operacoes/manager-select";
 import type { ClientStatus } from "@/generated/prisma/enums";
 
@@ -76,6 +76,7 @@ export default async function ClientesPage({
   // Quem está há muito tempo sem receber visita. Conta só quem TEM visita
   // registrada e passou do prazo — no primeiro dia a coluna está vazia em todo
   // mundo, e abrir a tela com um aviso de "ninguém foi visitado" seria barulho.
+  // O prazo vem de lib/visitas, o mesmo que pinta a coluna.
   const semVisitaHaMuito = clients.filter((c) => {
     const e = estadoDaVisita(c.ultimaVisitaEm?.toISOString() ?? null);
     return e.tom === "atencao" || e.tom === "urgente";
@@ -119,7 +120,7 @@ export default async function ClientesPage({
           <MapPinCheck size={16} className="text-amber-500 shrink-0 mt-0.5" />
           <p className="text-sm">
             <span className="font-semibold text-amber-500">
-              {semVisitaHaMuito.length} loja(s) sem visita há mais de 30 dias
+              {semVisitaHaMuito.length} loja(s) sem visita há mais de {DIAS_PARA_ATENCAO} dias
             </span>
             <span className="text-foreground-muted">
               {" "}

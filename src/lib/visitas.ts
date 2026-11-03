@@ -4,10 +4,11 @@
 // a tela do servidor, pra não aparecer "há 30 dias" num lugar e "há 31" no
 // outro.
 //
-// Os prazos abaixo são um chute razoável pra visita de loja, não uma regra que
-// o Guilherme tenha pedido. Mudar é trocar os dois números daqui.
-export const DIAS_PARA_ATENCAO = 30;
-export const DIAS_PARA_URGENTE = 60;
+// Os prazos são do Guilherme: 15 dias vira amarelo, 30 dias vira vermelho.
+// Mudar de novo é trocar estes dois números — a tabela, o aviso do topo e a
+// ficha do cliente leem daqui, então nenhum texto na tela fica pra trás.
+export const DIAS_PARA_ATENCAO = 15;
+export const DIAS_PARA_URGENTE = 30;
 
 export type TomDaVisita = "nunca" | "recente" | "atencao" | "urgente";
 

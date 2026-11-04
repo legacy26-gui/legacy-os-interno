@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
-import { EMPRESAS, ehEmpresa } from "@/lib/empresa";
+import { EMPRESAS, ehEmpresa, veTodasAsEmpresas } from "@/lib/empresa";
 import type { Empresa } from "@/generated/prisma/enums";
 
 function randomTempPassword() {
@@ -15,6 +15,12 @@ function randomTempPassword() {
 async function requireAdmin() {
   const user = await getCurrentUser();
   if (user.role !== "ADMIN") throw new Error("Apenas administradores podem gerenciar usuários.");
+  // Administrar usuário é dar e tirar acesso a empresa. Quem não enxerga o
+  // grupo inteiro não pode fazer isso: senão um administrador preso ao
+  // Treinamentos marcaria a agência pra si mesmo e a separação cairia.
+  if (!veTodasAsEmpresas(user.empresas)) {
+    throw new Error("Só quem tem acesso a todas as empresas do grupo pode gerenciar usuários.");
+  }
   return user;
 }
 

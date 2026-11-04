@@ -40,7 +40,10 @@ export default async function FinanceiroPage({
   const now = new Date();
   // A mensalidade recorrente é da carteira da agência; a despesa fixa é de cada
   // empresa. Por isso só uma das duas leva a empresa aberta na tela.
-  await Promise.all([ensureMonthlyMrrRevenues(now), ensureMonthlyFixedExpenses(empresa, now)]);
+  await Promise.all([
+    empresa === "AGENCIA" ? ensureMonthlyMrrRevenues(now) : Promise.resolve(0),
+    ensureMonthlyFixedExpenses(empresa, now),
+  ]);
 
   const refDate = month && /^\d{4}-\d{2}$/.test(month) ? new Date(`${month}-01T00:00:00Z`) : now;
   const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));

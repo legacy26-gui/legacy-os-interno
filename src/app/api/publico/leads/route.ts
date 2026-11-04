@@ -23,7 +23,7 @@
 
 import { NextRequest, NextResponse, after } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { avisarTodos } from '@/lib/push';
+import { avisarEmpresa } from '@/lib/push';
 import { enviarEventoMeta } from '@/lib/meta-capi';
 
 /* ------------------------------------------------------------------ *
@@ -410,7 +410,8 @@ async function notificar(d: LeadLimpo, protocolo: string, p: string) {
 
   // O título é o que aparece na tela de bloqueio; o corpo tem o que decide
   // quem atende primeiro, sem precisar abrir o sistema.
-  await avisarTodos({
+  // A landing é da agência: o aviso vai só pra quem trabalha nela.
+  await avisarEmpresa('AGENCIA', {
     titulo: `🚗 Lead ${p} · ${d.loja}`,
     corpo: [
       `${d.nome} · ${d.cidade || '—'}${d.estado ? '/' + d.estado : ''} · ${d.whatsapp}`,

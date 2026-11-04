@@ -444,17 +444,24 @@ export async function getRevenueByCity(empresa: Empresa) {
 }
 
 export async function getOperationsOverview(empresa: Empresa) {
+  // Campanha, relatório, tarefa e carteira de loja são a operação da agência.
+  // Com o Treinamentos aberto saem zerados em vez de contar a outra empresa —
+  // mesmo número solto é informação que o sócio não pode ter.
+  const daAgencia = empresa === "AGENCIA";
+
   const [activeCampaigns, pendingReports, pendingTasks, clientsWithoutRecentContact, leadsThisMonth] =
     await Promise.all([
-      prisma.campaign.count({ where: { periodEnd: { gte: new Date() } } }),
-      prisma.report.count(),
-      prisma.task.count({ where: { status: { not: "FINALIZADO" } } }),
-      prisma.client.count({
-        where: {
-          status: "ATIVO",
-          history: { none: { createdAt: { gte: new Date(Date.now() - 14 * 86400000) } } },
-        },
-      }),
+      daAgencia ? prisma.campaign.count({ where: { periodEnd: { gte: new Date() } } }) : 0,
+      daAgencia ? prisma.report.count() : 0,
+      daAgencia ? prisma.task.count({ where: { status: { not: "FINALIZADO" } } }) : 0,
+      daAgencia
+        ? prisma.client.count({
+            where: {
+              status: "ATIVO",
+              history: { none: { createdAt: { gte: new Date(Date.now() - 14 * 86400000) } } },
+            },
+          })
+        : 0,
       prisma.lead.count({
         where: { empresa, createdAt: { gte: new Date(new Date().toISOString().slice(0, 7) + "-01") } },
       }),
@@ -469,7 +476,11 @@ export async function getCommercialOverview(empresa: Empresa) {
     prisma.lead.count({ where: { empresa, createdAt: { gte: monthStart } } }),
     prisma.lead.count({ where: { empresa, stage: { in: ["REUNIAO_AGENDADA", "REUNIAO_REALIZADA"] } } }),
     prisma.lead.count({ where: { empresa, stage: "PROPOSTA" } }),
-    prisma.contract.count({ where: { status: "AGUARDANDO_ASSINATURA" } }),
+    // Contrato é da carteira de lojas, ou seja, da agência. Com o Treinamentos
+    // aberto a conta sai zerada em vez de mostrar número da outra empresa.
+    empresa === "AGENCIA"
+      ? prisma.contract.count({ where: { status: "AGUARDANDO_ASSINATURA" } })
+      : 0,
     // Venda do mês é pela data em que fechou, não pela última mexida no cartão.
     prisma.lead.count({ where: { empresa, wonAt: { gte: monthStart } } }),
   ]);

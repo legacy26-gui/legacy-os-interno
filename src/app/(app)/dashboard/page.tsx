@@ -14,6 +14,8 @@ const AVISOS: Record<string, string> = {
   "acesso-negado": "Essa tela não está liberada pro seu nível de acesso.",
   "outra-empresa":
     "Essa tela é da outra empresa do grupo. Troque a empresa no topo da página pra abrir.",
+  "so-grupo":
+    "Gerenciar usuários é de quem tem acesso a todas as empresas do grupo.",
 };
 
 export default async function DashboardPage({
@@ -100,7 +102,6 @@ export default async function DashboardPage({
         </Section>
       ) : (
         <Section title="Operação">
-          <Card icon={ListChecks} label="Demandas pendentes" value={operations.pendingTasks.toString()} />
           <Card icon={UserPlus} label="Leads gerados no mês" value={operations.leadsThisMonth.toString()} />
         </Section>
       )}

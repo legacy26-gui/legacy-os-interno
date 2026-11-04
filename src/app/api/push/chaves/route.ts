@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import webpush from "web-push";
 import { prisma } from "@/lib/prisma";
-import { pushConfigurado, avisarTodos } from "@/lib/push";
+import { pushConfigurado, avisarEmpresa } from "@/lib/push";
 
 // Ferramenta de configuração do push, protegida pelo SETUP_SECRET.
 //
@@ -52,7 +52,8 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   if (!autorizado(request)) return NextResponse.json({ error: "Chave inválida." }, { status: 403 });
 
-  const entregues = await avisarTodos({
+  // Teste de configuração: não carrega dado de ninguém, então vai pra todos.
+  const entregues = await avisarEmpresa(null, {
     titulo: "🔔 Teste do Legacy OS",
     corpo: "Se você está lendo isso no celular, o aviso de lead novo vai chegar.",
     url: "/comercial",

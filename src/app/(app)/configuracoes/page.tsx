@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { ROLE_LABELS } from "@/lib/permissions";
-import { EMPRESAS, EMPRESA_LABELS, empresasPermitidas } from "@/lib/empresa";
+import { EMPRESAS, EMPRESA_LABELS, empresasPermitidas, veTodasAsEmpresas } from "@/lib/empresa";
 import { UserForm } from "./user-form";
 import { UserRowActions } from "./user-row-actions";
 import { EmpresasDoUsuario } from "./empresas-do-usuario";
@@ -10,6 +10,10 @@ import { EmpresasDoUsuario } from "./empresas-do-usuario";
 export default async function ConfiguracoesPage() {
   const user = await getCurrentUser();
   if (user.role !== "ADMIN") redirect("/dashboard?erro=acesso-negado");
+  // Cargo de administrador não basta: quem não enxerga o grupo inteiro não
+  // administra usuário, porque administrar usuário é distribuir acesso a
+  // empresa — inclusive pra si mesmo.
+  if (!veTodasAsEmpresas(user.empresas)) redirect("/dashboard?erro=so-grupo");
 
   const users = await prisma.user.findMany({ orderBy: { name: "asc" } });
 

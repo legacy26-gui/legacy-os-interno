@@ -26,6 +26,16 @@ export function ehEmpresa(valor: unknown): valor is Empresa {
   return typeof valor === "string" && (EMPRESAS as string[]).includes(valor);
 }
 
+// Quem enxerga o grupo inteiro. É esta a régua pra administrar usuários:
+// não dá pra distribuir acesso a uma empresa que você mesmo não pode ver.
+//
+// Sem isso, um administrador limitado ao Treinamentos abriria Configurações e
+// marcaria a agência pra si mesmo — a tranca da separação não valeria nada.
+export function veTodasAsEmpresas(empresas: Empresa[] | undefined | null): boolean {
+  const minhas = empresasPermitidas(empresas);
+  return EMPRESAS.every((e) => minhas.includes(e));
+}
+
 // Empresas que a pessoa pode ver. Ninguém fica sem nenhuma: usuário antigo,
 // criado antes desta separação existir, é da agência.
 export function empresasPermitidas(empresas: Empresa[] | undefined | null): Empresa[] {

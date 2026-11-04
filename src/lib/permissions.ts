@@ -17,6 +17,7 @@ export const MODULES = [
   "gestao-contas",
   "playbooks",
   "configuracoes",
+  "gravacoes",
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number];
@@ -40,32 +41,39 @@ const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   "gestao-contas": ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   playbooks: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   configuracoes: ["ADMIN"],
+  // Mesmo pessoal do Calendário — inclusive o Gestor de Tráfego, que é quem
+  // lança gravação no dia a dia.
+  gravacoes: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
 };
 
-// Telas que só existem na agência, porque dependem da carteira de lojas: a
-// ficha do cliente, o contrato dele, a campanha, o relatório, a gestão da
-// conta. O Legacy Treinamentos vende curso — não tem loja pra gerir.
+// Quais telas existem em cada empresa.
 //
-// Quem só trabalha no Treinamentos nunca vê essas abas; quem tem as duas vê
-// enquanto estiver com a agência aberta. Isso é só o menu — o que protege o
-// dado é o filtro na consulta (ver src/lib/empresa-atual.ts).
-const MODULOS_SO_DA_AGENCIA: ModuleKey[] = [
-  "clientes",
-  "formularios",
-  "contratos",
-  "operacoes",
-  "trafego",
-  "relatorios",
-  "gestao-contas",
-  "marketing",
+// Esta é uma lista do que É LIBERADO, não do que é bloqueado — e isso é de
+// propósito. Com lista de bloqueio, uma tela nova criada amanhã nasceria
+// liberada, e bastava alguém esquecer de incluí-la pra vazar dado da agência
+// pro sócio do Treinamentos. Com lista de liberação, tela nova nasce fechada:
+// o erro possível é "falta uma aba", não "vazou o caixa".
+//
+// Tudo que não está aqui simplesmente não abre com o Treinamentos na tela.
+//
+// A agência é a casa inteira: tudo que existe é dela.
+const MODULOS_DO_TREINAMENTOS: ModuleKey[] = [
+  "dashboard",
+  "financeiro",
+  "comercial",
+  "gravacoes",
 ];
 
 export function moduleServesEmpresa(module: ModuleKey, empresa: Empresa): boolean {
   if (empresa === "AGENCIA") return true;
-  return !MODULOS_SO_DA_AGENCIA.includes(module);
+  return MODULOS_DO_TREINAMENTOS.includes(module);
 }
 
 const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
+  // Meu Dia é a rotina de quem cuida de conta de loja: lista os clientes que a
+  // pessoa gerencia. Vai junto de "clientes" pra não ficar de fora da
+  // conferência de empresa, como ficou até aqui.
+  { prefix: "/meu-dia", module: "clientes" },
   { prefix: "/clientes", module: "clientes" },
   { prefix: "/formularios", module: "formularios" },
   { prefix: "/financeiro", module: "financeiro" },
@@ -77,9 +85,10 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   { prefix: "/equipe", module: "equipe" },
   { prefix: "/marketing", module: "marketing" },
   { prefix: "/calendario", module: "calendario" },
-  // As gravações saíram do Calendário pra tela própria, mas quem vê é o mesmo
-  // pessoal — inclusive o Gestor de Tráfego, que é quem lança no dia a dia.
-  { prefix: "/gravacoes", module: "calendario" },
+  // Gravações tem chave própria (e não a do Calendário) porque o Calendário
+  // geral mostra tarefa, contrato e férias da agência: ele não pode abrir pro
+  // Treinamentos, mas a gravação pode.
+  { prefix: "/gravacoes", module: "gravacoes" },
   { prefix: "/suporte", module: "suporte" },
   { prefix: "/gestao-contas", module: "gestao-contas" },
   // O ranking das lojas vive fora de /gestao-contas pra ser uma aba própria no

@@ -90,7 +90,7 @@ export async function createGravacao(
   _prevState: GravacaoFormState,
   formData: FormData
 ): Promise<GravacaoFormState> {
-  const user = await requireModuleAccess("calendario");
+  const user = await requireModuleAccess("gravacoes");
   const empresa = await empresaAtual();
 
   const parsed = lerFormulario(formData);
@@ -122,7 +122,7 @@ export async function updateGravacao(
   _prevState: GravacaoFormState,
   formData: FormData
 ): Promise<GravacaoFormState> {
-  await requireModuleAccess("calendario");
+  await requireModuleAccess("gravacoes");
   const empresa = await empresaAtual();
 
   const parsed = lerFormulario(formData);
@@ -153,7 +153,7 @@ export async function updateGravacao(
 
 /** Marca que a entrega saiu. Clicar de novo desmarca, pra desfazer o engano. */
 export async function alternarEntrega(gravacaoId: string) {
-  await requireModuleAccess("calendario");
+  await requireModuleAccess("gravacoes");
   const empresa = await empresaAtual();
 
   const atual = await prisma.gravacao.findFirst({
@@ -177,7 +177,7 @@ export async function alternarEntrega(gravacaoId: string) {
  * Apagar some com o registro, então fica mais fechado.
  */
 export async function deleteGravacao(gravacaoId: string) {
-  const user = await requireModuleAccess("calendario");
+  const user = await requireModuleAccess("gravacoes");
   const empresa = await empresaAtual();
 
   const item = await prisma.gravacao.findFirst({

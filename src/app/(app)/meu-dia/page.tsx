@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ClipboardList, PartyPopper, ExternalLink } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser } from "@/lib/dal";
+import { requireModuleAccess } from "@/lib/dal";
 import { computeMetrics, SCORE_COLORS } from "@/lib/account-health";
 import { getSuggestedPlaybooks, DAILY_REVIEW_TAGS } from "@/lib/playbooks";
 import { ClientChecklistRow } from "./client-checklist-row";
@@ -16,7 +16,9 @@ function startOfWeekAgo() {
 }
 
 export default async function MeuDiaPage() {
-  const user = await getCurrentUser();
+  // requireModuleAccess e não getCurrentUser: é ele que confere a empresa
+  // aberta. Esta tela lista cliente de loja, então é da agência.
+  const user = await requireModuleAccess("clientes");
 
   const [clients, dailySuggestions] = await Promise.all([
     prisma.client.findMany({

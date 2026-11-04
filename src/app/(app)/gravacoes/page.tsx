@@ -40,7 +40,7 @@ export default async function GravacoesPage({
 }: {
   searchParams: Promise<{ month?: string }>;
 }) {
-  const user = await requireModuleAccess("calendario");
+  const user = await requireModuleAccess("gravacoes");
   const empresa = await empresaAtual();
   const { month } = await searchParams;
 

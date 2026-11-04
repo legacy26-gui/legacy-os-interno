@@ -19,7 +19,7 @@ type NavGroup = { label: string; items: NavLeaf[] };
 // Itens soltos no topo, sempre visíveis (sujeitos à permissão do módulo).
 const TOP_ITEMS: NavLeaf[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: null },
-  { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: null },
+  { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: "clientes" },
   { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
 ];
 
@@ -36,7 +36,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
       { href: "/ranking-lojas", label: "Ranking de Lojas", icon: Trophy, module: "gestao-contas" },
       { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
-      { href: "/gravacoes", label: "Gravações", icon: Video, module: "calendario" },
+      { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
       { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
     ],
   },
@@ -67,11 +67,11 @@ const EXTRA_ITEMS: NavLeaf[] = [
 
 // Menu mínimo do Gestor de Tráfego: só o essencial pra trabalhar no dia a dia.
 const EMPLOYEE_ITEMS: NavLeaf[] = [
-  { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: null },
+  { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: "clientes" },
   { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
   { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
   { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
-  { href: "/gravacoes", label: "Gravações", icon: Video, module: "calendario" },
+  { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
 ];
 
 function NavLink({ href, label, icon: Icon, active, onClick }: NavLeaf & { active: boolean; onClick: () => void }) {

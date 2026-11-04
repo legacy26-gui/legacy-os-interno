@@ -1,6 +1,7 @@
 import "server-only";
 import webpush from "web-push";
 import { prisma } from "@/lib/prisma";
+import type { Empresa } from "@/generated/prisma/enums";
 
 // Aviso no celular usando o próprio app que a equipe já instalou (PWA). Não
 // depende de serviço pago nem de terceiro: o navegador entrega, o sistema
@@ -33,19 +34,32 @@ function configurar() {
 }
 
 /**
- * Manda o aviso pra todo mundo inscrito. Nunca lança: notificação que falha não
- * pode derrubar quem chamou — o lead já está salvo, e ficar sem aviso é ruim,
- * mas perder a requisição é pior.
+ * Manda o aviso pro celular de quem trabalha naquela empresa. Nunca lança:
+ * notificação que falha não pode derrubar quem chamou — o lead já está salvo,
+ * e ficar sem aviso é ruim, mas perder a requisição é pior.
+ *
+ * O filtro por empresa não é detalhe: o aviso de lead traz o nome da loja e do
+ * contato. Sem ele, o sócio de uma empresa receberia no celular o lead da
+ * outra — um vazamento que nenhuma tranca de tela pegaria, porque não passa
+ * por tela nenhuma.
+ *
+ * `empresa` nulo manda pra todo mundo, e é só pro teste de configuração do
+ * push, que não carrega dado de ninguém.
  *
  * Devolve quantos aparelhos receberam.
  */
-export async function avisarTodos(aviso: AvisoPush): Promise<number> {
+export async function avisarEmpresa(
+  empresa: Empresa | null,
+  aviso: AvisoPush
+): Promise<number> {
   if (!pushConfigurado()) {
     console.warn("[push] sem VAPID configurado — aviso não enviado:", aviso.titulo);
     return 0;
   }
 
-  const inscritos = await prisma.pushSubscription.findMany();
+  const inscritos = await prisma.pushSubscription.findMany({
+    where: empresa ? { user: { active: true, empresas: { has: empresa } } } : undefined,
+  });
   if (inscritos.length === 0) {
     console.warn("[push] ninguém inscrito pra receber aviso ainda");
     return 0;

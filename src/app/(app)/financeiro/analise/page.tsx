@@ -43,7 +43,12 @@ export default async function FinanceiroPage({
   // sempre pro mês real de hoje, independente de qual mês está sendo
   // visualizado abaixo.
   const now = new Date();
-  await Promise.all([ensureMonthlyMrrRevenues(now), ensureMonthlyFixedExpenses(empresa, now)]);
+  // A mensalidade recorrente é da carteira de lojas, que é da agência. Despesa
+  // fixa é de cada empresa.
+  await Promise.all([
+    empresa === "AGENCIA" ? ensureMonthlyMrrRevenues(now) : Promise.resolve(0),
+    ensureMonthlyFixedExpenses(empresa, now),
+  ]);
 
   const refDate = month && /^\d{4}-\d{2}$/.test(month) ? new Date(`${month}-01T00:00:00Z`) : now;
   const monthStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth(), 1));
@@ -52,7 +57,9 @@ export default async function FinanceiroPage({
   const nextMonth = monthParam(new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1)));
   const isCurrentMonth = monthParam(refDate) === monthParam(now);
 
-  const mrrBoard = await getMonthlyMrrRevenues(refDate);
+  // Idem: getMonthlyMrrRevenues lê sempre a agência, então com o Treinamentos
+  // aberto ela nem é chamada — o quadro não existe lá.
+  const mrrBoard = empresa === "AGENCIA" ? await getMonthlyMrrRevenues(refDate) : null;
   const monthLabelRaw = refDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
   const monthLabel = monthLabelRaw.charAt(0).toUpperCase() + monthLabelRaw.slice(1);
 
@@ -77,12 +84,17 @@ export default async function FinanceiroPage({
     prisma.fixedExpense.findMany({ where: { empresa }, orderBy: { description: "asc" } }),
     // Quem foi tirado da cobrança DESTE mês — a lista muda conforme o mês
     // que está aberto na tela.
-    // Pular cobrança é coisa da carteira de mensalidade, que é da agência.
-    prisma.cobrancaPulada.findMany({
-      where: { month: monthParam(refDate) },
-      select: { client: { select: { id: true, companyName: true, monthlyValue: true, status: true } } },
-      orderBy: { client: { companyName: "asc" } },
-    }),
+    //
+    // Pular cobrança é da carteira de mensalidade, ou seja, da agência. A
+    // consulta traz nome e mensalidade do cliente, então não pode nem rodar
+    // com outra empresa aberta.
+    empresa === "AGENCIA"
+      ? prisma.cobrancaPulada.findMany({
+          where: { month: monthParam(refDate) },
+          select: { client: { select: { id: true, companyName: true, monthlyValue: true, status: true } } },
+          orderBy: { client: { companyName: "asc" } },
+        })
+      : [],
   ]);
 
   const { overdue, dueToday, dueSoon } = overview.alerts;
@@ -188,14 +200,16 @@ export default async function FinanceiroPage({
         <GoalForm month={overview.month} currentTarget={overview.targetRevenue} />
       </div>
 
-      <MrrBoard
-        monthLabel={monthLabel}
-        month={monthParam(refDate)}
-        groups={mrrBoard.groups}
-        totalMonth={mrrBoard.totalMonth}
-        paidTotal={mrrBoard.paidTotal}
-        pendingTotal={mrrBoard.pendingTotal}
-      />
+      {mrrBoard && (
+        <MrrBoard
+          monthLabel={monthLabel}
+          month={monthParam(refDate)}
+          groups={mrrBoard.groups}
+          totalMonth={mrrBoard.totalMonth}
+          paidTotal={mrrBoard.paidTotal}
+          pendingTotal={mrrBoard.pendingTotal}
+        />
+      )}
 
       {excludedFromBilling.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3">

@@ -16,18 +16,22 @@ loja vende, não o que a agência fatura dela.
 | menos de 7 dias | verde | Vendendo |
 | 7 a 14 dias | amarelo | Esfriou |
 | 15 a 29 dias | vermelho | Parou |
-| **30 dias ou mais** | **preto com alerta amarelo** | Abandonou |
+| **30 dias ou mais** | **vermelho sólido com alerta** | Abandonou |
 
-A linha preta tem fundo escuro **e** uma faixa amarela na lateral: no tema
-escuro o preto sozinho fica perto demais do fundo da tabela, e essa é
-justamente a linha que tem que saltar à vista.
+A faixa crítica é vermelho **sólido**, não preto. Preto parecia a escolha
+óbvia pra "pior que vermelho", mas numa tela escura o preto é a cor do fundo:
+a linha recuava em vez de avançar, e o vermelho de 15 dias parecia mais grave
+que o de 30. A mesma cor no volume máximo é o que lê como escalada.
 
-Quando existe alguma loja na faixa preta, aparece um aviso no topo com os
-nomes.
+Quando existe alguma loja nessa faixa, aparece um aviso no topo com os nomes.
 
 Os prazos ficam em `src/lib/controle-vendas.ts`, num lugar só. Mudar é trocar
 os três números — a tabela, os cartões de resumo e os textos das faixas leem
 de lá.
+
+As cores também: são quatro blocos no mesmo arquivo (`ESTILO_DA_LINHA`,
+`ESTILO_DO_SELO`, `ESTILO_DO_LINK`, `ESTILO_SECUNDARIO`). A tela não conhece
+cor nenhuma, então trocar a escada inteira não encosta nela.
 
 ## Loja que nunca vendeu
 
@@ -41,7 +45,7 @@ mesma régua.
 ## Os cartões de cima
 
 Os quatro cartões contam quantas lojas estão em cada faixa e **funcionam como
-filtro**: clicar em "Abandonou" mostra só as pretas. Clicar de novo tira o
+filtro**: clicar em "Abandonou" mostra só as críticas. Clicar de novo tira o
 filtro. A busca por nome de loja ou cidade convive com o filtro.
 
 ## Quem vê

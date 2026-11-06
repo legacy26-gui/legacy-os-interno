@@ -10,10 +10,12 @@ import {
   tomPorDias,
   ESTILO_DA_LINHA,
   ESTILO_DO_SELO,
+  ESTILO_DO_LINK,
+  ESTILO_SECUNDARIO,
   ROTULO_DO_TOM,
   DIAS_AMARELO,
   DIAS_VERMELHO,
-  DIAS_PRETO,
+  DIAS_CRITICO,
   type TomDaVenda,
 } from "@/lib/controle-vendas";
 
@@ -24,7 +26,7 @@ import {
 // A venda é a do carro, lançada na Gestão de Contas — o que a loja vende, não
 // o que a agência fatura dela.
 
-const TONS: TomDaVenda[] = ["verde", "amarelo", "vermelho", "preto"];
+const TONS: TomDaVenda[] = ["verde", "amarelo", "vermelho", "critico"];
 
 export default async function ControleVendasPage({
   searchParams,
@@ -80,7 +82,7 @@ export default async function ControleVendasPage({
     {} as Record<TomDaVenda, number>
   );
   const visiveis = tom && TONS.includes(tom as TomDaVenda) ? linhas.filter((l) => l.estado.tom === tom) : linhas;
-  const paradas = contagem.vermelho + contagem.preto;
+  const paradas = contagem.vermelho + contagem.critico;
 
   return (
     <div className="flex flex-col gap-6">
@@ -93,21 +95,21 @@ export default async function ControleVendasPage({
         </p>
       </div>
 
-      {contagem.preto > 0 && (
+      {contagem.critico > 0 && (
         <div className="rounded-2xl border border-amber-400/40 bg-zinc-950 px-5 py-4 flex items-start gap-3">
           <AlertTriangle size={20} className="text-amber-400 shrink-0 mt-0.5" />
           <p className="text-sm text-zinc-100">
             <span className="font-bold text-amber-400">
-              {contagem.preto} loja(s) sem vender há {DIAS_PRETO} dias ou mais
+              {contagem.critico} loja(s) sem vender há {DIAS_CRITICO} dias ou mais
             </span>
             <span className="text-zinc-400">
               {" "}
               · {linhas
-                .filter((l) => l.estado.tom === "preto")
+                .filter((l) => l.estado.tom === "critico")
                 .slice(0, 5)
                 .map((l) => l.companyName)
                 .join(", ")}
-              {contagem.preto > 5 && ` e mais ${contagem.preto - 5}`}
+              {contagem.critico > 5 && ` e mais ${contagem.critico - 5}`}
             </span>
           </p>
         </div>
@@ -122,25 +124,25 @@ export default async function ControleVendasPage({
               : t === "amarelo"
                 ? `${DIAS_AMARELO} a ${DIAS_VERMELHO - 1} dias`
                 : t === "vermelho"
-                  ? `${DIAS_VERMELHO} a ${DIAS_PRETO - 1} dias`
-                  : `${DIAS_PRETO} dias ou mais`;
+                  ? `${DIAS_VERMELHO} a ${DIAS_CRITICO - 1} dias`
+                  : `${DIAS_CRITICO} dias ou mais`;
           const ativo = tom === t;
           return (
             <Link
               key={t}
               href={ativo ? "/controle-vendas" : `/controle-vendas?tom=${t}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
               className={`rounded-2xl border p-4 transition-colors ${
-                t === "preto" ? "bg-zinc-950 border-zinc-800" : "bg-surface border-border hover:bg-surface-muted"
+                t === "critico" ? "bg-zinc-950 border-zinc-800" : "bg-surface border-border hover:bg-surface-muted"
               } ${ativo ? "ring-2 ring-accent" : ""}`}
             >
               <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide">
-                {t === "preto" && <AlertTriangle size={12} className="text-amber-400" />}
+                {t === "critico" && <AlertTriangle size={12} className="text-amber-400" />}
                 <span className={`px-2 py-0.5 rounded-full ${ESTILO_DO_SELO[t]}`}>{ROTULO_DO_TOM[t]}</span>
               </p>
-              <p className={`text-2xl font-semibold mt-2 ${t === "preto" ? "text-amber-400" : ""}`}>
+              <p className={`text-2xl font-semibold mt-2 ${t === "critico" ? "text-amber-400" : ""}`}>
                 {contagem[t]}
               </p>
-              <p className={`text-[11px] mt-0.5 ${t === "preto" ? "text-zinc-400" : "text-foreground-muted"}`}>
+              <p className={`text-[11px] mt-0.5 ${t === "critico" ? "text-zinc-400" : "text-foreground-muted"}`}>
                 {faixa}
               </p>
             </Link>
@@ -181,41 +183,35 @@ export default async function ControleVendasPage({
               </thead>
               <tbody className="divide-y divide-border">
                 {visiveis.map((l) => {
-                  const preto = l.estado.tom === "preto";
+                  const critico = l.estado.tom === "critico";
                   return (
                     <tr key={l.id} className={`transition-colors ${ESTILO_DA_LINHA[l.estado.tom]}`}>
                       <td className="px-5 py-3.5">
                         <Link
                           href={`/gestao-contas/${l.id}`}
-                          className={`font-medium hover:underline ${preto ? "text-amber-400" : "hover:text-accent"}`}
+                          className={`font-medium hover:underline ${ESTILO_DO_LINK[l.estado.tom]}`}
                         >
                           {l.companyName}
                         </Link>
                       </td>
-                      <td
-                        className={`px-5 py-3.5 hidden lg:table-cell ${preto ? "text-zinc-400" : "text-foreground-muted"}`}
-                      >
+                      <td className={`px-5 py-3.5 hidden lg:table-cell ${ESTILO_SECUNDARIO[l.estado.tom]}`}>
                         {l.city ? `${l.city}${l.state ? "/" + l.state : ""}` : "—"}
                       </td>
                       <td className="px-5 py-3.5 whitespace-nowrap">
                         <span
                           className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${ESTILO_DO_SELO[l.estado.tom]}`}
                         >
-                          {preto && <AlertTriangle size={12} className="shrink-0" />}
+                          {critico && <AlertTriangle size={12} className="shrink-0" />}
                           {l.estado.texto}
                         </span>
                       </td>
                       <td
-                        className={`px-5 py-3.5 whitespace-nowrap hidden sm:table-cell ${preto ? "text-zinc-400" : "text-foreground-muted"}`}
+                        className={`px-5 py-3.5 whitespace-nowrap hidden sm:table-cell ${ESTILO_SECUNDARIO[l.estado.tom]}`}
                       >
                         {l.ultimaVenda ? formatDate(l.ultimaVenda) : "—"}
                       </td>
                       <td className="px-5 py-3.5 text-right font-medium">
-                        {l.mes.qtd > 0 ? (
-                          l.mes.qtd
-                        ) : (
-                          <span className={preto ? "text-zinc-500" : "text-foreground-muted"}>0</span>
-                        )}
+                        {l.mes.qtd > 0 ? l.mes.qtd : <span className={ESTILO_SECUNDARIO[l.estado.tom]}>0</span>}
                       </td>
                       {canSeeValues && (
                         <td className="px-5 py-3.5 text-right font-medium whitespace-nowrap">

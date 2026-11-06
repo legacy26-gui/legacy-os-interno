@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
-  Trophy, Video,
+  Trophy, Video, Car,
 } from "lucide-react";
 import type { Empresa, Role } from "@/generated/prisma/enums";
 import { canAccessModule, moduleServesEmpresa, type ModuleKey } from "@/lib/permissions";
@@ -35,6 +35,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/operacoes", label: "Operações", icon: ListChecks, module: "operacoes" },
       { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
       { href: "/ranking-lojas", label: "Ranking de Lojas", icon: Trophy, module: "gestao-contas" },
+      { href: "/controle-vendas", label: "Controle de Vendas", icon: Car, module: "gestao-contas" },
       { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
       { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
       { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },

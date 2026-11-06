@@ -94,6 +94,10 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   // O ranking das lojas vive fora de /gestao-contas pra ser uma aba própria no
   // menu, mas quem vê é o mesmo pessoal que lança as vendas.
   { prefix: "/ranking-lojas", module: "gestao-contas" },
+  // Mesma coisa pro controle de vendas: é a venda da loja, lançada na Gestão
+  // de Contas. Como "gestao-contas" não está liberado pro Treinamentos, esta
+  // tela fica fora de lá automaticamente.
+  { prefix: "/controle-vendas", module: "gestao-contas" },
   { prefix: "/playbooks", module: "playbooks" },
   { prefix: "/configuracoes", module: "configuracoes" },
 ];

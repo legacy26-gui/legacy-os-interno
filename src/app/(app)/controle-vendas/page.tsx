@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Car, Search, Store, TrendingDown } from "lucide-react";
+import { AlertTriangle, Car, Eye, EyeOff, Search, Store, TrendingDown } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
@@ -18,6 +18,8 @@ import {
   DIAS_CRITICO,
   type TomDaVenda,
 } from "@/lib/controle-vendas";
+import { voltarAoControleDeVendas } from "@/lib/actions/controle-vendas";
+import { TirarDoControle } from "./tirar-do-controle";
 
 // Controle de vendas: uma linha por loja, ordenada pela que está há mais tempo
 // sem vender. A tela existe pra responder uma pergunta só, de longe: quem
@@ -40,15 +42,24 @@ export default async function ControleVendasPage({
   const hoje = new Date();
   const trintaDias = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), hoje.getUTCDate() - 30));
 
-  const [lojas, ultimas, doMes] = await Promise.all([
+  const [lojas, foraDoControle, ultimas, doMes] = await Promise.all([
     prisma.client.findMany({
       where: {
         ...CARTEIRA,
+        // Quem foi tirado do controle não entra: a tela existe pra mostrar
+        // quem precisa de ação, e consórcio no vermelho pra sempre é ruído.
+        controlaVendas: true,
         ...(q
           ? { OR: [{ companyName: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }] }
           : {}),
       },
       select: { id: true, companyName: true, city: true, state: true, status: true, startDate: true, createdAt: true },
+      orderBy: { companyName: "asc" },
+    }),
+    // Os que saíram, pra existir caminho de volta — nada some sem retorno.
+    prisma.client.findMany({
+      where: { ...CARTEIRA, controlaVendas: false },
+      select: { id: true, companyName: true },
       orderBy: { companyName: "asc" },
     }),
     // A venda mais recente de cada loja — é ela que manda na cor.
@@ -179,6 +190,7 @@ export default async function ControleVendasPage({
                   <th className="px-5 py-3 font-medium text-right whitespace-nowrap">Vendas 30d</th>
                   {canSeeValues && <th className="px-5 py-3 font-medium text-right whitespace-nowrap">Valor 30d</th>}
                   <th className="px-5 py-3 font-medium">Status</th>
+                  <th className="px-5 py-3 font-medium" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -223,6 +235,9 @@ export default async function ControleVendasPage({
                           {CLIENT_STATUS_LABELS[l.status]}
                         </span>
                       </td>
+                      <td className="px-5 py-3.5">
+                        <TirarDoControle clientId={l.id} loja={l.companyName} />
+                      </td>
                     </tr>
                   );
                 })}
@@ -231,6 +246,31 @@ export default async function ControleVendasPage({
           </div>
         )}
       </div>
+
+      {foraDoControle.length > 0 && (
+        <div className="rounded-2xl border border-border bg-surface p-5">
+          <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium flex items-center gap-2">
+            <EyeOff size={13} /> Fora do controle ({foraDoControle.length})
+          </p>
+          <p className="text-xs text-foreground-muted mt-1">
+            Contas que não são loja de carro. Continuam normais no resto do sistema — só não entram nesta tela.
+          </p>
+          <div className="flex flex-wrap gap-2 mt-3">
+            {foraDoControle.map((c) => (
+              <form key={c.id} action={voltarAoControleDeVendas.bind(null, c.id)}>
+                <button
+                  type="submit"
+                  title="Voltar pro controle de vendas"
+                  className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-border bg-surface-muted hover:bg-border/60 transition-colors"
+                >
+                  <Eye size={12} className="text-foreground-muted" />
+                  {c.companyName}
+                </button>
+              </form>
+            ))}
+          </div>
+        </div>
+      )}
 
       {paradas > 0 && (
         <p className="text-xs text-foreground-muted flex items-center gap-1.5">

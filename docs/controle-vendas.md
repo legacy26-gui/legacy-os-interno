@@ -53,6 +53,23 @@ Os quatro cartões contam quantas lojas estão em cada faixa e **funcionam como
 filtro**: clicar em "Abandonou" mostra só as críticas. Clicar de novo tira o
 filtro. A busca por nome de loja ou cidade convive com o filtro.
 
+## Tirar uma conta do controle
+
+Nem todo cliente é loja de carro. Consórcio, banco e afins não têm "carro
+vendido" pra cobrar, e ficariam no vermelho pra sempre poluindo a tela.
+
+No fim de cada linha tem um botão de **olho cortado**: tira a conta do
+controle. A confirmação diz o que NÃO acontece — não desliga o cliente, que
+continua igual em Clientes, no financeiro e no contrato. Some só desta tela.
+
+As que saíram ficam listadas embaixo, em **"Fora do controle"**. Clicar no
+nome traz de volta. Nada some sem caminho de retorno: foi erro já cometido
+antes com o botão de tirar da cobrança no Financeiro, que o Guilherme
+entendeu como "desligar o cliente".
+
+Guardado em `Client.controlaVendas`, que nasce `true` em todo mundo — nada
+muda até alguém tirar alguém na mão.
+
 ## Quem vê
 
 Mesma permissão da Gestão de Contas, que é onde a venda é lançada. Como
@@ -69,8 +86,13 @@ Clientes.
 | --- | --- |
 | `src/lib/controle-vendas.ts` | os prazos, o cálculo e as cores |
 | `src/app/(app)/controle-vendas/page.tsx` | a tela |
+| `src/app/(app)/controle-vendas/tirar-do-controle.tsx` | o botão de tirar |
+| `src/lib/actions/controle-vendas.ts` | tirar e devolver ao controle |
 
-Sem migração: usa a tabela de vendas que já existia (`client_sales`).
+Usa a tabela de vendas que já existia (`client_sales`).
+
+Migração: `20261106120000_controle_de_vendas_opcional` (só a coluna
+`controlaVendas` em `clients`).
 
 ## Como foi verificado
 

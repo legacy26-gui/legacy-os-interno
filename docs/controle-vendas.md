@@ -70,6 +70,13 @@ entendeu como "desligar o cliente".
 Guardado em `Client.controlaVendas`, que nasce `true` em todo mundo — nada
 muda até alguém tirar alguém na mão.
 
+**Vale também no Ranking de Lojas.** Conta tirada some das duas telas, senão
+ela continuaria zerada no fim do ranking pra sempre. Lá o filtro precisa
+estar em dois lugares: na lista de lojas e **na consulta das vendas** — uma
+venda antiga de loja tirada recriaria a linha dela no ranking, porque o
+ranking inventa a linha quando a venda chega de uma loja que não veio na
+lista.
+
 ## Quem vê
 
 Mesma permissão da Gestão de Contas, que é onde a venda é lançada. Como
@@ -88,6 +95,7 @@ Clientes.
 | `src/app/(app)/controle-vendas/page.tsx` | a tela |
 | `src/app/(app)/controle-vendas/tirar-do-controle.tsx` | o botão de tirar |
 | `src/lib/actions/controle-vendas.ts` | tirar e devolver ao controle |
+| `src/app/(app)/ranking-lojas/page.tsx` | respeita o mesmo filtro |
 
 Usa a tabela de vendas que já existia (`client_sales`).
 

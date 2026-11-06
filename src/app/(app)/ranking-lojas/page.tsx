@@ -66,7 +66,15 @@ export default async function RankingLojasPage({
 
   const [vendas, lojas] = await Promise.all([
     prisma.clientSale.findMany({
-      where: de && ate ? { soldAt: { gte: de, lt: ate } } : {},
+      // Conta que foi tirada do Controle de Vendas não entra no ranking.
+      // O filtro precisa estar AQUI também, e não só na lista de lojas
+      // abaixo: uma venda antiga de loja tirada recriaria a linha dela no
+      // ranking (ver o `?? { ... }` mais abaixo, que inventa a linha quando
+      // a venda chega de uma loja que não veio na lista).
+      where: {
+        client: { controlaVendas: true },
+        ...(de && ate ? { soldAt: { gte: de, lt: ate } } : {}),
+      },
       orderBy: { soldAt: "desc" },
       select: {
         id: true,
@@ -79,9 +87,11 @@ export default async function RankingLojasPage({
       },
     }),
     // Lojas ativas entram no ranking mesmo sem venda no período — ver quem
-    // ficou zerado é tão importante quanto ver quem ganhou.
+    // ficou zerado é tão importante quanto ver quem ganhou. Menos as que
+    // foram tiradas do Controle de Vendas: consórcio e banco não vendem
+    // carro, e ficariam zerados no fim da lista pra sempre.
     prisma.client.findMany({
-      where: { status: "ATIVO" },
+      where: { status: "ATIVO", controlaVendas: true },
       select: {
         id: true,
         companyName: true,

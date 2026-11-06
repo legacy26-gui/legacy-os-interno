@@ -75,14 +75,14 @@ export function estadoDaVenda(
 export const ESTILO_DA_LINHA: Record<TomDaVenda, string> = {
   verde: "hover:bg-surface-muted",
   amarelo: "bg-amber-500/10 hover:bg-amber-500/15",
-  vermelho: "bg-red-500/10 hover:bg-red-500/15",
+  vermelho: "bg-red-500/20 hover:bg-red-500/25",
   critico: "bg-red-600 hover:bg-red-700 text-white",
 };
 
 export const ESTILO_DO_SELO: Record<TomDaVenda, string> = {
   verde: "bg-emerald-500/15 text-emerald-500",
   amarelo: "bg-amber-500/20 text-amber-600 dark:text-amber-400",
-  vermelho: "bg-red-500/20 text-red-500",
+  vermelho: "bg-red-500/25 text-red-400",
   critico: "bg-white text-red-700 font-bold",
 };
 

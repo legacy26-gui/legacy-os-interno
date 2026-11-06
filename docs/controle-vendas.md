@@ -15,8 +15,13 @@ loja vende, não o que a agência fatura dela.
 | --- | --- | --- |
 | menos de 7 dias | verde | Vendendo |
 | 7 a 14 dias | amarelo | Esfriou |
-| 15 a 29 dias | vermelho | Parou |
+| 15 a 29 dias | vermelho fraco | Parou |
 | **30 dias ou mais** | **vermelho sólido com alerta** | Abandonou |
+
+As duas últimas faixas são a mesma cor em volumes diferentes: 15 a 29 dias é
+vermelho fraco, 30 ou mais é vermelho cheio. Laranja no meio foi testado e
+descartado — no tema escuro ele fica amarronzado e encosta demais no amarelo
+de cima, perdendo a separação justamente no meio da escada.
 
 A faixa crítica é vermelho **sólido**, não preto. Preto parecia a escolha
 óbvia pra "pior que vermelho", mas numa tela escura o preto é a cor do fundo:

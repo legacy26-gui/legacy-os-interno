@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Pencil, ExternalLink, Building2, Phone, Mail, MapPin, CreditCard, MapPinCheck } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { escopoDaCarteira } from "@/lib/carteira";
 import { canAccessModule } from "@/lib/permissions";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate, formatDateTime } from "@/lib/labels";
 import { deleteClient } from "@/lib/actions/clients";
@@ -20,8 +21,12 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
   const canSeeValues = canAccessModule(user.role, "financeiro");
   const { id } = await params;
 
-  const client = await prisma.client.findUnique({
-    where: { id },
+  // findFirst com o recorte junto, e não findUnique: filtrar a LISTA não
+  // protege nada — quem tiver o endereço de um cliente de outro gestor chega
+  // na ficha digitando. O id e a carteira vão na mesma consulta, e o que não é
+  // dele simplesmente não existe (404, abaixo).
+  const client = await prisma.client.findFirst({
+    where: { id, ...escopoDaCarteira(user) },
     include: {
       manager: { select: { name: true } },
       history: { orderBy: { createdAt: "desc" }, include: { author: { select: { name: true } } } },

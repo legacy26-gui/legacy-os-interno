@@ -1,5 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
+import { escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
 
 // Regras de score (0-100). Cada penalidade é subtraída da base 100.
 // Criativo novo não entra mais no score: publicar criativo novo a cada X dias
@@ -94,12 +95,19 @@ export interface AccountHealth {
   metrics: AccountMetrics;
 }
 
-// Carrega todas as contas (clientes não cancelados) com as datas agregadas
-// e calcula os indicadores de saúde de cada uma.
-export async function getAccountsHealth(now: Date = new Date()): Promise<AccountHealth[]> {
+// Carrega as contas (clientes não cancelados) com as datas agregadas e
+// calcula os indicadores de saúde de cada uma.
+//
+// `user` é obrigatório de propósito: é por ele que entra o recorte da
+// carteira. Deixar opcional seria convidar a esquecer — e quem esquece aqui
+// abre a casa inteira pra um gestor sem ninguém notar.
+export async function getAccountsHealth(
+  user: PessoaDaCasa,
+  now: Date = new Date()
+): Promise<AccountHealth[]> {
   const [clients, lastDaily, lastWeekly, lastChange] = await Promise.all([
     prisma.client.findMany({
-      where: { status: { not: "CANCELADO" } },
+      where: { status: { not: "CANCELADO" }, ...escopoDaCarteira(user) },
       select: { id: true, companyName: true, managerId: true, manager: { select: { name: true } } },
       orderBy: { companyName: "asc" },
     }),

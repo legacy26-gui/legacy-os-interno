@@ -4,6 +4,7 @@ import * as z from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { clienteEDaCarteira } from "@/lib/carteira";
 
 const SaleSchema = z.object({
   description: z.string().optional(),
@@ -39,6 +40,11 @@ export async function createClientSale(
   formData: FormData
 ): Promise<SaleFormState> {
   const user = await requireModuleAccess("gestao-contas");
+  // Mesma regra do Marcar Venda, agora também no caminho antigo (pela ficha
+  // do cliente): cada um só lança nas lojas da carteira dele.
+  if (!(await clienteEDaCarteira(user, clientId))) {
+    return { error: "Este cliente não está na sua carteira." };
+  }
   const parsed = lerFormulario(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
@@ -62,12 +68,17 @@ export async function updateClientSale(
   _prevState: SaleFormState,
   formData: FormData
 ): Promise<SaleFormState> {
-  await requireModuleAccess("gestao-contas");
+  const user = await requireModuleAccess("gestao-contas");
   const parsed = lerFormulario(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Dados inválidos." };
 
   const venda = await prisma.clientSale.findUnique({ where: { id: saleId }, select: { clientId: true } });
   if (!venda) return { error: "Esta venda não existe mais." };
+  // A conferência vem depois de achar a venda porque é o cliente DELA que
+  // decide — o id da venda sozinho não diz de quem é.
+  if (!(await clienteEDaCarteira(user, venda.clientId))) {
+    return { error: "Este cliente não está na sua carteira." };
+  }
 
   const { soldAt, description, ...rest } = parsed.data;
   await prisma.clientSale.update({
@@ -83,7 +94,8 @@ export async function updateClientSale(
 }
 
 export async function deleteClientSale(clientId: string, saleId: string) {
-  await requireModuleAccess("gestao-contas");
+  const user = await requireModuleAccess("gestao-contas");
+  if (!(await clienteEDaCarteira(user, clientId))) return;
   await prisma.clientSale.delete({ where: { id: saleId } });
   revalidarVendas(clientId);
 }
@@ -100,7 +112,10 @@ export async function createPinnedInfo(
   _prevState: PinnedFormState,
   formData: FormData
 ): Promise<PinnedFormState> {
-  await requireModuleAccess("gestao-contas");
+  const user = await requireModuleAccess("gestao-contas");
+  if (!(await clienteEDaCarteira(user, clientId))) {
+    return { error: "Este cliente não está na sua carteira." };
+  }
   const parsed = PinnedSchema.safeParse({
     label: formData.get("label"),
     value: formData.get("value"),
@@ -114,7 +129,8 @@ export async function createPinnedInfo(
 }
 
 export async function deletePinnedInfo(clientId: string, infoId: string) {
-  await requireModuleAccess("gestao-contas");
+  const user = await requireModuleAccess("gestao-contas");
+  if (!(await clienteEDaCarteira(user, clientId))) return;
   await prisma.clientPinnedInfo.delete({ where: { id: infoId } });
   revalidatePath(`/gestao-contas/${clientId}`);
 }

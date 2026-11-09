@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess, getCurrentUser } from "@/lib/dal";
+import { clienteEDaCarteira } from "@/lib/carteira";
 import { PAYMENT_DAYS } from "@/lib/labels";
 import { ensureMonthlyMrrRevenues } from "@/lib/mrr-revenue";
 
@@ -106,7 +107,12 @@ export async function updateClient(
   _prevState: ClientFormState,
   formData: FormData
 ): Promise<ClientFormState> {
-  await requireModuleAccess("clientes");
+  const user = await requireModuleAccess("clientes");
+  // A lista e a tela de edição já são recortadas pela carteira, mas o id vem
+  // do navegador: é aqui que "cada um só mexe no seu" existe de verdade.
+  if (!(await clienteEDaCarteira(user, clientId))) {
+    return { error: "Este cliente não está na sua carteira." };
+  }
 
   const parsed = parseClientForm(formData);
   if (!parsed.success) {
@@ -179,7 +185,9 @@ export async function updateClient(
 }
 
 export async function deleteClient(clientId: string) {
-  await requireModuleAccess("clientes");
+  const user = await requireModuleAccess("clientes");
+  // Apagar cliente de outro gestor seria o pior caso: some pra todo mundo.
+  if (!(await clienteEDaCarteira(user, clientId))) return;
 
   const client = await prisma.client.findUnique({
     where: { id: clientId },
@@ -234,7 +242,10 @@ export async function addClientAttachment(
   _prevState: AttachmentFormState,
   formData: FormData
 ): Promise<AttachmentFormState> {
-  await requireModuleAccess("clientes");
+  const user = await requireModuleAccess("clientes");
+  if (!(await clienteEDaCarteira(user, clientId))) {
+    return { error: "Este cliente não está na sua carteira." };
+  }
   const parsed = AttachmentSchema.safeParse({
     fileName: formData.get("fileName"),
     url: formData.get("url"),
@@ -250,7 +261,8 @@ export async function addClientAttachment(
 }
 
 export async function deleteClientAttachment(clientId: string, attachmentId: string) {
-  await requireModuleAccess("clientes");
+  const user = await requireModuleAccess("clientes");
+  if (!(await clienteEDaCarteira(user, clientId))) return;
   await prisma.clientAttachment.delete({ where: { id: attachmentId } });
   revalidatePath(`/clientes/${clientId}`);
 }

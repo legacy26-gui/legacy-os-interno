@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ClipboardCheck, CheckCircle2, AlertCircle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { veTodaACarteira } from "@/lib/carteira";
 
 function startOfToday() {
   const now = new Date();
@@ -9,11 +10,13 @@ function startOfToday() {
 }
 
 export default async function ChecklistHojePage() {
-  await requireModuleAccess("gestao-contas");
+  const user = await requireModuleAccess("gestao-contas");
   const todayStart = startOfToday();
 
   const operators = await prisma.user.findMany({
-    where: { active: true },
+    // Gestor de tráfego vê só o próprio checklist; gerência e dono veem o da
+    // equipe inteira. É a mesma regra de carteira, aplicada a quem aparece.
+    where: { active: true, ...(veTodaACarteira(user) ? {} : { id: user.id }) },
     select: {
       id: true,
       name: true,

@@ -22,7 +22,7 @@ export default async function OperacoesPage({
 }: {
   searchParams: Promise<{ op?: string }>;
 }) {
-  await requireModuleAccess("operacoes");
+  const user = await requireModuleAccess("operacoes");
   const { op } = await searchParams;
 
   const [operators, clients, accountsHealth, playbooksForTasks] = await Promise.all([
@@ -44,7 +44,7 @@ export default async function OperacoesPage({
       },
       orderBy: { companyName: "asc" },
     }),
-    getAccountsHealth(),
+    getAccountsHealth(user),
     prisma.playbook.findMany({
       where: { tags: { hasSome: Array.from(new Set(Object.values(TASK_TAGS).flat())) } },
       select: { id: true, title: true, tags: true },

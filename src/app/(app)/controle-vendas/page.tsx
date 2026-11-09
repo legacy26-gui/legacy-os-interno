@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
 import { CARTEIRA } from "@/lib/carteira";
-import { escopoDaCarteira, marcaParaTodos } from "@/lib/vendas-permitidas";
+import { escopoDaCarteira, veTodaACarteira } from "@/lib/carteira";
 import { formatCurrency, formatDate, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/lib/labels";
 import {
   estadoDaVenda,
@@ -39,7 +39,7 @@ export default async function ControleVendasPage({
   const user = await requireModuleAccess("gestao-contas");
   const canSeeValues = canAccessModule(user.role, "financeiro");
   // Quem enxerga a casa inteira: vê todas as lojas e pode tirar do controle.
-  const vêTudo = marcaParaTodos(user);
+  const vêTudo = veTodaACarteira(user);
   const { q, tom } = await searchParams;
 
   const hoje = new Date();

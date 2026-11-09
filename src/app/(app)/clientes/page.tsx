@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Plus, Search, Pencil, AlertTriangle, MapPinCheck } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { escopoDaCarteira } from "@/lib/carteira";
 import { canAccessModule } from "@/lib/permissions";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate } from "@/lib/labels";
 import { deleteClient } from "@/lib/actions/clients";
@@ -30,6 +31,9 @@ export default async function ClientesPage({
   const [clients, operators, statusCounts, vencidas] = await Promise.all([
     prisma.client.findMany({
       where: {
+        // Cada um só vê o seu: gestor de tráfego enxerga os clientes sob a
+        // gestão dele, gerência e dono enxergam a casa inteira.
+        ...escopoDaCarteira(user),
         AND: [
           q
             ? {
@@ -51,7 +55,10 @@ export default async function ClientesPage({
       select: { id: true, name: true },
       orderBy: { name: "asc" },
     }),
-    prisma.client.groupBy({ by: ["status"], _count: true }),
+    // Os contadores das abas também seguem a carteira: sem isto, as abas
+    // diriam "Ativos 36" pra quem só pode ver 3 — e o total da casa é
+    // informação que não é dele.
+    prisma.client.groupBy({ by: ["status"], where: escopoDaCarteira(user), _count: true }),
     // A carteira de mensalidade é da agência; o atraso é dela.
     prisma.revenue.findMany({
       where: { empresa: "AGENCIA", status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { lt: hoje } },

@@ -2,7 +2,8 @@ import Link from "next/link";
 import { Car, ArrowRight, Store } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
-import { filtroDeClientes, marcaParaTodos } from "@/lib/vendas-permitidas";
+import { filtroDeClientes } from "@/lib/vendas-permitidas";
+import { veTodaACarteira } from "@/lib/carteira";
 import { formatCurrency } from "@/lib/labels";
 import { MarcarVendaForm, type LojaDaLista } from "./formulario";
 import { ApagarVenda } from "./apagar-venda";
@@ -21,7 +22,7 @@ export const metadata = { title: "Marcar venda" };
 export default async function MarcarVendaPage() {
   const user = await requireModuleAccess("gestao-contas");
   const permitidas = filtroDeClientes(user);
-  const todas = marcaParaTodos(user);
+  const todas = veTodaACarteira(user);
 
   const [lojas, ultimas] = await Promise.all([
     prisma.client.findMany({

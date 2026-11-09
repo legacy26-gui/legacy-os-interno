@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
-import { marcaParaTodos } from "@/lib/vendas-permitidas";
+import { veTodaACarteira } from "@/lib/carteira";
 
 // Quem entra e quem sai do Controle de Vendas.
 //
@@ -23,7 +23,7 @@ import { marcaParaTodos } from "@/lib/vendas-permitidas";
 // precisa vê-lo. Esconder não é resolver.
 async function exigirVisaoDaCasa() {
   const user = await requireModuleAccess("gestao-contas");
-  return marcaParaTodos(user) ? user : null;
+  return veTodaACarteira(user) ? user : null;
 }
 
 export async function tirarDoControleDeVendas(clientId: string) {

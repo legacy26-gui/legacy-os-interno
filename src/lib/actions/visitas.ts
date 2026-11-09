@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { clienteEDaCarteira } from "@/lib/carteira";
 
 // Última visita na loja.
 //
@@ -19,7 +20,10 @@ function revalidar(clientId: string) {
 
 /** Apertou o botão: a visita foi hoje. */
 export async function marcarVisitaHoje(clientId: string) {
-  await requireModuleAccess("clientes");
+  const user = await requireModuleAccess("clientes");
+  // O id vem do navegador: marcar visita em loja que não é sua mentiria no
+  // controle de quem cuida dela.
+  if (!(await clienteEDaCarteira(user, clientId))) return;
 
   // Meio-dia, e não a hora do clique: a data é o que importa, e o meio-dia
   // nunca cai no dia errado quando a tela mostra em outro fuso.
@@ -37,7 +41,8 @@ export async function marcarVisitaHoje(clientId: string) {
 
 /** Visita que aconteceu outro dia, escrita na mão. Data vazia limpa o registro. */
 export async function definirDataDaVisita(clientId: string, data: string) {
-  await requireModuleAccess("clientes");
+  const user = await requireModuleAccess("clientes");
+  if (!(await clienteEDaCarteira(user, clientId))) return;
 
   if (!data) {
     await prisma.client.update({ where: { id: clientId }, data: { ultimaVisitaEm: null } });

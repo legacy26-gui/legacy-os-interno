@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { escopoDaCarteira } from "@/lib/carteira";
 import { computeMetrics, SCORE_COLORS, BUCKET_LABELS } from "@/lib/account-health";
 import {
   formatCurrency,
@@ -63,8 +64,10 @@ export default async function ContaDetailPage({
   const voltarPara = user.role === "GESTOR_TRAFEGO" ? "/meu-dia" : "/gestao-contas";
   const voltarLabel = user.role === "GESTOR_TRAFEGO" ? "Voltar para Meu Dia" : "Voltar para Gestão de Contas";
 
-  const client = await prisma.client.findUnique({
-    where: { id },
+  // O recorte da carteira entra na mesma consulta do id: a lista filtrada não
+  // protege a ficha, que se abre digitando o endereço.
+  const client = await prisma.client.findFirst({
+    where: { id, ...escopoDaCarteira(user) },
     select: {
       id: true,
       companyName: true,

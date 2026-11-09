@@ -5,10 +5,10 @@ import { requireModuleAccess } from "@/lib/dal";
 import { getAccountsHealth, SCORE_COLORS, bucketForScore } from "@/lib/account-health";
 
 export default async function RankingGestoresPage() {
-  await requireModuleAccess("gestao-contas");
+  const user = await requireModuleAccess("gestao-contas");
 
   const [accounts, operators] = await Promise.all([
-    getAccountsHealth(),
+    getAccountsHealth(user),
     prisma.user.findMany({
       where: { active: true },
       select: { id: true, name: true },

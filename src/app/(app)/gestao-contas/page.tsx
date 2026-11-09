@@ -13,8 +13,8 @@ function ScoreBadge({ score, bucket }: { score: number; bucket: AccountHealth["m
 }
 
 export default async function GestaoContasPage() {
-  await requireModuleAccess("gestao-contas");
-  const accounts = await getAccountsHealth();
+  const user = await requireModuleAccess("gestao-contas");
+  const accounts = await getAccountsHealth(user);
 
   const saudaveis = accounts.filter((a) => a.metrics.bucket === "saudavel");
   const alerta = accounts.filter((a) => a.metrics.bucket === "alerta");

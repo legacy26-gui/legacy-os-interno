@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Trophy, Car, TrendingUp, Target, Store, Medal } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { escopoDaCarteira } from "@/lib/carteira";
 import { formatCurrency } from "@/lib/labels";
 import { VendaLinha } from "@/components/vendas/venda-editavel";
 
@@ -59,7 +60,7 @@ export default async function RankingLojasPage({
 }: {
   searchParams: Promise<{ periodo?: string }>;
 }) {
-  await requireModuleAccess("gestao-contas");
+  const user = await requireModuleAccess("gestao-contas");
   const { periodo: periodoBruto } = await searchParams;
   const periodo = (PERIODOS.find((p) => p.chave === periodoBruto)?.chave ?? "mes") as Periodo;
   const { de, ate, rotulo } = janelaDoPeriodo(periodo);
@@ -72,7 +73,9 @@ export default async function RankingLojasPage({
       // ranking (ver o `?? { ... }` mais abaixo, que inventa a linha quando
       // a venda chega de uma loja que não veio na lista).
       where: {
-        client: { controlaVendas: true },
+        // O recorte da carteira entra pela loja: gestor de tráfego só
+        // compete com as lojas dele.
+        client: { controlaVendas: true, ...escopoDaCarteira(user) },
         ...(de && ate ? { soldAt: { gte: de, lt: ate } } : {}),
       },
       orderBy: { soldAt: "desc" },
@@ -91,7 +94,7 @@ export default async function RankingLojasPage({
     // foram tiradas do Controle de Vendas: consórcio e banco não vendem
     // carro, e ficariam zerados no fim da lista pra sempre.
     prisma.client.findMany({
-      where: { status: "ATIVO", controlaVendas: true },
+      where: { status: "ATIVO", controlaVendas: true, ...escopoDaCarteira(user) },
       select: {
         id: true,
         companyName: true,
@@ -191,7 +194,7 @@ export default async function RankingLojasPage({
         <div className="rounded-2xl border border-border bg-surface py-16 text-center">
           <p className="font-medium">Nenhuma venda registrada {rotulo}</p>
           <p className="text-sm text-foreground-muted mt-1">
-            As vendas são lançadas na página de cada cliente, dentro da Gestão de Contas.
+            As vendas são lançadas em Marcar Venda, ou pela página de cada cliente na Gestão de Contas.
           </p>
         </div>
       ) : (
@@ -333,7 +336,7 @@ export default async function RankingLojasPage({
       )}
 
       <p className="text-xs text-foreground-muted">
-        As vendas vêm do que os gestores lançam na página de cada cliente, em Gestão de Contas. Loja sem
+        As vendas vêm do que a equipe lança em Marcar Venda (ou pela página de cada cliente). Loja sem
         venda no período aparece zerada no fim da lista.
       </p>
     </div>

@@ -56,6 +56,7 @@ model User {
   salesRegistered  ClientSale[]     @relation("SaleCreator")
   pushSubscriptions PushSubscription[]
   gravacoes        Gravacao[]        @relation("GravacaoRegistrada")
+  etapasConcluidas OnboardingEtapa[] @relation("EtapaConcluida")
 
   @@map("users")
 }
@@ -888,11 +889,37 @@ model ClientOnboarding {
   clientId      String?
   client        Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
   analyses      OnboardingAnalysis[]
+  etapas        OnboardingEtapa[]
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
 
   @@index([status, createdAt])
   @@map("client_onboardings")
+}
+
+// Uma etapa de implantação marcada como feita, numa ficha.
+//
+// Só existe linha pro que FOI feito: a lista das etapas possíveis mora no
+// código (src/lib/etapas-implantacao.ts), não no banco. Assim mexer na lista
+// — tirar, acrescentar, renomear — não exige migração nem mexe em ficha
+// nenhuma, e a marcação antiga continua guardada caso a etapa volte.
+model OnboardingEtapa {
+  id           String           @id @default(cuid())
+  onboardingId String
+  onboarding   ClientOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  // A chave da etapa, como está em ETAPAS. Texto livre de propósito: se a
+  // lista mudar, o banco não precisa saber.
+  chave        String
+  concluidoEm  DateTime         @default(now())
+  // Quem marcou. Vira nulo se a pessoa sair do sistema — a etapa continua
+  // feita, só perde o nome de quem fez.
+  concluidoPorId String?
+  concluidoPor   User?          @relation("EtapaConcluida", fields: [concluidoPorId], references: [id], onDelete: SetNull)
+  observacao   String?
+
+  // Uma marcação por etapa por ficha: clicar duas vezes não duplica.
+  @@unique([onboardingId, chave])
+  @@map("onboarding_etapas")
 }
 
 // ─── Diagnóstico gerado por IA ──────────────────────────────────────────────

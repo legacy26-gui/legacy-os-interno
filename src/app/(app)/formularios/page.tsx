@@ -15,6 +15,8 @@ import { DiagnosticoSection } from "@/components/diagnostico/diagnostico-section
 import { CopyLink } from "./copy-link";
 import { StatusButtons } from "./status-buttons";
 import { DeleteFichaButton } from "./delete-ficha-button";
+import { EtapasDaFicha, type EtapaMarcada } from "./etapas-da-ficha";
+import { progresso } from "@/lib/etapas-implantacao";
 import type { OnboardingStatus } from "@/generated/prisma/enums";
 
 // Os botões de gerar/regenerar diagnóstico rodam a IA nesta rota.
@@ -40,7 +42,10 @@ export default async function FormulariosPage({
     prisma.clientOnboarding.findMany({
       where: filtro === "todos" ? {} : { status: filtro as OnboardingStatus },
       orderBy: { createdAt: "desc" },
-      include: { client: { select: { id: true, companyName: true } } },
+      include: {
+        client: { select: { id: true, companyName: true } },
+        etapas: { orderBy: { concluidoEm: "asc" }, include: { concluidoPor: { select: { name: true } } } },
+      },
     }),
     prisma.clientOnboarding.groupBy({ by: ["status"], _count: true }),
   ]);
@@ -110,6 +115,16 @@ export default async function FormulariosPage({
             const idsConhecidos = new Set(ONBOARDING_SECTIONS.flatMap((s) => s.fields.map((f) => f.id)));
             const extras = Object.keys(respostas).filter((k) => !idsConhecidos.has(k));
 
+            // Data e autor formatados aqui no servidor: a lista de etapas é
+            // componente de navegador e não deve depender do fuso de quem abriu.
+            const marcadas: EtapaMarcada[] = ficha.etapas.map((e) => ({
+              chave: e.chave,
+              quando: formatDateTime(e.concluidoEm),
+              quem: e.concluidoPor?.name ?? null,
+              observacao: e.observacao,
+            }));
+            const andamento = progresso(marcadas.map((m) => m.chave));
+
             return (
               <div key={ficha.id} className="rounded-2xl border border-border bg-surface overflow-hidden">
                 <div className="p-5 flex flex-col gap-3">
@@ -123,6 +138,16 @@ export default async function FormulariosPage({
                           }`}
                         >
                           {ONBOARDING_STATUS_LABELS[ficha.status]}
+                        </span>
+                        {/* Quanto já andou da implantação, sem precisar abrir. */}
+                        <span
+                          className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                            andamento.feitas === andamento.total
+                              ? "bg-emerald-500/15 text-emerald-500"
+                              : "bg-surface-muted text-foreground-muted"
+                          }`}
+                        >
+                          {andamento.feitas}/{andamento.total} etapas
                         </span>
                       </div>
                       <p className="text-sm text-foreground-muted mt-0.5">{ficha.contactName}</p>
@@ -177,6 +202,8 @@ export default async function FormulariosPage({
                   </div>
 
                   <StatusButtons id={ficha.id} status={ficha.status} />
+
+                  <EtapasDaFicha onboardingId={ficha.id} marcadas={marcadas} />
 
                   <details className="group">
                     <summary className="cursor-pointer text-sm font-medium text-accent hover:underline w-fit">

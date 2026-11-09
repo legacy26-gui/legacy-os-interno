@@ -68,8 +68,11 @@ const NAV_GROUPS: NavGroup[] = [
 
 // Itens fora do menu mínimo que aparecem quando a pessoa tem acesso liberado
 // individualmente (ver ACESSOS_POR_PESSOA em lib/permissions).
+// Itens fora do menu mínimo que aparecem se alguém tiver acesso liberado
+// individualmente (ver ACESSOS_POR_PESSOA em lib/permissions, hoje vazia).
 const EXTRA_ITEMS: NavLeaf[] = [
   { href: "/formularios", label: "Formulários", icon: ClipboardPen, module: "formularios" },
+  { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
 ];
 
 // Menu mínimo do Gestor de Tráfego: só o essencial pra trabalhar no dia a dia.
@@ -81,8 +84,6 @@ const EMPLOYEE_ITEMS: NavLeaf[] = [
   { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
   { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
   { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
-  { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
-  { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
 ];
 
 function NavLink({ href, label, icon: Icon, active, onClick }: NavLeaf & { active: boolean; onClick: () => void }) {

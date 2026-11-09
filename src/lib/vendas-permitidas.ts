@@ -1,7 +1,6 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import type { Role } from "@/generated/prisma/enums";
-import { ehAndrielli } from "@/lib/permissions";
 import { CARTEIRA } from "@/lib/carteira";
 
 // De quais clientes cada pessoa pode marcar venda.
@@ -13,8 +12,7 @@ import { CARTEIRA } from "@/lib/carteira";
 //
 // A regra, definida pelo Guilherme:
 //   gestor de tráfego ..... só os clientes dele
-//   Andrielli ............. todos
-//   dono e gerência ....... todos
+//   dono e gerência ....... todos (a Andrielli é Gerente)
 
 export interface QuemMarca {
   id: string;
@@ -22,11 +20,15 @@ export interface QuemMarca {
   role: Role;
 }
 
-/** Quem enxerga a carteira inteira na hora de marcar. */
+/**
+ * Quem enxerga a carteira inteira.
+ *
+ * A Andrielli entra aqui pelo cargo dela, que é GERENTE — e não por uma
+ * exceção com o nome dela. Quem cuida da operação de todas as lojas não tem
+ * carteira própria pra ser recortada.
+ */
 export function marcaParaTodos(user: QuemMarca): boolean {
-  if (user.role === "ADMIN" || user.role === "GERENTE") return true;
-  // A Andrielli cuida da operação de todas as lojas, não de uma carteira.
-  return ehAndrielli(user.email);
+  return user.role === "ADMIN" || user.role === "GERENTE";
 }
 
 /**
@@ -38,13 +40,24 @@ export function marcaParaTodos(user: QuemMarca): boolean {
  * que o servidor aceita.
  */
 export function filtroDeClientes(user: QuemMarca): Prisma.ClientWhereInput {
-  const base: Prisma.ClientWhereInput = {
+  return {
     ...CARTEIRA,
     // Quem foi tirado do Controle de Vendas não entra: são as contas que não
     // têm "carro vendido" pra marcar (consórcio, banco). Marcar venda nelas
     // sujaria justamente o controle que o Guilherme mandou limpar.
     controlaVendas: true,
+    ...escopoDaCarteira(user),
   };
-  if (marcaParaTodos(user)) return base;
-  return { ...base, managerId: user.id };
+}
+
+/**
+ * O recorte da carteira, sozinho: vazio pra quem vê tudo, só os clientes dele
+ * pro gestor de tráfego.
+ *
+ * Sai separado porque o Controle de Vendas precisa do mesmo recorte com outra
+ * base — lá entram também as lojas TIRADAS do controle, pra existir caminho de
+ * volta. Composto, e não copiado: a regra de carteira existe uma vez só.
+ */
+export function escopoDaCarteira(user: QuemMarca): Prisma.ClientWhereInput {
+  return marcaParaTodos(user) ? {} : { managerId: user.id };
 }

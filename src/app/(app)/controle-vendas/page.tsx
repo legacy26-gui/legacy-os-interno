@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
 import { CARTEIRA } from "@/lib/carteira";
+import { escopoDaCarteira, marcaParaTodos } from "@/lib/vendas-permitidas";
 import { formatCurrency, formatDate, CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS } from "@/lib/labels";
 import {
   estadoDaVenda,
@@ -37,6 +38,8 @@ export default async function ControleVendasPage({
 }) {
   const user = await requireModuleAccess("gestao-contas");
   const canSeeValues = canAccessModule(user.role, "financeiro");
+  // Quem enxerga a casa inteira: vê todas as lojas e pode tirar do controle.
+  const vêTudo = marcaParaTodos(user);
   const { q, tom } = await searchParams;
 
   const hoje = new Date();
@@ -49,6 +52,10 @@ export default async function ControleVendasPage({
         // Quem foi tirado do controle não entra: a tela existe pra mostrar
         // quem precisa de ação, e consórcio no vermelho pra sempre é ruído.
         controlaVendas: true,
+        // Gestor de tráfego vê só a carteira dele; Andrielli, gerência e o
+        // dono veem a casa inteira. Mesma regra do Marcar Venda, mesma função
+        // — as duas telas não podem discordar sobre o que é "seu cliente".
+        ...escopoDaCarteira(user),
         ...(q
           ? { OR: [{ companyName: { contains: q, mode: "insensitive" } }, { city: { contains: q, mode: "insensitive" } }] }
           : {}),
@@ -58,7 +65,7 @@ export default async function ControleVendasPage({
     }),
     // Os que saíram, pra existir caminho de volta — nada some sem retorno.
     prisma.client.findMany({
-      where: { ...CARTEIRA, controlaVendas: false },
+      where: { ...CARTEIRA, controlaVendas: false, ...escopoDaCarteira(user) },
       select: { id: true, companyName: true },
       orderBy: { companyName: "asc" },
     }),
@@ -103,6 +110,9 @@ export default async function ControleVendasPage({
         </h1>
         <p className="text-sm text-foreground-muted mt-0.5">
           Há quanto tempo cada loja não vende. A que está parada há mais tempo aparece primeiro.
+          {/* Sem esta frase, um gestor com 3 lojas acharia que a agência
+              inteira tem 3 clientes. */}
+          {!vêTudo && " Aqui estão as lojas sob a sua gestão."}
         </p>
       </div>
 
@@ -236,7 +246,10 @@ export default async function ControleVendasPage({
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
-                        <TirarDoControle clientId={l.id} loja={l.companyName} />
+                        {/* Só quem vê a casa inteira tira loja do controle. A
+                            ação no servidor confere de novo — isto evita
+                            mostrar botão que não ia funcionar. */}
+                        {vêTudo && <TirarDoControle clientId={l.id} loja={l.companyName} />}
                       </td>
                     </tr>
                   );
@@ -247,7 +260,10 @@ export default async function ControleVendasPage({
         )}
       </div>
 
-      {foraDoControle.length > 0 && (
+      {/* Só pra quem pode mexer. Mostrar a lista a quem não pode devolver
+          ninguém deixaria na tela um botão que não faz nada — pior que não ter
+          botão, porque a pessoa clica e acha que o sistema quebrou. */}
+      {vêTudo && foraDoControle.length > 0 && (
         <div className="rounded-2xl border border-border bg-surface p-5">
           <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium flex items-center gap-2">
             <EyeOff size={13} /> Fora do controle ({foraDoControle.length})

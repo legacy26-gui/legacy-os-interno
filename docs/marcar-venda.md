@@ -81,3 +81,23 @@ pedido. Se a regra tiver que valer no sistema inteiro, o lugar é
 | `src/app/(app)/marcar-venda/apagar-venda.tsx` | o desfazer |
 
 Sem migração: a venda continua sendo a mesma `client_sales` de sempre.
+
+## O Controle de Vendas segue a mesma carteira
+
+O Controle de Vendas usa o mesmo recorte (`escopoDaCarteira`): gestor de
+tráfego vê só as lojas dele, gerência e dono veem a casa inteira. As duas
+telas não podem discordar sobre o que é "seu cliente", então a regra é uma
+função só, composta — não copiada.
+
+Quando o gestor está vendo só a carteira dele, a tela diz isso com todas as
+letras. Sem essa frase, um gestor com 3 lojas acharia que a agência inteira
+tem 3 clientes.
+
+**Tirar loja do controle** ficou só pra quem vê a casa inteira. Com a carteira
+recortada, um gestor poderia tirar a própria loja vermelha do controle e ela
+sumiria da tela do dono — esconder não é resolver. A lista "Fora do controle"
+também só aparece pra quem pode devolver alguém, pra não sobrar botão que não
+faz nada.
+
+Os **valores em R$** já eram escondidos de quem não abre o Financeiro, e
+continuam.

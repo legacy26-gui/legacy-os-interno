@@ -36,14 +36,18 @@ const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   relatorios: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   equipe: ["ADMIN"],
   marketing: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
-  calendario: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
+  // Fechado pro Gestor de Tráfego: este calendário mostra mensalidade a
+  // vencer de cada cliente, contrato aguardando assinatura, férias da equipe e
+  // a agenda de reuniões de todo mundo. É a mesa da direção, não a do dia a
+  // dia de quem cuida de campanha.
+  calendario: ["ADMIN", "GERENTE"],
   suporte: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   "gestao-contas": ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   playbooks: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
   configuracoes: ["ADMIN"],
-  // Mesmo pessoal do Calendário — inclusive o Gestor de Tráfego, que é quem
-  // lança gravação no dia a dia.
-  gravacoes: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
+  // Quem lança gravação é a Andrielli, que é Gerente — não o gestor de
+  // tráfego. Eu tinha assumido errado quando a tela nasceu.
+  gravacoes: ["ADMIN", "GERENTE"],
 };
 
 // Quais telas existem em cada empresa.
@@ -124,12 +128,14 @@ export function ehAndrielli(email: string | null | undefined): boolean {
   return /^andriel/i.test(e) && e.endsWith("@legacydigital.com");
 }
 
-const ACESSOS_POR_PESSOA: { quem: (email: string) => boolean; modulos: ModuleKey[] }[] = [
-  {
-    quem: ehAndrielli,
-    modulos: ["formularios"],
-  },
-];
+// Hoje está vazia, e isso é bom: toda exceção que existia aqui era pra
+// Andrielli, e caiu quando ficou claro que o cargo dela é GERENTE — Gerente já
+// abre Formulários e Gravações pela matriz acima. Exceção por pessoa é dívida:
+// não aparece em revisão de cargo e envelhece calada.
+//
+// A estrutura fica de pé pra quando alguém precisar mesmo de um módulo fora do
+// cargo — é só acrescentar { quem, modulos }.
+const ACESSOS_POR_PESSOA: { quem: (email: string) => boolean; modulos: ModuleKey[] }[] = [];
 
 export function canAccessModule(role: Role, module: ModuleKey, email?: string | null): boolean {
   if (MODULE_ACCESS[module].includes(role)) return true;

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
-  Trophy, Video, Car, BellRing,
+  Trophy, Video, Car, BellRing, TrendingUp,
 } from "lucide-react";
 import type { Empresa, Role } from "@/generated/prisma/enums";
 import { canAccessModule, moduleServesEmpresa, type ModuleKey } from "@/lib/permissions";
@@ -40,7 +40,8 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/operacoes", label: "Operações", icon: ListChecks, module: "operacoes" },
       { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
       { href: "/ranking-lojas", label: "Ranking de Lojas", icon: Trophy, module: "gestao-contas" },
-      { href: "/controle-vendas", label: "Controle de Vendas", icon: Car, module: "gestao-contas" },
+      { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
+      { href: "/controle-vendas", label: "Controle de Vendas", icon: TrendingUp, module: "gestao-contas" },
       { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
       { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
       { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
@@ -75,6 +76,9 @@ const EXTRA_ITEMS: NavLeaf[] = [
 const EMPLOYEE_ITEMS: NavLeaf[] = [
   { href: "/alertas", label: "Alertas", icon: BellRing, module: null },
   { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: "clientes" },
+  // Marcar venda entra no menu mínimo: é tarefa do dia a dia de quem cuida de
+  // loja, e tinha que estar a um clique.
+  { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
   { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
   { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
   { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },

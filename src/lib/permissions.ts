@@ -98,6 +98,10 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   // de Contas. Como "gestao-contas" não está liberado pro Treinamentos, esta
   // tela fica fora de lá automaticamente.
   { prefix: "/controle-vendas", module: "gestao-contas" },
+  // Marcar venda é a mesma venda da Gestão de Contas, por um caminho curto.
+  // Quais lojas cada pessoa pode marcar é outra regra, e mora em
+  // src/lib/vendas-permitidas.ts — esta aqui só diz quem abre a tela.
+  { prefix: "/marcar-venda", module: "gestao-contas" },
   { prefix: "/playbooks", module: "playbooks" },
   { prefix: "/configuracoes", module: "configuracoes" },
 ];

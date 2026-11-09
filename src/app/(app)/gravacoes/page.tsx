@@ -24,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { empresaAtual } from "@/lib/empresa-atual";
 import { CARTEIRA } from "@/lib/carteira";
+import { apelidoDoDia } from "@/lib/gravacoes";
 import { GravacaoForm } from "./gravacao-form";
 import { GravacaoLinha, type GravacaoNaTela } from "./gravacao-linha";
 
@@ -118,7 +119,7 @@ export default async function GravacoesPage({
     podeApagar: g.ownerId === user.id || user.role === "ADMIN",
   });
 
-  // Agrupado por dia, do mais recente pro mais antigo: é como a equipe olha.
+  // Agrupado por dia: cada dia vira um quadro próprio lá embaixo.
   const porDia = new Map<string, GravacaoNaTela[]>();
   for (const g of [...doMes].sort((a, b) => b.gravadoEm.getTime() - a.gravadoEm.getTime())) {
     const chave = format(g.gravadoEm, "yyyy-MM-dd");
@@ -126,6 +127,26 @@ export default async function GravacoesPage({
     lista.push(paraTela(g));
     porDia.set(chave, lista);
   }
+
+  // A ordem dos quadros.
+  //
+  // No mês corrente: HOJE sempre em primeiro, mesmo vazio — é o quadro que a
+  // equipe abre a tela pra ver, e "nada gravado hoje" é resposta, não falta de
+  // informação. Depois vem o que estiver marcado pra frente (amanhã, depois de
+  // amanhã), e só então o passado, do mais recente pro mais antigo.
+  //
+  // Em mês antigo não existe "hoje": aí é só do mais recente pra trás.
+  const chaveHoje = format(hoje, "yyyy-MM-dd");
+  const ehMesCorrente = isSameMonth(monthStart, hoje);
+  const entradas = [...porDia.entries()];
+
+  const quadros: [string, GravacaoNaTela[]][] = ehMesCorrente
+    ? [
+        [chaveHoje, porDia.get(chaveHoje) ?? []],
+        ...entradas.filter(([d]) => d > chaveHoje).sort((a, b) => a[0].localeCompare(b[0])),
+        ...entradas.filter(([d]) => d < chaveHoje).sort((a, b) => b[0].localeCompare(a[0])),
+      ]
+    : entradas.sort((a, b) => b[0].localeCompare(a[0]));
 
   const videosNoMes = doMes.reduce((s, g) => s + g.quantidade, 0);
   const atrasadas = pendentes.filter((g) => g.entregaEm < hojeZero);
@@ -307,52 +328,76 @@ export default async function GravacoesPage({
           </div>
         </div>
 
-        <div className="px-5 py-4 border-b border-border">
+        <div className="px-5 py-4">
           <GravacaoForm lojas={lojas} podeEscolherLoja={empresa === "AGENCIA"} />
         </div>
-
-        {porDia.size === 0 ? (
-          <p className="px-5 py-6 text-sm text-foreground-muted text-center">
-            Nenhuma gravação registrada em {monthLabel.toLowerCase()}.
-          </p>
-        ) : (
-          <div className="flex flex-col divide-y divide-border">
-            {[...porDia.entries()].map(([dia, itens]) => {
-              const videosDoDia = itens.reduce((s, g) => s + g.quantidade, 0);
-              const data = new Date(`${dia}T12:00`);
-              return (
-                <div key={dia} className="px-5 py-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-semibold">
-                      {format(data, "EEEE, dd/MM", { locale: ptBR })}
-                      {isSameDay(data, hoje) && (
-                        <span className="ml-2 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-accent text-white align-middle">
-                          HOJE
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-foreground-muted shrink-0">
-                      {itens.length} {itens.length === 1 ? "gravação" : "gravações"} ·{" "}
-                      <strong className="text-indigo-500">{videosDoDia}</strong>{" "}
-                      {videosDoDia === 1 ? "vídeo" : "vídeos"}
-                    </p>
-                  </div>
-                  <div className="flex flex-col divide-y divide-border/60 mt-1">
-                    {itens.map((g) => (
-                      <GravacaoLinha
-                        key={g.id}
-                        gravacao={g}
-                        lojas={lojas}
-                        podeEscolherLoja={empresa === "AGENCIA"}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
       </div>
+
+      {/* ── Um quadro por dia ─────────────────────────────────────────────
+          Antes era tudo num cartão só, com a data crua no cabeçalho de cada
+          bloco — ler "12/11" e descobrir sozinho que é hoje dava trabalho numa
+          tela que se consulta às pressas. Agora cada dia tem o quadro dele, e
+          o nome do dia vem antes da data. */}
+      {quadros.length === 0 ? (
+        <p className="rounded-2xl border border-border bg-surface px-5 py-6 text-sm text-foreground-muted text-center">
+          Nenhuma gravação registrada em {monthLabel.toLowerCase()}.
+        </p>
+      ) : (
+        quadros.map(([dia, itens]) => {
+          const videosDoDia = itens.reduce((s, g) => s + g.quantidade, 0);
+          const data = new Date(`${dia}T12:00`);
+          const apelido = apelidoDoDia(dia, chaveHoje);
+          const ehHoje = apelido === "Hoje";
+
+          return (
+            <div
+              key={dia}
+              className={`rounded-2xl border bg-surface overflow-hidden ${
+                // Hoje ganha a borda do sistema: num empilhado de quadros
+                // iguais, achar o de hoje não pode exigir leitura.
+                ehHoje ? "border-accent/60" : "border-border"
+              }`}
+            >
+              <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+                <div className="flex items-baseline gap-2 min-w-0">
+                  <h2 className={`font-semibold ${apelido ? "text-base" : "text-sm"} ${ehHoje ? "text-accent" : ""}`}>
+                    {apelido ?? format(data, "EEEE", { locale: ptBR }).replace(/^./, (c) => c.toUpperCase())}
+                  </h2>
+                  <span className="text-xs text-foreground-muted truncate">
+                    {apelido
+                      ? format(data, "EEEE, dd/MM", { locale: ptBR })
+                      : format(data, "dd/MM", { locale: ptBR })}
+                  </span>
+                </div>
+                {itens.length > 0 && (
+                  <p className="text-xs text-foreground-muted shrink-0">
+                    {itens.length} {itens.length === 1 ? "gravação" : "gravações"} ·{" "}
+                    <strong className="text-indigo-500">{videosDoDia}</strong>{" "}
+                    {videosDoDia === 1 ? "vídeo" : "vídeos"}
+                  </p>
+                )}
+              </div>
+
+              {itens.length === 0 ? (
+                <p className="px-5 py-5 text-sm text-foreground-muted text-center">
+                  Nada gravado hoje ainda.
+                </p>
+              ) : (
+                <div className="flex flex-col divide-y divide-border/60 px-5">
+                  {itens.map((g) => (
+                    <GravacaoLinha
+                      key={g.id}
+                      gravacao={g}
+                      lojas={lojas}
+                      podeEscolherLoja={empresa === "AGENCIA"}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

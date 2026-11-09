@@ -46,6 +46,28 @@ A marca azul some quando a entrega é dada como feita — o quadro mostra o que
 ainda se deve, não um histórico. O que foi entregue continua na lista do mês,
 marcado em verde.
 
+## Um quadro por dia, embaixo
+
+Abaixo do calendário e do formulário, cada dia tem o **quadro dele**, e o dia
+vem pelo nome: **Hoje**, **Amanhã**, **Ontem**. Só depois disso aparece a
+data.
+
+Antes era tudo num cartão só, com a data crua no cabeçalho de cada bloco. Ler
+"12/11" e descobrir sozinho que aquilo é hoje dá trabalho numa tela que se
+consulta às pressas.
+
+A ordem no mês corrente é: **Hoje**, depois o que estiver marcado pra frente
+(amanhã, depois de amanhã), e só então o passado, do mais recente pro mais
+antigo.
+
+O quadro de **Hoje aparece sempre**, mesmo vazio — dizendo "Nada gravado hoje
+ainda". Isso é resposta, não falta de informação: é a pergunta que a equipe
+abre a tela pra responder. Hoje também ganha a borda e o título na cor do
+sistema, porque num empilhado de quadros iguais achar o de hoje não pode
+exigir leitura.
+
+Em mês antigo não existe "hoje", então lá é só do mais recente pra trás.
+
 ## Entregas atrasadas
 
 Quando o prazo venceu e ninguém marcou a entrega, aparece uma faixa vermelha

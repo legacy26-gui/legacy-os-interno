@@ -25,3 +25,21 @@ export function diaCurto(data: string): string {
   const [, mes, dia] = data.split("-");
   return mes && dia ? `${dia}/${mes}` : data;
 }
+
+/**
+ * Como esse dia se chama pra quem está olhando: "Hoje", "Amanhã", "Ontem" —
+ * ou nada, quando é um dia qualquer e a data já diz tudo.
+ *
+ * Existe porque ler "12/11" e descobrir sozinho que é hoje dá trabalho, e a
+ * tela de gravações é consultada às pressas. Nome vem antes da data.
+ *
+ * Trabalha com texto aaaa-mm-dd e não com Date de propósito: comparar dia de
+ * calendário com objeto de data erra na virada de fuso, e aqui a pergunta é
+ * "é o mesmo dia?", não "são o mesmo instante?".
+ */
+export function apelidoDoDia(dia: string, hoje: string): "Hoje" | "Amanhã" | "Ontem" | null {
+  if (dia === hoje) return "Hoje";
+  if (dia === diaDaEntrega(hoje, 1)) return "Amanhã";
+  if (dia === diaDaEntrega(hoje, -1)) return "Ontem";
+  return null;
+}

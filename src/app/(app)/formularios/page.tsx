@@ -22,11 +22,17 @@ import type { OnboardingStatus } from "@/generated/prisma/enums";
 // Os botões de gerar/regenerar diagnóstico rodam a IA nesta rota.
 export const maxDuration = 300;
 
+// "Em aberto" é o padrão: a tela serve pra mostrar quem ainda dá trabalho.
+// Ficha concluída sai daqui sozinha quando a campanha entra no ar, e fica
+// guardada na própria aba — nada é apagado, só sai da frente.
+const EM_ABERTO: OnboardingStatus[] = ["NOVO", "EM_ANDAMENTO"];
+
 const FILTROS: { key: string; label: string }[] = [
-  { key: "todos", label: "Todos" },
+  { key: "aberto", label: "Em aberto" },
   { key: "NOVO", label: "Novos" },
   { key: "EM_ANDAMENTO", label: "Em andamento" },
   { key: "CONCLUIDO", label: "Concluídos" },
+  { key: "todos", label: "Todos" },
 ];
 
 export default async function FormulariosPage({
@@ -36,11 +42,16 @@ export default async function FormulariosPage({
 }) {
   await requireModuleAccess("formularios");
   const { status } = await searchParams;
-  const filtro = FILTROS.some((f) => f.key === status) ? status! : "todos";
+  const filtro = FILTROS.some((f) => f.key === status) ? status! : "aberto";
 
   const [fichas, contagem] = await Promise.all([
     prisma.clientOnboarding.findMany({
-      where: filtro === "todos" ? {} : { status: filtro as OnboardingStatus },
+      where:
+        filtro === "todos"
+          ? {}
+          : filtro === "aberto"
+            ? { status: { in: EM_ABERTO } }
+            : { status: filtro as OnboardingStatus },
       orderBy: { createdAt: "desc" },
       include: {
         client: { select: { id: true, companyName: true } },
@@ -82,11 +93,15 @@ export default async function FormulariosPage({
           const qtd =
             f.key === "todos"
               ? contagem.reduce((s, c) => s + c._count, 0)
-              : contagem.find((c) => c.status === f.key)?._count ?? 0;
+              : f.key === "aberto"
+                ? contagem
+                    .filter((c) => EM_ABERTO.includes(c.status))
+                    .reduce((s, c) => s + c._count, 0)
+                : contagem.find((c) => c.status === f.key)?._count ?? 0;
           return (
             <Link
               key={f.key}
-              href={f.key === "todos" ? "/formularios" : `/formularios?status=${f.key}`}
+              href={f.key === "aberto" ? "/formularios" : `/formularios?status=${f.key}`}
               className={`text-xs font-medium px-3.5 py-2 rounded-lg border transition-colors ${
                 filtro === f.key
                   ? "bg-accent text-accent-foreground border-accent"
@@ -102,8 +117,11 @@ export default async function FormulariosPage({
       {fichas.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border p-10 text-center">
           <p className="text-sm text-foreground-muted">
-            Nenhuma ficha {filtro === "todos" ? "recebida ainda" : "nesse status"}. Mande o link acima pro cliente novo e
-            a resposta aparece aqui.
+            {filtro === "aberto"
+              ? "Nenhuma ficha em aberto — tudo que chegou já está com a campanha no ar. As concluídas ficam na aba \"Concluídos\"."
+              : filtro === "todos"
+                ? "Nenhuma ficha recebida ainda. Mande o link acima pro cliente novo e a resposta aparece aqui."
+                : "Nenhuma ficha nesse status."}
           </p>
         </div>
       ) : (

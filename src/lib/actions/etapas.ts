@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
-import { etapaExiste } from "@/lib/etapas-implantacao";
+import { etapaExiste, ETAPA_QUE_CONCLUI } from "@/lib/etapas-implantacao";
 
 // As etapas de implantação de um cliente novo, marcadas na ficha.
 //
@@ -23,6 +23,18 @@ export async function marcarEtapa(onboardingId: string, chave: string) {
     update: {},
     create: { onboardingId, chave, concluidoPorId: user.id },
   });
+
+  // Campanha no ar encerra a implantação: a ficha sai da lista de abertas e
+  // vai pra "Concluídos" sozinha. Sem isso alguém teria que lembrar de mudar
+  // o status na mão, e ficha pronta ficaria entulhando a tela de quem ainda
+  // tem trabalho a fazer.
+  if (chave === ETAPA_QUE_CONCLUI) {
+    await prisma.clientOnboarding.update({
+      where: { id: onboardingId },
+      data: { status: "CONCLUIDO" },
+    });
+  }
+
   revalidatePath("/formularios");
 }
 
@@ -30,6 +42,17 @@ export async function marcarEtapa(onboardingId: string, chave: string) {
 export async function desmarcarEtapa(onboardingId: string, chave: string) {
   await requireModuleAccess("formularios");
   await prisma.onboardingEtapa.deleteMany({ where: { onboardingId, chave } });
+
+  // Desmarcar a campanha traz a ficha de volta pras abertas — senão o
+  // desfazer ficaria pela metade: a etapa voltava e a ficha continuava
+  // escondida em "Concluídos".
+  if (chave === ETAPA_QUE_CONCLUI) {
+    await prisma.clientOnboarding.updateMany({
+      where: { id: onboardingId, status: "CONCLUIDO" },
+      data: { status: "EM_ANDAMENTO" },
+    });
+  }
+
   revalidatePath("/formularios");
 }
 

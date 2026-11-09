@@ -13,17 +13,29 @@ Em etapa já marcada aparece **"Anotar algo"**: serve pra guardar o detalhe
 ("acesso veio incompleto", "cliente pediu pra mandar segunda"). Só existe em
 etapa feita — anotação sobre coisa que não aconteceu não teria onde morar.
 
-No alto da ficha, ao lado do status, aparece **"3/12 etapas"**, e a barra
+No alto da ficha, ao lado do status, aparece **"3/11 etapas"**, e a barra
 mostra o andamento sem precisar abrir nada.
+
+## Campanha no ar encerra a ficha
+
+Marcar **"Campanha no ar"** põe a ficha em **Concluídos** sozinha, e ela sai
+da lista de abertas. Desmarcar traz de volta pras abertas.
+
+A tela abre em **"Em aberto"**, que é quem ainda dá trabalho. Nada é apagado:
+as concluídas ficam na aba "Concluídos" e em "Todos".
+
+Qual etapa encerra está em `ETAPA_QUE_CONCLUI`, escrita à mão e não "a última
+da lista": se amanhã entrar uma etapa depois dela, quem decide se o
+encerramento mudou de lugar é uma pessoa, não a ordem do array.
 
 ## As etapas
 
-Hoje são 12, em três fases: **Fechamento**, **Acessos** e **Subir a
+Hoje são 11, em três fases: **Fechamento**, **Acessos** e **Subir a
 operação**. A lista está em `src/lib/etapas-implantacao.ts`.
 
-> **A lista é um ponto de partida, não veio do Guilherme.** Foi montada a
-> partir do que o sistema já mostra da operação (contrato, acessos da Meta,
-> grupo, criativos). Precisa ser corrigida pra bater com o processo real.
+> **A lista ainda é um ponto de partida.** Foi montada a partir do que o
+> sistema já mostra da operação; o Guilherme já tirou o "Pixel instalado".
+> O resto segue a confirmar com o processo real.
 
 Mudar é mexer só nesse arquivo: a tela, a barra e o contador leem de lá.
 

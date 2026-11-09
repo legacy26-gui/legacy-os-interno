@@ -42,7 +42,6 @@ export const FASES_DA_IMPLANTACAO: FaseDaImplantacao[] = [
       { id: "grupo_criado", label: "Grupo de WhatsApp criado" },
       { id: "acesso_meta", label: "Acesso ao Meta Business recebido" },
       { id: "acesso_instagram", label: "Acesso ao Instagram / página recebido" },
-      { id: "pixel_instalado", label: "Pixel instalado e disparando" },
     ],
   },
   {
@@ -54,6 +53,16 @@ export const FASES_DA_IMPLANTACAO: FaseDaImplantacao[] = [
     ],
   },
 ];
+
+/**
+ * A etapa que dá a implantação por encerrada.
+ *
+ * Marcá-la joga a ficha pra "Concluídos" sozinha, e desmarcá-la traz de
+ * volta. É uma chave escrita à mão, e não "a última da lista", de propósito:
+ * se amanhã entrar uma etapa depois dela, quem decide se o encerramento
+ * mudou de lugar é uma pessoa, não a ordem do array.
+ */
+export const ETAPA_QUE_CONCLUI = "campanha_no_ar";
 
 /** Todas as etapas, na ordem, sem as fases. */
 export const ETAPAS: EtapaImplantacao[] = FASES_DA_IMPLANTACAO.flatMap((f) => f.etapas);

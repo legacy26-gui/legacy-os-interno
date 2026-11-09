@@ -39,11 +39,15 @@ import { GravacaoLinha, type GravacaoNaTela } from "./gravacao-linha";
 export default async function GravacoesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; dia?: string }>;
 }) {
   const user = await requireModuleAccess("gravacoes");
   const empresa = await empresaAtual();
-  const { month } = await searchParams;
+  const { month, dia } = await searchParams;
+
+  // Dia aberto pelo clique no quadro do mês. Formato conferido porque vem da
+  // barra de endereço: texto qualquer aqui viraria data inválida na tela.
+  const diaAberto = dia && /^\d{4}-\d{2}-\d{2}$/.test(dia) ? dia : null;
 
   const hoje = new Date();
   const hojeZero = startOfDay(hoje);
@@ -128,25 +132,46 @@ export default async function GravacoesPage({
     porDia.set(chave, lista);
   }
 
-  // A ordem dos quadros.
+  // A ordem dos quadros: UMA regra só, do mais recente pro mais antigo.
   //
-  // No mês corrente: HOJE sempre em primeiro, mesmo vazio — é o quadro que a
-  // equipe abre a tela pra ver, e "nada gravado hoje" é resposta, não falta de
-  // informação. Depois vem o que estiver marcado pra frente (amanhã, depois de
-  // amanhã), e só então o passado, do mais recente pro mais antigo.
+  // Antes era híbrida — hoje primeiro, depois o futuro, depois o passado — e
+  // isso não é uma sequência: a lista pulava pra frente e voltava. Ordem que
+  // precisa de explicação não é ordem.
   //
-  // Em mês antigo não existe "hoje": aí é só do mais recente pra trás.
+  // No mês corrente o quadro de hoje existe mesmo vazio ("Nada gravado hoje
+  // ainda"), porque é a pergunta que a equipe abre a tela pra responder — mas
+  // ele fica no lugar dele na sequência, sem furar fila.
   const chaveHoje = format(hoje, "yyyy-MM-dd");
-  const ehMesCorrente = isSameMonth(monthStart, hoje);
-  const entradas = [...porDia.entries()];
+  if (isSameMonth(monthStart, hoje) && !porDia.has(chaveHoje)) porDia.set(chaveHoje, []);
 
-  const quadros: [string, GravacaoNaTela[]][] = ehMesCorrente
-    ? [
-        [chaveHoje, porDia.get(chaveHoje) ?? []],
-        ...entradas.filter(([d]) => d > chaveHoje).sort((a, b) => a[0].localeCompare(b[0])),
-        ...entradas.filter(([d]) => d < chaveHoje).sort((a, b) => b[0].localeCompare(a[0])),
-      ]
-    : entradas.sort((a, b) => b[0].localeCompare(a[0]));
+  const quadros = [...porDia.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+
+  // Dia aberto pelo clique no quadro do mês.
+  //
+  // Sai de `gravacoes` (a faixa inteira que o quadro desenha) e não de
+  // `doMes`: o quadro mostra os dias vizinhos do mês anterior e do seguinte, e
+  // clicar num deles tem que abrir cheio, não vazio.
+  const mesmoDia = (d: Date) => format(d, "yyyy-MM-dd") === diaAberto;
+
+  const gravadoNoDia = diaAberto
+    ? gravacoes
+        .filter((g) => mesmoDia(g.gravadoEm))
+        .sort((a, b) => b.gravadoEm.getTime() - a.gravadoEm.getTime())
+        .map(paraTela)
+    : [];
+
+  // O que vence pra entregar nesse dia. O dia não é só o que foi gravado nele
+  // — o quadro do mês marca as duas coisas, então clicar num dia que só tem
+  // entrega não pode abrir em branco.
+  //
+  // Já entregue fica de fora, e o que foi gravado no próprio dia também: já
+  // está na lista de cima, e aparecer duas vezes confunde mais do que ajuda.
+  const entregarNoDia = diaAberto
+    ? gravacoes
+        .filter((g) => !g.entregueEm && mesmoDia(g.entregaEm) && !mesmoDia(g.gravadoEm))
+        .sort((a, b) => a.gravadoEm.getTime() - b.gravadoEm.getTime())
+        .map(paraTela)
+    : [];
 
   const videosNoMes = doMes.reduce((s, g) => s + g.quantidade, 0);
   const atrasadas = pendentes.filter((g) => g.entregaEm < hojeZero);
@@ -258,12 +283,24 @@ export default async function GravacoesPage({
             const doDia = marcas.filter((m) => isSameDay(m.date, day));
             const inMonth = isSameMonth(day, monthStart);
             const isToday = isSameDay(day, hoje);
+            const chave = format(day, "yyyy-MM-dd");
+            const aberto = diaAberto === chave;
             return (
-              <div
+              // O dia inteiro é clicável: abre o quadro só daquele dia lá
+              // embaixo. Clicar de novo fecha e volta pra lista toda.
+              <Link
                 key={day.toISOString()}
-                className={`min-h-[100px] border-b border-r border-border p-1.5 flex flex-col gap-1 ${
+                href={
+                  aberto
+                    ? `/gravacoes?month=${format(monthStart, "yyyy-MM")}`
+                    : `/gravacoes?month=${format(monthStart, "yyyy-MM")}&dia=${chave}`
+                }
+                scroll={false}
+                aria-current={aberto ? "date" : undefined}
+                title={aberto ? "Fechar este dia" : `Ver só ${format(day, "dd/MM")}`}
+                className={`min-h-[100px] border-b border-r border-border p-1.5 flex flex-col gap-1 transition-colors ${
                   inMonth ? "" : "opacity-40"
-                }`}
+                } ${aberto ? "bg-accent/10 ring-2 ring-inset ring-accent" : "hover:bg-surface-muted"}`}
               >
                 <span
                   className={`text-xs font-medium w-5 h-5 flex items-center justify-center rounded-full ${
@@ -297,7 +334,7 @@ export default async function GravacoesPage({
                     </span>
                   )}
                 </div>
-              </div>
+              </Link>
             );
           })}
         </div>
@@ -338,7 +375,17 @@ export default async function GravacoesPage({
           bloco — ler "12/11" e descobrir sozinho que é hoje dava trabalho numa
           tela que se consulta às pressas. Agora cada dia tem o quadro dele, e
           o nome do dia vem antes da data. */}
-      {quadros.length === 0 ? (
+      {diaAberto ? (
+        <DiaAberto
+          dia={diaAberto}
+          chaveHoje={chaveHoje}
+          gravado={gravadoNoDia}
+          entregar={entregarNoDia}
+          voltarPara={`/gravacoes?month=${format(monthStart, "yyyy-MM")}`}
+          lojas={lojas}
+          podeEscolherLoja={empresa === "AGENCIA"}
+        />
+      ) : quadros.length === 0 ? (
         <p className="rounded-2xl border border-border bg-surface px-5 py-6 text-sm text-foreground-muted text-center">
           Nenhuma gravação registrada em {monthLabel.toLowerCase()}.
         </p>
@@ -397,6 +444,98 @@ export default async function GravacoesPage({
             </div>
           );
         })
+      )}
+    </div>
+  );
+}
+
+/**
+ * O dia aberto pelo clique no quadro do mês.
+ *
+ * Mostra as duas coisas que acontecem num dia: o que foi gravado nele e o que
+ * vence pra entregar nele. São assuntos diferentes — um é produção, o outro é
+ * dívida — e o quadro do mês já marca os dois, então abrir o dia tinha que
+ * responder os dois.
+ */
+function DiaAberto({
+  dia,
+  chaveHoje,
+  gravado,
+  entregar,
+  voltarPara,
+  lojas,
+  podeEscolherLoja,
+}: {
+  dia: string;
+  chaveHoje: string;
+  gravado: GravacaoNaTela[];
+  entregar: GravacaoNaTela[];
+  voltarPara: string;
+  lojas: { id: string; companyName: string }[];
+  podeEscolherLoja: boolean;
+}) {
+  const data = new Date(`${dia}T12:00`);
+  const apelido = apelidoDoDia(dia, chaveHoje);
+  const videos = gravado.reduce((s, g) => s + g.quantidade, 0);
+
+  return (
+    <div className="rounded-2xl border border-accent/60 bg-surface overflow-hidden">
+      <div className="px-5 py-3 border-b border-border flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-baseline gap-2 min-w-0">
+          <h2 className="font-semibold text-base text-accent">
+            {apelido ?? format(data, "EEEE", { locale: ptBR }).replace(/^./, (c) => c.toUpperCase())}
+          </h2>
+          <span className="text-xs text-foreground-muted truncate">
+            {format(data, "EEEE, dd/MM/yyyy", { locale: ptBR })}
+          </span>
+        </div>
+        {/* Sempre existe caminho de volta: dia aberto não pode virar beco. */}
+        <Link
+          href={voltarPara}
+          scroll={false}
+          className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-border bg-surface-muted hover:bg-border/60 transition-colors shrink-0"
+        >
+          Ver todos os dias
+        </Link>
+      </div>
+
+      <div className="px-5 py-2.5 border-b border-border flex items-center justify-between gap-3">
+        <p className="text-[11px] uppercase tracking-wide text-foreground-muted font-medium flex items-center gap-1.5">
+          <Video size={12} className="text-indigo-500" /> Gravado nesse dia
+        </p>
+        {gravado.length > 0 && (
+          <p className="text-xs text-foreground-muted shrink-0">
+            {gravado.length} {gravado.length === 1 ? "gravação" : "gravações"} ·{" "}
+            <strong className="text-indigo-500">{videos}</strong> {videos === 1 ? "vídeo" : "vídeos"}
+          </p>
+        )}
+      </div>
+      {gravado.length === 0 ? (
+        <p className="px-5 py-5 text-sm text-foreground-muted text-center">
+          Nada foi gravado nesse dia.
+        </p>
+      ) : (
+        <div className="flex flex-col divide-y divide-border/60 px-5">
+          {gravado.map((g) => (
+            <GravacaoLinha key={g.id} gravacao={g} lojas={lojas} podeEscolherLoja={podeEscolherLoja} />
+          ))}
+        </div>
+      )}
+
+      {/* Só aparece quando há o que entregar: seção vazia é ruído. */}
+      {entregar.length > 0 && (
+        <>
+          <div className="px-5 py-2.5 border-y border-border">
+            <p className="text-[11px] uppercase tracking-wide text-foreground-muted font-medium flex items-center gap-1.5">
+              <PackageCheck size={12} className="text-cyan-500" /> A entregar nesse dia
+            </p>
+          </div>
+          <div className="flex flex-col divide-y divide-border/60 px-5">
+            {entregar.map((g) => (
+              <GravacaoLinha key={g.id} gravacao={g} lojas={lojas} podeEscolherLoja={podeEscolherLoja} />
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

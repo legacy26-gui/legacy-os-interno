@@ -56,17 +56,41 @@ Antes era tudo num cartão só, com a data crua no cabeçalho de cada bloco. Ler
 "12/11" e descobrir sozinho que aquilo é hoje dá trabalho numa tela que se
 consulta às pressas.
 
-A ordem no mês corrente é: **Hoje**, depois o que estiver marcado pra frente
-(amanhã, depois de amanhã), e só então o passado, do mais recente pro mais
-antigo.
+A ordem é **uma regra só: do mais recente pro mais antigo**, de cima pra
+baixo. Houve uma versão que punha hoje em primeiro, depois o futuro, depois o
+passado — e isso não é uma sequência: a lista pulava pra frente e voltava.
+Ordem que precisa de explicação não é ordem.
 
-O quadro de **Hoje aparece sempre**, mesmo vazio — dizendo "Nada gravado hoje
-ainda". Isso é resposta, não falta de informação: é a pergunta que a equipe
-abre a tela pra responder. Hoje também ganha a borda e o título na cor do
-sistema, porque num empilhado de quadros iguais achar o de hoje não pode
-exigir leitura.
+O quadro de **Hoje aparece sempre** no mês corrente, mesmo vazio — dizendo
+"Nada gravado hoje ainda". Isso é resposta, não falta de informação: é a
+pergunta que a equipe abre a tela pra responder. Mas ele fica no lugar dele na
+sequência, sem furar fila. Hoje ganha a borda e o título na cor do sistema,
+porque num empilhado de quadros iguais achar o de hoje não pode exigir
+leitura.
 
-Em mês antigo não existe "hoje", então lá é só do mais recente pra trás.
+Em mês antigo não existe "hoje", então lá são só os dias que tiveram gravação.
+
+## Clicar num dia abre aquele dia
+
+Clicar num dia do quadro do mês abre **só aquele dia** lá embaixo, e o dia fica
+marcado no calendário. Clicar de novo (ou em "Ver todos os dias") fecha.
+
+O dia aberto responde as **duas** coisas que acontecem num dia, porque o quadro
+do mês marca as duas:
+
+- **Gravado nesse dia** — o que foi produzido
+- **A entregar nesse dia** — o que vence ali
+
+São assuntos diferentes: um é produção, o outro é dívida. Como o prazo é D+1, o
+que foi gravado hoje aparece como entrega de amanhã — então abrir "amanhã"
+mostra a gravação de hoje na segunda seção, que é onde ela pertence.
+
+A seção de entrega só aparece quando há o que entregar, e o que foi gravado no
+próprio dia não se repete nela.
+
+Funciona também nos dias vizinhos que o quadro mostra (fim do mês anterior,
+começo do seguinte): a busca do dia aberto usa a faixa inteira do calendário,
+não só o mês fechado, senão clicar num deles abriria vazio.
 
 ## Entregas atrasadas
 

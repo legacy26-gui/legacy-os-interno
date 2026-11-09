@@ -46,7 +46,7 @@ async function montarParaTela(
 ): Promise<AlertasDivididos> {
   const estados = await prisma.alertaEstado.findMany({
     where: { userId: pessoa.id, chave: { in: alertas.map((a) => a.chave) } },
-    select: { chave: true, nivelAvisado: true, silenciadoAte: true },
+    select: { chave: true, nivelVisto: true, silenciadoAte: true },
   });
   const porChave = new Map(estados.map((e) => [e.chave, e]));
 
@@ -60,7 +60,10 @@ async function montarParaTela(
       ...a,
       silenciado: quieto,
       silenciadoAte: quieto ? diaCurto(e!.silenciadoAte!) : null,
-      novo: a.nivel > (e?.nivelAvisado ?? 0),
+      // "Novo" aqui é novo PRA ELA DENTRO DO SISTEMA, e não "ainda não foi pro
+      // celular". Se fosse o celular, bastaria o push não estar configurado
+      // pra tudo ficar novo pra sempre.
+      novo: a.nivel > (e?.nivelVisto ?? 0),
     };
     (quieto ? silenciados : ativos).push(naTela);
   }
@@ -100,7 +103,48 @@ export async function alertasDaEquipe(hoje: Date = new Date()): Promise<AlertasD
   return montarParaTela(user, todos.filter((a) => podeVerAlerta(user, a)), hoje);
 }
 
+/**
+ * Marca como vistos os alertas que a pessoa tem agora.
+ *
+ * Chamado quando ela abre o painel do sininho ou a tela de Alertas — é o que
+ * faz o "novo" e o aviso de canto pararem de aparecer. Não mexe em
+ * `nivelAvisado`: ver na tela não substitui o aviso no celular, que é o que
+ * alcança quem não está com o sistema aberto.
+ *
+ * Grava só o que mudou: na maioria das aberturas não há nada novo, e aí não
+ * escreve nada no banco.
+ */
+export async function marcarComoVistos(pessoa: Pessoa, hoje: Date = new Date()): Promise<number> {
+  const { ativos, silenciados } = await montarParaTela(
+    pessoa,
+    (await calcularTodosOsAlertas(hoje)).filter((a) => alertaEDaPessoa(pessoa, a)),
+    hoje
+  );
+  const novos = [...ativos, ...silenciados].filter((a) => a.novo);
+  if (novos.length === 0) return 0;
+
+  await prisma.$transaction(
+    novos.map((a) =>
+      prisma.alertaEstado.upsert({
+        where: { userId_chave: { userId: pessoa.id, chave: a.chave } },
+        update: { nivelVisto: a.nivel, vistoEm: hoje },
+        create: { userId: pessoa.id, chave: a.chave, nivelVisto: a.nivel, vistoEm: hoje },
+      })
+    )
+  );
+  return novos.length;
+}
+
 // ──────────────────────────────── O robô ───────────────────────────────────
+
+/** O nome do robô dos alertas na tabela de execuções. */
+export const ROBO_DOS_ALERTAS = "alertas";
+
+/** Quando o robô passou por aqui pela última vez. Nulo = nunca rodou. */
+export async function ultimaConferencia(): Promise<Date | null> {
+  const r = await prisma.roboExecucao.findUnique({ where: { nome: ROBO_DOS_ALERTAS } });
+  return r?.rodouEm ?? null;
+}
 
 export interface ResultadoDoRobo {
   /** Quantos problemas o sistema encontrou, somando todo mundo. */
@@ -230,6 +274,14 @@ export async function rodarAlertas(hoje: Date = new Date()): Promise<ResultadoDo
       );
     }
   }
+
+  // Deixa o carimbo da passagem: a tela mostra "conferido às 8h03", e a porta
+  // do robô usa isto como acelerador contra chamada repetida de fora.
+  await prisma.roboExecucao.upsert({
+    where: { nome: ROBO_DOS_ALERTAS },
+    update: { rodouEm: hoje },
+    create: { nome: ROBO_DOS_ALERTAS, rodouEm: hoje },
+  });
 
   return resultado;
 }

@@ -1,13 +1,37 @@
 "use client";
 
-import { useTransition } from "react";
+import { useEffect, useRef, useTransition } from "react";
 import { BellOff, Bell, RefreshCw } from "lucide-react";
-import { lembrarAmanha, voltarAVer, rodarAgora } from "@/lib/actions/alertas";
+import {
+  lembrarAmanha,
+  voltarAVer,
+  rodarAgora,
+  marcarAlertasComoVistos,
+} from "@/lib/actions/alertas";
 
 // Os botões da central.
 //
 // "Lembrar amanhã" e não "dispensar": tirar da frente é diferente de dizer que
 // está resolvido. O que está resolvido o sistema descobre sozinho.
+
+/**
+ * Abriu a tela, viu: tira o "novo" e cala o aviso de canto.
+ *
+ * Em componente de navegador porque marcar é uma escrita, e escrita não pode
+ * acontecer enquanto a página está sendo desenhada. Dispara uma vez só: o
+ * próprio marcar redesenha a tela, e sem a trava isso viraria laço.
+ */
+export function MarcarVistos({ temNovos }: { temNovos: boolean }) {
+  const jaMarcou = useRef(false);
+
+  useEffect(() => {
+    if (!temNovos || jaMarcou.current) return;
+    jaMarcou.current = true;
+    void marcarAlertasComoVistos();
+  }, [temNovos]);
+
+  return null;
+}
 
 export function AcoesDoAlerta({
   chave,

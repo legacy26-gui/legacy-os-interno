@@ -87,6 +87,13 @@ model AlertaEstado {
   nivelAvisado Int       @default(0)
   avisadoEm    DateTime?
 
+  // Até qual degrau a pessoa já VIU dentro do sistema. É separado do celular
+  // de propósito: enquanto o push não estiver configurado, "nunca avisei no
+  // celular" valeria pra sempre, e o aviso dentro do sistema apareceria
+  // eternamente. Aqui quem zera é abrir o painel ou a tela de Alertas.
+  nivelVisto Int       @default(0)
+  vistoEm    DateTime?
+
   // "Lembrar amanhã". Enquanto esta data não chegar, o alerta sai da tela e
   // não vibra celular. É de propósito que não exista "dispensar pra sempre":
   // alerta que se apaga com clique vira clique automático, e aí a central
@@ -99,6 +106,20 @@ model AlertaEstado {
   @@unique([userId, chave])
   @@index([userId])
   @@map("alerta_estados")
+}
+
+// Quando o robô rodou pela última vez.
+//
+// Serve pra duas coisas. A tela mostra "conferido às 8h03", pra ninguém ficar
+// na dúvida se o sistema está vivo. E a porta do robô usa isto como
+// acelerador: sem o segredo configurado, ela só deixa rodar de novo depois de
+// um intervalo, pra chamada repetida de fora não virar custo.
+model RoboExecucao {
+  // Nome do robô, pra caber mais de um aqui no futuro sem migração.
+  nome    String   @id
+  rodouEm DateTime @default(now())
+
+  @@map("robo_execucoes")
 }
 
 enum AgendaItemType {

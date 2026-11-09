@@ -80,6 +80,34 @@ Além disso, o aviso é **agrupado por tipo**: três gravações atrasadas viram
 aviso só ("3 × Gravação atrasada"), não três. A tela mostra o detalhe; o
 celular mostra o resumo.
 
+## O alerta dentro do sistema
+
+O sininho fica no cabeçalho, então aparece em **qualquer tela**. Clicar nele
+abre um painel por cima do que a pessoa está fazendo — ela pode estar em
+Gravações, em Clientes, onde for, e resolve sem sair dali.
+
+Quando aparece coisa nova, um **aviso de canto** se apresenta sozinho, porque
+ninguém fica olhando pro sininho. Ele aparece **uma vez por aba do navegador**
+e some sozinho. A marca do que já foi mostrado carrega a lista dos alertas
+junto, então um problema novo faz o aviso voltar, mas navegar pelo sistema não
+faz ele reaparecer a cada clique.
+
+### "Visto" é diferente de "avisado"
+
+São dois controles separados, e isso não é duplicação:
+
+- **`nivelAvisado`** — até onde já vibrou o celular. Quem zera é o robô.
+- **`nivelVisto`** — até onde a pessoa já viu dentro do sistema. Quem zera é
+  ela abrir o painel ou a tela de Alertas.
+
+Se fossem um só, bastaria o push não estar configurado pra todo alerta ficar
+"novo" pra sempre, e o aviso de canto apareceria eternamente. E ver na tela
+não substitui o aviso no celular, que é o que alcança quem está fora do
+sistema.
+
+Ver não marca nada como resolvido: o alerta continua na lista, igual. Só para
+de se apresentar como novidade.
+
 ## Não existe "dispensar"
 
 Dá pra **lembrar amanhã** — o alerta sai da frente e volta no dia seguinte.
@@ -123,16 +151,30 @@ Se o robô parar, a central continua certa — só para de avisar no celular. É
 propósito: a parte que mais tem como falhar (o agendamento, que vive fora do
 sistema) é a que menos faz falta.
 
-### Precisa estar configurado na Vercel
+### Por que a rota funciona sem configurar nada
 
-| Variável | Pra quê | Sem ela |
-| --- | --- | --- |
-| `CRON_SECRET` | o agendador provar que é ele | o robô não roda sozinho; o botão "Conferir agora" continua funcionando |
-| `VAPID_*` | mandar aviso pro celular | a tela funciona, o celular não toca |
+O jeito mais fechado é pôr um `CRON_SECRET` nas variáveis da Vercel: ela passa
+a mandar esse segredo sozinha em toda chamada do agendador, e a rota recusa
+qualquer outra pessoa. **Se a variável existir, é isso que acontece.**
 
-A rota **fecha na falta do segredo**, não abre: sem `CRON_SECRET` ela responde
-401 pra todo mundo. Isso é de propósito — sem trava, qualquer um na internet
-poderia ficar chamando a rota e fazendo o celular da equipe vibrar à vontade.
+Sem ela, em vez de a central inteira ficar sem robô, a rota aceita a chamada e
+se protege de outro jeito. A pergunta certa é o que alguém ganharia chamando
+isso de fora:
+
+| | |
+| --- | --- |
+| Pegar dado? | Não. A resposta traz números, nenhum nome de cliente ou valor. |
+| Encher o celular da equipe? | Não. O robô só avisa o que PIOROU desde a última vez — mil chamadas mandam zero avisos. |
+| Custo? | É o que sobra, e é o que o acelerador corta: sem segredo, a rota só trabalha de verdade uma vez a cada 15 minutos. |
+
+O pior caso de abuso é a conferência do dia acontecer mais cedo. Em troca, o
+robô funciona no dia em que entra no ar, sem depender de ninguém lembrar de
+criar uma variável. Pôr o `CRON_SECRET` depois fecha a porta de vez, e não
+exige mexer em mais nada.
+
+O **push pro celular**, esse sim, precisa das variáveis `VAPID_*`. Sem elas a
+central funciona inteira — sininho, painel, aviso de canto — e só o telefone
+não toca.
 
 ## Onde está no código
 
@@ -144,7 +186,8 @@ poderia ficar chamando a rota e fazendo o celular da equipe vibrar à vontade.
 | `src/lib/alertas/robo.ts` | o robô e a leitura da tela |
 | `src/lib/actions/alertas.ts` | lembrar amanhã, voltar a ver, conferir agora |
 | `src/app/(app)/alertas/` | a tela |
-| `src/components/sininho-alertas.tsx` | o sininho do cabeçalho |
+| `src/components/sininho-alertas.tsx` | busca os alertas pro cabeçalho |
+| `src/components/painel-alertas.tsx` | o sininho, o painel e o aviso de canto |
 | `src/app/api/alertas/rodar/route.ts` | a porta que o agendador chama |
 | `vercel.json` | o horário do robô |
 

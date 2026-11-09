@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { BellRing, CheckCircle2, ArrowRight, BellOff, Clock } from "lucide-react";
 import { getCurrentUser } from "@/lib/dal";
-import { meusAlertas, alertasDaEquipe } from "@/lib/alertas/robo";
+import { meusAlertas, alertasDaEquipe, ultimaConferencia } from "@/lib/alertas/robo";
 import { ehODono } from "@/lib/alertas/destinatarios";
 import { veTodasAsEmpresas, EMPRESA_CURTA } from "@/lib/empresa";
 import {
@@ -13,7 +13,7 @@ import {
   TIPOS_DE_ALERTA,
   type AlertaNaTela,
 } from "@/lib/alertas/tipos";
-import { AcoesDoAlerta, RodarAgora } from "./acoes";
+import { AcoesDoAlerta, RodarAgora, MarcarVistos } from "./acoes";
 
 // A central de alertas.
 //
@@ -44,7 +44,10 @@ export default async function AlertasPage({
   // no sistema, e nem a aba da equipe nem o botão que dispara o robô são dele.
   const souDono = ehODono(user);
   const vendoEquipe = souDono && ver === "equipe";
-  const { ativos, silenciados } = vendoEquipe ? await alertasDaEquipe() : await meusAlertas();
+  const [{ ativos, silenciados }, conferidoEm] = await Promise.all([
+    vendoEquipe ? alertasDaEquipe() : meusAlertas(),
+    ultimaConferencia(),
+  ]);
 
   const mostrarEmpresa = veTodasAsEmpresas(user.empresas);
   const porTipo = TIPOS_DE_ALERTA.map((t) => ({
@@ -134,12 +137,31 @@ export default async function AlertasPage({
         </div>
       )}
 
-      <p className="text-xs text-foreground-muted">
-        Os alertas são conferidos sozinhos uma vez por dia, de manhã, e o aviso
-        vai pro celular de quem é dono do assunto. Um alerta só sai daqui quando
-        o problema é resolvido no sistema — não existe botão de dispensar, pra
-        a tela nunca dizer que está tudo em ordem quando não está.
-      </p>
+      <div className="text-xs text-foreground-muted">
+        <p>
+          Os alertas são conferidos sozinhos uma vez por dia, de manhã, e o
+          aviso vai pro celular de quem é dono do assunto. Um alerta só sai
+          daqui quando o problema é resolvido no sistema — não existe botão de
+          dispensar, pra a tela nunca dizer que está tudo em ordem quando não
+          está.
+        </p>
+        {/* Mostrar quando o robô passou tira a dúvida de "será que isso está
+            funcionando?" sem ninguém precisar perguntar. */}
+        <p className="mt-1">
+          {conferidoEm
+            ? `Última conferência automática: ${conferidoEm.toLocaleString("pt-BR", {
+                day: "2-digit",
+                month: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                timeZone: "America/Sao_Paulo",
+              })}.`
+            : "A conferência automática ainda não rodou nenhuma vez."}
+        </p>
+      </div>
+
+      {/* Abriu a tela, viu: tira o "novo" e cala o aviso de canto. */}
+      <MarcarVistos temNovos={[...ativos, ...silenciados].some((a) => a.novo)} />
     </div>
   );
 }

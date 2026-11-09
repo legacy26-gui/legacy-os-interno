@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
-import { meusAlertas, rodarAlertas } from "@/lib/alertas/robo";
+import { meusAlertas, rodarAlertas, marcarComoVistos } from "@/lib/alertas/robo";
 import { ehODono } from "@/lib/alertas/destinatarios";
 
 // O que a pessoa faz com um alerta.
@@ -60,6 +60,21 @@ export async function voltarAVer(chave: string) {
  *
  * Pode apertar quantas vezes quiser: o robô só avisa o que ainda não avisou.
  */
+/**
+ * "Eu vi" — chamado quando a pessoa abre o painel do sininho ou a tela de
+ * Alertas. Tira o "novo" e cala o aviso de canto.
+ *
+ * Não marca nada como resolvido: o alerta continua lá, igual. Só para de se
+ * apresentar como novidade.
+ */
+export async function marcarAlertasComoVistos() {
+  const user = await getCurrentUser();
+  const quantos = await marcarComoVistos(user);
+  // Só redesenha se algo mudou de verdade. Na maioria das aberturas não há
+  // nada novo, e aí não vale sacudir a página inteira.
+  if (quantos > 0) revalidatePath("/alertas", "layout");
+}
+
 export async function rodarAgora() {
   const user = await getCurrentUser();
   // Esconder o botão não protege nada: ação de servidor pode ser chamada por

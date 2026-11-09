@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
-  Trophy, Video, Car,
+  Trophy, Video, Car, BellRing,
 } from "lucide-react";
 import type { Empresa, Role } from "@/generated/prisma/enums";
 import { canAccessModule, moduleServesEmpresa, type ModuleKey } from "@/lib/permissions";
@@ -19,6 +19,11 @@ type NavGroup = { label: string; items: NavLeaf[] };
 // Itens soltos no topo, sempre visíveis (sujeitos à permissão do módulo).
 const TOP_ITEMS: NavLeaf[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, module: null },
+  // Alertas é de todo mundo e não pede módulo: cada um vê só os seus, e o que
+  // entra na lista já passou pelas travas de empresa e de acesso (ver
+  // src/lib/alertas/destinatarios.ts). Quem não é dono de alerta nenhum abre
+  // a tela e encontra ela vazia — que é a verdade, não um erro.
+  { href: "/alertas", label: "Alertas", icon: BellRing, module: null },
   { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: "clientes" },
   { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
 ];
@@ -68,6 +73,7 @@ const EXTRA_ITEMS: NavLeaf[] = [
 
 // Menu mínimo do Gestor de Tráfego: só o essencial pra trabalhar no dia a dia.
 const EMPLOYEE_ITEMS: NavLeaf[] = [
+  { href: "/alertas", label: "Alertas", icon: BellRing, module: null },
   { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: "clientes" },
   { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
   { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },

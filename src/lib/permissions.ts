@@ -105,12 +105,24 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
 // Acessos dados a pessoas específicas, independente do cargo. Serve pra quando
 // alguém precisa de um módulo que o cargo dela não abre por padrão, sem liberar
 // pra todo mundo que tem aquele cargo.
+// Andrielli é quem trabalha as fichas dos clientes novos e a operação do dia.
+// O e-mail dela já apareceu escrito de mais de um jeito (andriele/andrielli),
+// então casamos pelo começo do endereço, dentro do domínio da agência — e NÃO
+// só pelo começo: com outro domínio, qualquer um que se cadastrasse como
+// "andriel@..." herdaria os acessos dela.
+//
+// Fica exportado porque os alertas também precisam saber quem ela é, e essa
+// regra não pode existir escrita em dois lugares: no dia em que o e-mail dela
+// mudar, mexe-se aqui e o sistema inteiro acompanha.
+export function ehAndrielli(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const e = email.toLowerCase();
+  return /^andriel/i.test(e) && e.endsWith("@legacydigital.com");
+}
+
 const ACESSOS_POR_PESSOA: { quem: (email: string) => boolean; modulos: ModuleKey[] }[] = [
   {
-    // Andrielli é quem trabalha as fichas dos clientes novos. O e-mail dela já
-    // apareceu escrito de mais de um jeito (andriele/andrielli), então casamos
-    // pelo começo do endereço, dentro do domínio da agência.
-    quem: (email) => /^andriel/i.test(email) && email.toLowerCase().endsWith("@legacydigital.com"),
+    quem: ehAndrielli,
     modulos: ["formularios"],
   },
 ];

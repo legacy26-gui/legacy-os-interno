@@ -1,6 +1,8 @@
+import { Suspense } from "react";
 import { LogOut } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { SeletorEmpresa } from "@/components/seletor-empresa";
+import { SininhoAlertas, SininhoVazio } from "@/components/sininho-alertas";
 import { logout } from "@/lib/actions/auth";
 import { ROLE_LABELS } from "@/lib/permissions";
 import { EMPRESA_LABELS } from "@/lib/empresa";
@@ -27,6 +29,11 @@ export function Topbar({
         <div className="hidden md:block" />
         <div className="flex items-center gap-3">
           <SeletorEmpresa atual={empresa} empresas={empresas} rotulos={EMPRESA_LABELS} />
+          {/* Dentro de Suspense: a conta dos alertas não pode atrasar o
+              desenho do cabeçalho em toda navegação do sistema. */}
+          <Suspense fallback={<SininhoVazio />}>
+            <SininhoAlertas />
+          </Suspense>
           <ThemeToggle />
           <div className="flex items-center gap-2.5 pl-1">
             <div className="w-8 h-8 rounded-full bg-accent/15 text-accent flex items-center justify-center font-semibold text-xs flex-shrink-0">

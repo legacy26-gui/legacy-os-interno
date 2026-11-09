@@ -57,8 +57,48 @@ model User {
   pushSubscriptions PushSubscription[]
   gravacoes        Gravacao[]        @relation("GravacaoRegistrada")
   etapasConcluidas OnboardingEtapa[] @relation("EtapaConcluida")
+  alertas          AlertaEstado[]
 
   @@map("users")
+}
+
+// O que o banco não sabe sozinho sobre um alerta.
+//
+// O alerta em si NÃO fica gravado: ele é calculado na hora (ver
+// src/lib/alertas/calcular.ts), então nasce quando o problema nasce e some
+// quando o problema é resolvido, sem ninguém dar baixa. O que precisa de
+// memória é outra coisa: até qual gravidade este alerta já foi pro celular
+// desta pessoa, e se ela pediu pra lembrar depois.
+//
+// Uma linha por pessoa por alerta. Linha que sobra depois do problema
+// resolvido não atrapalha: a chave simplesmente não aparece mais no cálculo.
+model AlertaEstado {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // A identidade do problema, ex "gravacao-atrasada:<id>". Texto livre de
+  // propósito: mexer nos tipos de alerta não exige migração.
+  chave String
+
+  // Até qual degrau de gravidade já vibrou o celular desta pessoa. É o que
+  // impede o mesmo problema de avisar todo dia: o aviso só sai de novo quando
+  // PIORA. Zero = ainda não avisou nenhuma vez.
+  nivelAvisado Int       @default(0)
+  avisadoEm    DateTime?
+
+  // "Lembrar amanhã". Enquanto esta data não chegar, o alerta sai da tela e
+  // não vibra celular. É de propósito que não exista "dispensar pra sempre":
+  // alerta que se apaga com clique vira clique automático, e aí a central
+  // mente dizendo que está tudo em ordem.
+  silenciadoAte DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, chave])
+  @@index([userId])
+  @@map("alerta_estados")
 }
 
 enum AgendaItemType {

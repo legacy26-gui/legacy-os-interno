@@ -60,6 +60,39 @@ export async function avisarEmpresa(
   const inscritos = await prisma.pushSubscription.findMany({
     where: empresa ? { user: { active: true, empresas: { has: empresa } } } : undefined,
   });
+  return entregar(inscritos, aviso);
+}
+
+/**
+ * Manda o aviso pro celular de pessoas específicas.
+ *
+ * Existe porque alerta tem dono: a gravação atrasada é problema da Andrielli,
+ * a mensalidade vencida é do Guilherme. Mandar pra empresa inteira faria cada
+ * um receber o aviso dos outros, e aviso que não é meu eu aprendo a ignorar —
+ * junto com o que era meu.
+ *
+ * Quem decide se o alerta é da pessoa é src/lib/alertas/destinatarios.ts, e
+ * esta função não repete essa conferência: ela só entrega pra lista que
+ * recebeu. Por isso nunca se chama ela com uma lista vinda da tela.
+ */
+export async function avisarPessoas(userIds: string[], aviso: AvisoPush): Promise<number> {
+  if (!pushConfigurado()) {
+    console.warn("[push] sem VAPID configurado — aviso não enviado:", aviso.titulo);
+    return 0;
+  }
+  if (userIds.length === 0) return 0;
+
+  const inscritos = await prisma.pushSubscription.findMany({
+    // active no filtro: quem foi desativado não recebe nem que a inscrição
+    // dele ainda esteja gravada.
+    where: { userId: { in: userIds }, user: { active: true } },
+  });
+  return entregar(inscritos, aviso);
+}
+
+type Inscricao = { id: string; endpoint: string; p256dh: string; auth: string };
+
+async function entregar(inscritos: Inscricao[], aviso: AvisoPush): Promise<number> {
   if (inscritos.length === 0) {
     console.warn("[push] ninguém inscrito pra receber aviso ainda");
     return 0;

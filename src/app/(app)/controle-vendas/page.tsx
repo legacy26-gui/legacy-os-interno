@@ -69,8 +69,15 @@ export default async function ControleVendasPage({
       select: { id: true, companyName: true },
       orderBy: { companyName: "asc" },
     }),
-    // A venda mais recente de cada loja — é ela que manda na cor.
-    prisma.clientSale.groupBy({ by: ["clientId"], _max: { soldAt: true } }),
+    // A venda mais recente de cada loja — é ela que manda na cor. E, de
+    // carona, o total de sempre: esta consulta já varre todas as vendas, então
+    // pedir a soma junto não custa uma ida a mais ao banco.
+    prisma.clientSale.groupBy({
+      by: ["clientId"],
+      _max: { soldAt: true },
+      _count: { _all: true },
+      _sum: { value: true },
+    }),
     // Quanto cada uma vendeu nos últimos 30 dias, pra dar tamanho ao problema.
     prisma.clientSale.groupBy({
       by: ["clientId"],
@@ -81,6 +88,9 @@ export default async function ControleVendasPage({
   ]);
 
   const ultimaPorLoja = new Map(ultimas.map((u) => [u.clientId, u._max.soldAt]));
+  const totalPorLoja = new Map(
+    ultimas.map((u) => [u.clientId, { qtd: u._count._all, total: Number(u._sum.value ?? 0) }])
+  );
   const mesPorLoja = new Map(doMes.map((m) => [m.clientId, { qtd: m._count._all, total: Number(m._sum.value ?? 0) }]));
 
   const linhas = lojas.map((l) => {
@@ -89,7 +99,10 @@ export default async function ControleVendasPage({
     const desde = l.startDate ?? l.createdAt;
     const estado = estadoDaVenda(ultimaPorLoja.get(l.id) ?? null, desde, hoje);
     const mes = mesPorLoja.get(l.id) ?? { qtd: 0, total: 0 };
-    return { ...l, estado, ultimaVenda: ultimaPorLoja.get(l.id) ?? null, mes };
+    // Tudo que a loja já vendeu desde que entrou. Loja sem venda nenhuma não
+    // aparece na consulta, e por isso o zero vem daqui.
+    const tudo = totalPorLoja.get(l.id) ?? { qtd: 0, total: 0 };
+    return { ...l, estado, ultimaVenda: ultimaPorLoja.get(l.id) ?? null, mes, tudo };
   });
 
   // A pior primeiro: é o que precisa de ação hoje.
@@ -199,6 +212,13 @@ export default async function ControleVendasPage({
                   <th className="px-5 py-3 font-medium whitespace-nowrap hidden sm:table-cell">Última venda</th>
                   <th className="px-5 py-3 font-medium text-right whitespace-nowrap">Vendas 30d</th>
                   {canSeeValues && <th className="px-5 py-3 font-medium text-right whitespace-nowrap">Valor 30d</th>}
+                  {/* O total de sempre, pra dar o tamanho da loja ao lado do
+                      momento dela: uma parada há 40 dias que já vendeu 200
+                      carros não é o mesmo problema que uma que nunca vendeu. */}
+                  <th className="px-5 py-3 font-medium text-right whitespace-nowrap">Vendas total</th>
+                  {canSeeValues && (
+                    <th className="px-5 py-3 font-medium text-right whitespace-nowrap">Valor total</th>
+                  )}
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="px-5 py-3 font-medium" />
                 </tr>
@@ -238,6 +258,16 @@ export default async function ControleVendasPage({
                       {canSeeValues && (
                         <td className="px-5 py-3.5 text-right font-medium whitespace-nowrap">
                           {l.mes.total > 0 ? formatCurrency(l.mes.total) : <span className="text-foreground-muted">—</span>}
+                        </td>
+                      )}
+                      <td className={`px-5 py-3.5 text-right ${ESTILO_SECUNDARIO[l.estado.tom]}`}>
+                        {l.tudo.qtd > 0 ? l.tudo.qtd : "0"}
+                      </td>
+                      {canSeeValues && (
+                        <td
+                          className={`px-5 py-3.5 text-right whitespace-nowrap ${ESTILO_SECUNDARIO[l.estado.tom]}`}
+                        >
+                          {l.tudo.total > 0 ? formatCurrency(l.tudo.total) : "—"}
                         </td>
                       )}
                       <td className="px-5 py-3.5">
@@ -291,8 +321,8 @@ export default async function ControleVendasPage({
       {paradas > 0 && (
         <p className="text-xs text-foreground-muted flex items-center gap-1.5">
           <TrendingDown size={13} />
-          {paradas} loja(s) passando de {DIAS_VERMELHO} dias sem vender. Clique no nome pra abrir a conta e lançar a
-          venda, se ela aconteceu e não foi registrada.
+          {paradas} loja(s) passando de {DIAS_VERMELHO} dias sem vender. Se a venda aconteceu e não foi
+          registrada, lance em Marcar Venda — ou clique no nome pra abrir a conta.
         </p>
       )}
     </div>

@@ -101,3 +101,19 @@ faz nada.
 
 Os **valores em R$** já eram escondidos de quem não abre o Financeiro, e
 continuam.
+
+### As colunas de total
+
+O Controle de Vendas mostra quatro números por loja: **vendas e valor nos
+últimos 30 dias**, e **vendas e valor no total** (tudo que ela já vendeu).
+
+O par serve pra separar duas coisas que a cor sozinha mistura: uma loja parada
+há 40 dias que já vendeu 200 carros não é o mesmo problema que uma que nunca
+vendeu nenhum. O 30d diz o momento; o total diz o tamanho.
+
+O total vem de carona na mesma consulta que busca a última venda de cada loja
+— ela já varre todas as vendas, então a soma não custa uma ida a mais ao
+banco.
+
+Os valores em R$ continuam só pra quem abre o Financeiro; as contagens
+aparecem pra todo mundo.

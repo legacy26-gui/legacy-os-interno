@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { Video, Plus, Check } from "lucide-react";
+import { SeletorDeLoja, type LojaDaLista } from "@/components/seletor-de-loja";
 import { createGravacao, type GravacaoFormState } from "@/lib/actions/gravacoes";
 import { diaDaEntrega, diaCurto } from "@/lib/gravacoes";
 
@@ -15,12 +16,15 @@ import { diaDaEntrega, diaCurto } from "@/lib/gravacoes";
 export interface LojaOpcao {
   id: string;
   companyName: string;
+  /** Cidade/UF, pra separar duas lojas de nome parecido na busca. */
+  onde: string | null;
 }
+
+/** Até quantos carros cabem numa gravação, na caixinha. */
+const ATE = 10;
 
 const campo =
   "rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-accent/40";
-
-const OUTRA = "__outra";
 
 function hoje() {
   // Data local da pessoa, não do servidor — ela está lançando o dia dela.
@@ -44,54 +48,74 @@ export function GravacaoForm({
     undefined
   );
 
-  const [escolha, setEscolha] = useState(podeEscolherLoja && lojas.length > 0 ? "" : OUTRA);
+  const [escolhida, setEscolhida] = useState<LojaDaLista | null>(null);
+  // Loja que ainda não está cadastrada. No Treinamentos é sempre assim (não
+  // existe carteira de lojas lá); na agência fica atrás de um link, porque o
+  // caminho normal tem que ser escolher da lista.
+  const [digitarNome, setDigitarNome] = useState(!podeEscolherLoja || lojas.length === 0);
   const [data, setData] = useState(hoje());
   const [prazoAberto, setPrazoAberto] = useState(false);
+
+  const paraBusca: LojaDaLista[] = lojas.map((l) => ({
+    id: l.id,
+    nome: l.companyName,
+    onde: l.onde,
+  }));
 
   useEffect(() => {
     if (state?.ok) {
       formRef.current?.reset();
       setData(hoje());
-      setEscolha(podeEscolherLoja && lojas.length > 0 ? "" : OUTRA);
+      setEscolhida(null);
+      setDigitarNome(!podeEscolherLoja || lojas.length === 0);
       setPrazoAberto(false);
     }
   }, [state, podeEscolherLoja, lojas.length]);
 
-  const digitarNome = escolha === OUTRA;
-
   return (
     <form ref={formRef} action={formAction} className="flex flex-col gap-3">
-      <div className="grid sm:grid-cols-2 gap-3">
-        {podeEscolherLoja && lojas.length > 0 ? (
-          <select
-            // Sem `name` de propósito: a opção "Outra loja" é um valor de
-            // tela, não um id de cliente. Quem vai pro servidor é o campo
-            // escondido abaixo, que manda vazio nesse caso.
-            value={escolha}
-            onChange={(e) => setEscolha(e.target.value)}
-            className={campo}
-            aria-label="Loja"
-          >
-            <option value="" disabled>
-              Escolha a loja
-            </option>
-            {lojas.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.companyName}
-              </option>
-            ))}
-            <option value={OUTRA}>Outra loja (digitar o nome)</option>
-          </select>
-        ) : null}
-        <input type="hidden" name="clientId" value={digitarNome ? "" : escolha} />
+      <div className="flex flex-col gap-1.5">
+        {podeEscolherLoja && lojas.length > 0 && !digitarNome && (
+          <>
+            <SeletorDeLoja
+              lojas={paraBusca}
+              escolhida={escolhida}
+              aoEscolher={setEscolhida}
+              vazio="Nenhuma loja na carteira ainda."
+            />
+            {!escolhida && (
+              <button
+                type="button"
+                onClick={() => setDigitarNome(true)}
+                className="self-start text-xs text-foreground-muted underline hover:text-foreground"
+              >
+                A loja ainda não está cadastrada
+              </button>
+            )}
+          </>
+        )}
+
+        {/* O id só existe quando houve escolha de verdade na lista. */}
+        <input type="hidden" name="clientId" value={escolhida?.id ?? ""} />
 
         {digitarNome && (
-          <input
-            name="loja"
-            placeholder="Nome da loja (ex: Jânio Multimarcas)"
-            required
-            className={campo}
-          />
+          <>
+            <input
+              name="loja"
+              placeholder="Nome da loja (ex: Jânio Multimarcas)"
+              required
+              className={campo}
+            />
+            {podeEscolherLoja && lojas.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setDigitarNome(false)}
+                className="self-start text-xs text-foreground-muted underline hover:text-foreground"
+              >
+                Escolher da lista
+              </button>
+            )}
+          </>
         )}
       </div>
 
@@ -112,18 +136,16 @@ export function GravacaoForm({
           <input type="time" name="hora" required defaultValue="09:00" className={campo} />
         </label>
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-foreground-muted">Quantos vídeos</span>
-          <input
-            type="number"
-            name="quantidade"
-            min={1}
-            max={200}
-            step={1}
-            required
-            defaultValue={1}
-            inputMode="numeric"
-            className={campo}
-          />
+          <span className="text-xs text-foreground-muted">Quantos carros</span>
+          {/* Caixinha e não campo aberto: o número é sempre pequeno, e
+              escolher é mais rápido e não erra dedo que digitar. */}
+          <select name="quantidade" defaultValue={1} required className={campo} aria-label="Quantos carros">
+            {Array.from({ length: ATE }, (_, i) => i + 1).map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 

@@ -25,7 +25,7 @@ import { requireModuleAccess } from "@/lib/dal";
 import { empresaAtual } from "@/lib/empresa-atual";
 import { CARTEIRA } from "@/lib/carteira";
 import { apelidoDoDia } from "@/lib/gravacoes";
-import { GravacaoForm } from "./gravacao-form";
+import { GravacaoForm, type LojaOpcao } from "./gravacao-form";
 import { GravacaoLinha, type GravacaoNaTela } from "./gravacao-linha";
 
 // Calendário das gravações — separado do Calendário geral de propósito.
@@ -59,7 +59,7 @@ export default async function GravacoesPage({
   const gridEnd = endOfWeek(monthEnd);
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
-  const [gravacoes, pendentes, lojas] = await Promise.all([
+  const [gravacoes, pendentes, lojasCadastradas] = await Promise.all([
     // Pela gravação OU pela entrega: gravação do dia 31 entrega no dia 1, e a
     // marca de "entregar" tem que aparecer no mês em que ela cai.
     prisma.gravacao.findMany({
@@ -92,11 +92,20 @@ export default async function GravacoesPage({
     empresa === "AGENCIA"
       ? prisma.client.findMany({
           where: CARTEIRA,
-          select: { id: true, companyName: true },
+          // Cidade junto: a busca da loja procura pelos dois, e duas lojas de
+          // nome parecido só se separam assim.
+          select: { id: true, companyName: true, city: true, state: true },
           orderBy: { companyName: "asc" },
         })
       : [],
   ]);
+
+  // A loja, no formato que a busca entende.
+  const lojas = lojasCadastradas.map((l) => ({
+    id: l.id,
+    companyName: l.companyName,
+    onde: [l.city, l.state].filter(Boolean).join("/") || null,
+  }));
 
   // A lista usa o mês fechado (e não a grade, que pega dias dos meses
   // vizinhos), senão a mesma gravação apareceria em dois meses seguidos.
@@ -471,7 +480,7 @@ function DiaAberto({
   gravado: GravacaoNaTela[];
   entregar: GravacaoNaTela[];
   voltarPara: string;
-  lojas: { id: string; companyName: string }[];
+  lojas: LojaOpcao[];
   podeEscolherLoja: boolean;
 }) {
   const data = new Date(`${dia}T12:00`);

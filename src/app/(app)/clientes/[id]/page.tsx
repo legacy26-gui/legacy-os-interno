@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Pencil, ExternalLink, Building2, Phone, Mail, MapPin, CreditCard, MapPinCheck } from "lucide-react";
+import { Pencil, ExternalLink, Building2, Phone, Mail, MapPin, CreditCard, MapPinCheck, Video } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { escopoDaCarteira } from "@/lib/carteira";
@@ -36,10 +36,24 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
       revenues: { orderBy: { dueDate: "desc" }, take: 5 },
       contracts: { orderBy: { createdAt: "desc" }, take: 5 },
       _count: { select: { tasks: true, campaigns: true, contracts: true } },
+      // A última gravação ENTREGUE. Não é campo novo nem coisa pra alguém
+      // preencher: a baixa da entrega, lá em Gravações, já é o registro. Um
+      // dado que se digita em dois lugares desencontra num deles.
+      gravacoes: {
+        where: { entregueEm: { not: null } },
+        orderBy: { entregueEm: "desc" },
+        take: 1,
+        select: { entregueEm: true, gravadoEm: true, quantidade: true },
+      },
     },
   });
 
   if (!client) notFound();
+
+  const ultimaGravacao = client.gravacoes[0] ?? null;
+  const diasSemGravar = ultimaGravacao?.entregueEm
+    ? Math.max(0, Math.round((Date.now() - ultimaGravacao.entregueEm.getTime()) / 86_400_000))
+    : null;
 
   const boundDelete = deleteClient.bind(null, client.id);
 
@@ -115,6 +129,32 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
           dataForm={client.ultimaVisitaEm ? client.ultimaVisitaEm.toISOString().slice(0, 10) : ""}
           dataLabel={formatDate(client.ultimaVisitaEm)}
         />
+      </div>
+
+      {/* Vídeos: quando foi a última entrega. Um dos três motivos de uma loja
+          parar de vender é ficar sem vídeo novo. */}
+      <div className="rounded-2xl border border-border bg-surface p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium flex items-center gap-2">
+            <Video size={14} /> Última gravação entregue
+          </p>
+          <p className="text-xs text-foreground-muted mt-1">
+            Vem da baixa da entrega, em Gravações — não precisa marcar aqui.
+          </p>
+        </div>
+        {ultimaGravacao ? (
+          <div className="text-right">
+            <p className="font-medium">{formatDate(ultimaGravacao.gravadoEm)}</p>
+            <p className="text-xs text-foreground-muted">
+              {diasSemGravar === 0
+                ? "entregue hoje"
+                : `há ${diasSemGravar} ${diasSemGravar === 1 ? "dia" : "dias"}`}{" "}
+              · {ultimaGravacao.quantidade} {ultimaGravacao.quantidade === 1 ? "carro" : "carros"}
+            </p>
+          </div>
+        ) : (
+          <p className="text-sm text-foreground-muted">Nenhuma entrega registrada ainda</p>
+        )}
       </div>
 
       {client.onboardings[0] && (

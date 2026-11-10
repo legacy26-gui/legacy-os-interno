@@ -24,6 +24,27 @@ Dá pra lançar quantas gravações quiser no mesmo dia, cada uma com seu horár
 A lista mostra o total do dia ("2 gravações · 7 vídeos") e o total do mês no
 alto do bloco.
 
+## A loja é escolhida, nunca digitada
+
+Na agência, a loja vem da carteira: digita pra achar (procura por nome **e por
+cidade**), clica ou aperta Enter. Campo de texto livre fazia "Jânio", "Janio
+Multimarcas" e "janio multi" virarem três lojas.
+
+É o mesmo seletor do Marcar Venda, o mesmo componente
+(`src/components/seletor-de-loja.tsx`) — duas buscas de loja diferentes
+envelheceriam diferente, e a equipe teria que aprender duas.
+
+Quem ainda não está cadastrado continua tendo caminho: o link **"A loja ainda
+não está cadastrada"** abre o campo de nome. Fica em segundo plano de
+propósito. No Legacy Treinamentos não existe carteira de lojas, então lá o
+nome é sempre digitado.
+
+## Quantos carros
+
+Um carro é um vídeo, então o número é um só. A tela oferece de **1 a 10** numa
+caixinha: o número é sempre pequeno, e escolher é mais rápido e não erra dedo
+que digitar.
+
 ## O prazo D+1
 
 Gravou hoje, entrega amanhã. O sistema calcula sozinho e mostra antes de
@@ -117,6 +138,17 @@ caçar quem lançou.
 "corrigir" — não existe lixeira à mão de distância na lista do dia a dia. O
 servidor confere o dono de novo; esconder o botão é só pra não mostrar o que
 não funciona.
+
+## A entrega aparece na ficha do cliente
+
+Dar baixa na entrega faz a ficha do cliente mostrar **"última gravação
+entregue"**, com a data, há quantos dias e quantos carros.
+
+Não é campo novo nem coisa pra alguém preencher: a baixa já é o registro. Dado
+que se digita em dois lugares desencontra num deles.
+
+Isso existe porque ficar sem vídeo novo é um dos três motivos de uma loja
+parar de vender — junto com arte gasta e comercial travado.
 
 ## Separação por empresa
 

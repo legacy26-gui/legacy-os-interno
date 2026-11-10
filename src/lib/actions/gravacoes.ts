@@ -21,11 +21,14 @@ const GravacaoSchema = z.object({
   loja: z.string().optional(),
   data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Informe a data da gravação."),
   hora: z.string().regex(/^\d{2}:\d{2}$/, "Informe a hora da gravação."),
+  // Quantos carros foram gravados. Um carro é um vídeo, então este número
+  // serve pros dois — a tela oferece de 1 a 10 numa caixinha, e o teto maior
+  // aqui é só rede de segurança pra lançamento antigo ou fora do normal.
   quantidade: z.coerce
     .number()
-    .int("Quantidade de vídeos tem que ser número inteiro.")
-    .min(1, "Tem que ser pelo menos 1 vídeo.")
-    .max(200, "Mais de 200 vídeos numa gravação? Confere o número."),
+    .int("A quantidade de carros tem que ser número inteiro.")
+    .min(1, "Tem que ser pelo menos 1 carro.")
+    .max(200, "Mais de 200 carros numa gravação? Confere o número."),
   // Em branco = D+1, o padrão. Serve pra quando foi combinado outro prazo.
   entrega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   observacao: z.string().optional(),

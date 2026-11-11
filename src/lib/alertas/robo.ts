@@ -8,6 +8,7 @@ import { calcularTodosOsAlertas } from "./calcular";
 import { alertaEDaPessoa, podeVerAlerta, recebeAlgumAlerta, ehODono, type Pessoa } from "./destinatarios";
 import {
   ROTULO_DO_TIPO,
+  TIPOS_SO_NA_TELA,
   piorPrimeiro,
   type Alerta,
   type AlertaNaTela,
@@ -232,6 +233,8 @@ export async function rodarAlertas(hoje: Date = new Date()): Promise<ResultadoDo
     const porChave = new Map(estados.map((e) => [e.chave, e]));
 
     const aAvisar = meus.filter((a) => {
+      // Tipo que é recado, e não problema, fica só na tela.
+      if (TIPOS_SO_NA_TELA.includes(a.tipo)) return false;
       const e = porChave.get(a.chave);
       // Pediu pra lembrar depois: fica quieto até lá.
       if (e?.silenciadoAte && e.silenciadoAte > hoje) return false;

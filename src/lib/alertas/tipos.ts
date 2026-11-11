@@ -13,6 +13,7 @@ export const TIPOS_DE_ALERTA = [
   "gravacao-atrasada",
   "mensalidade-vencida",
   "implantacao-parada",
+  "reuniao-marcada",
 ] as const;
 
 export type TipoDeAlerta = (typeof TIPOS_DE_ALERTA)[number];
@@ -83,7 +84,17 @@ export const ROTULO_DO_TIPO: Record<TipoDeAlerta, string> = {
   "gravacao-atrasada": "Gravação atrasada",
   "mensalidade-vencida": "Mensalidade vencida",
   "implantacao-parada": "Implantação parada",
+  "reuniao-marcada": "Reunião marcada",
 };
+
+/**
+ * Tipos que NUNCA vão pro celular — aparecem só dentro do sistema.
+ *
+ * Reunião marcada é recado, não problema: quem precisa agir já agiu. Vibrar o
+ * celular de quem não tem nada pra fazer agora é o caminho mais curto pra a
+ * pessoa desligar a notificação — e aí ela perde também o que importava.
+ */
+export const TIPOS_SO_NA_TELA: TipoDeAlerta[] = ["reuniao-marcada"];
 
 // A mesma escada de cores do Controle de Vendas, de propósito: quem já leu
 // aquela tela não precisa aprender outro código de cor aqui. A faixa máxima é

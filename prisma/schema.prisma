@@ -90,6 +90,14 @@ model AcaoDeResgate {
 
   observacao String? @db.Text
 
+  // Quantos aparelhos receberam o aviso dessa reunião.
+  //
+  // Fica gravado porque a confirmação na tela some quando a página se
+  // atualiza — e aí ninguém mais saberia se o celular tocou. Com push
+  // desligado isso daria uma reunião "avisada" que não avisou ninguém, que é
+  // pior do que não ter o botão.
+  avisados Int @default(0)
+
   @@index([clientId, quando])
   @@map("acoes_de_resgate")
 }

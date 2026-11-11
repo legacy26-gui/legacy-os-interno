@@ -68,9 +68,12 @@ export function ArteRenovada({ clientId, dataForm }: { clientId: string; dataFor
 /**
  * O passo do comercial.
  *
- * "Marcar reunião" e "avisar o Guilherme" são um botão só de propósito: é um
- * movimento só na cabeça de quem faz, e separar garantiria que um dia alguém
- * faz o primeiro e esquece o segundo.
+ * "Marcar reunião" e "avisar" são um botão só de propósito: é um movimento só
+ * na cabeça de quem faz, e separar garantiria que um dia alguém faz o
+ * primeiro e esquece o segundo.
+ *
+ * O texto diz QUEM é avisado. Botão que avisa gente sem dizer quem deixa a
+ * pessoa insegura de apertar — e botão que ninguém aperta não serve.
  */
 export function PassoComercial({
   clientId,
@@ -130,7 +133,7 @@ export function PassoComercial({
         ) : (
           <Phone size={14} />
         )}
-        {ehReuniao ? "Marquei a reunião e avisar o Guilherme" : "Registrar o contato"}
+        {ehReuniao ? "Marquei a reunião — avisar Guilherme e Andrielli" : "Registrar o contato"}
       </button>
       {estado?.erro && <p className="text-xs text-red-500">{estado.erro}</p>}
     </form>

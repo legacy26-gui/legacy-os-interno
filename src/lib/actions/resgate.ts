@@ -93,9 +93,14 @@ export async function registrarContato(
 /**
  * A reunião — e o aviso pro dono.
  *
- * Os dois juntos de propósito. "Marcar reunião e avisar o Guilherme" é um
- * movimento só na cabeça de quem faz; separar em dois botões garantiria que
- * um dia alguém faz o primeiro e esquece o segundo.
+ * Os dois juntos de propósito. "Marcar reunião e avisar" é um movimento só na
+ * cabeça de quem faz; separar em dois botões garantiria que um dia alguém faz
+ * o primeiro e esquece o segundo.
+ *
+ * Os dois ficam sabendo, por caminhos diferentes e de propósito: o dono no
+ * CELULAR, porque pode estar fora e a decisão é dele; a Andrielli DENTRO do
+ * sistema, nos alertas dela, porque o que ela faz com isso (remarcar gravação,
+ * renovar arte) é trabalho de tela e não de rua.
  *
  * O aviso falhar não derruba o registro: a reunião aconteceu de qualquer
  * jeito, e perder isso por causa de uma notificação seria o pior negócio.
@@ -114,36 +119,47 @@ export async function registrarReuniao(
     select: { companyName: true },
   });
 
-  await prisma.acaoDeResgate.create({
-    data: { clientId, tipo: "REUNIAO", quemId: user.id, observacao },
-  });
 
-  // O dono: o ADMIN que enxerga o grupo inteiro — a mesma definição que o
-  // resto do sistema usa, pra não existirem dois conceitos de "dono".
+
+  // O celular é só do dono: o ADMIN que enxerga o grupo inteiro — a mesma
+  // definição que o resto do sistema usa.
+  //
+  // Lista explícita e não "todo ADMIN": o sócio do Legacy Treinamentos também
+  // é ADMIN, e reunião de loja da agência não é assunto dele.
+  //
+  // A Andrielli não entra aqui: ela é avisada dentro do sistema, por um
+  // alerta do tipo "reuniao-marcada" (ver src/lib/alertas/).
   const admins = await prisma.user.findMany({
     where: { active: true, role: "ADMIN" },
     select: { id: true, empresas: true },
   });
-  const donos = admins.filter((a) => veTodasAsEmpresas(a.empresas)).map((a) => a.id);
+  const avisados = admins.filter((a) => veTodasAsEmpresas(a.empresas)).map((a) => a.id);
 
   let avisou = 0;
   try {
-    avisou = await avisarPessoas(donos, {
+    avisou = await avisarPessoas(avisados, {
       titulo: "Reunião marcada — loja parada",
       corpo: `${loja?.companyName ?? "Loja"} · marcada por ${user.name.split(" ")[0]}${observacao ? ` — ${observacao}` : ""}`,
       url: `/resolver/${clientId}`,
       tag: `resgate:${clientId}`,
     });
   } catch (erro) {
-    console.error("[resgate] falhou avisar o dono da reunião", erro);
+    console.error("[resgate] falhou avisar a reunião", erro);
   }
+
+  // O registro entra DEPOIS do envio pra guardar quantos receberam. A
+  // reunião não se perde se o aviso falhar: o catch acima já garantiu isso, e
+  // aqui ela é gravada com avisados = 0, que é a verdade.
+  await prisma.acaoDeResgate.create({
+    data: { clientId, tipo: "REUNIAO", quemId: user.id, observacao, avisados: avisou },
+  });
 
   revalidar(clientId);
   return {
     ok:
       avisou > 0
-        ? "Reunião registrada e o Guilherme foi avisado no celular."
-        : "Reunião registrada. O aviso no celular não saiu — ele vê aqui na tela do mesmo jeito.",
+        ? "Reunião registrada. Guilherme foi avisado no celular e a Andrielli nos alertas dela."
+        : "Reunião registrada e a Andrielli avisada nos alertas. O aviso no celular do Guilherme não saiu — fale com ele por fora.",
   };
 }
 

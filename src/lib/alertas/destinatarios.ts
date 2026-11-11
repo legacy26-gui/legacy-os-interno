@@ -64,6 +64,9 @@ const QUEM_RECEBE: Record<TipoDeAlerta, (p: Pessoa, a: Alerta) => boolean> = {
   "gravacao-atrasada": (p) => ehAndrielli(p.email),
   "implantacao-parada": (p) => ehAndrielli(p.email),
   "mensalidade-vencida": ehODono,
+  // A Andrielli é avisada DENTRO do sistema; o dono recebe no celular na
+  // hora, direto pela ação que registra a reunião (ver actions/resgate.ts).
+  "reuniao-marcada": (p) => ehAndrielli(p.email),
 };
 
 /**

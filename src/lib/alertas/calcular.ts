@@ -221,6 +221,47 @@ async function implantacoesParadas(hoje: Date): Promise<Alerta[]> {
   });
 }
 
+// ────────────────────────── Reunião marcada ────────────────────────────────
+//
+// Recado, não problema: alguém marcou reunião com uma loja parada, e a
+// operação precisa saber pra remarcar gravação e arte. Vive uma semana e
+// some sozinho — recado velho não é recado.
+
+const DIAS_QUE_O_RECADO_VIVE = 7;
+
+async function reunioesMarcadas(hoje: Date): Promise<Alerta[]> {
+  const hoje0 = inicioDeHoje(hoje);
+  const desde = new Date(hoje0.getTime() - DIAS_QUE_O_RECADO_VIVE * 86_400_000);
+
+  const reunioes = await prisma.acaoDeResgate.findMany({
+    where: { tipo: "REUNIAO", quando: { gte: desde } },
+    orderBy: { quando: "desc" },
+    take: 50,
+    select: {
+      id: true,
+      quando: true,
+      observacao: true,
+      client: { select: { id: true, companyName: true } },
+      quem: { select: { name: true } },
+    },
+  });
+
+  return reunioes.map((r) => {
+    const dias = diasEntre(r.quando, hoje0);
+    return {
+      chave: `reuniao-marcada:${r.id}`,
+      tipo: "reuniao-marcada" as const,
+      empresa: "AGENCIA" as const,
+      titulo: r.client.companyName,
+      detalhe: `Reunião marcada${r.quem ? ` por ${r.quem.name.split(" ")[0]}` : ""}${dias === 0 ? " hoje" : ` há ${dias} ${dias === 1 ? "dia" : "dias"}`}${r.observacao ? ` — ${r.observacao}` : ""}`,
+      nivel: 1 as const,
+      link: `/resolver/${r.client.id}`,
+      modulo: "gestao-contas" as const,
+      dias,
+    };
+  });
+}
+
 /**
  * Todos os alertas que o sistema tem hoje, de todas as empresas e sem dono
  * ainda. Quem recebe o quê é decidido depois, em destinatarios.ts — assim o
@@ -233,6 +274,7 @@ export async function calcularTodosOsAlertas(hoje: Date = new Date()): Promise<A
     gravacoesAtrasadas(hoje),
     mensalidadesVencidas(hoje),
     implantacoesParadas(hoje),
+    reunioesMarcadas(hoje),
   ]);
   return listas.flat();
 }

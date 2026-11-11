@@ -76,6 +76,7 @@ export default async function ResolverPage({
         tipo: true,
         quando: true,
         observacao: true,
+        avisados: true,
         quem: { select: { name: true } },
       },
     }),
@@ -203,7 +204,11 @@ export default async function ResolverPage({
           <p className="text-sm text-emerald-500 flex items-center gap-1.5">
             <Check size={14} className="shrink-0" />
             {escada.passo === "reuniao"
-              ? `Reunião registrada em ${formatDate(reuniaoFeita!.quando)}${reuniaoFeita!.quem ? ` por ${reuniaoFeita!.quem.name.split(" ")[0]}` : ""}.`
+              ? `Reunião registrada em ${formatDate(reuniaoFeita!.quando)}${reuniaoFeita!.quem ? ` por ${reuniaoFeita!.quem.name.split(" ")[0]}` : ""}. ${
+                  reuniaoFeita!.avisados > 0
+                    ? "Guilherme avisado no celular, Andrielli nos alertas."
+                    : "Andrielli avisada nos alertas. O celular do Guilherme não tocou — avise por fora."
+                }`
               : `Contato registrado em ${formatDate((contatoFeito ?? reuniaoFeita)!.quando)}.`}
           </p>
         ) : (

@@ -30,6 +30,24 @@ Uma ação só conta **se aconteceu depois da última venda**: contato de três
 meses atrás não resolve a parada de agora. Por isso a tela diz "passo da vez
 já feito" olhando a data da venda, e não a data do contato sozinha.
 
+## Quem fica sabendo, e por onde
+
+| | Como | Por quê |
+| --- | --- | --- |
+| **Guilherme** | notificação no celular | pode estar fora, e a decisão é dele |
+| **Andrielli** | alerta dentro do sistema | o que ela faz com isso — remarcar gravação, renovar arte — é trabalho de tela, não de rua |
+
+O alerta dela é do tipo `reuniao-marcada` e **nunca vai pro celular** (está em
+`TIPOS_SO_NA_TELA`). Reunião marcada é recado, não problema: vibrar o celular
+de quem não tem nada pra fazer naquele instante é o caminho mais curto pra a
+pessoa desligar a notificação — e aí ela perde também o que importava. O
+recado vive uma semana e some sozinho.
+
+Quantos aparelhos receberam fica **gravado na própria reunião**. A confirmação
+na tela some quando a página se atualiza, e sem isso ninguém saberia se o
+celular tocou — com o push desligado, daria uma reunião "avisada" que não
+avisou ninguém, pior do que não ter o botão.
+
 ## Reunião e aviso são um botão só
 
 "Marquei a reunião" e "avisar o Guilherme" saem juntos de propósito: é um

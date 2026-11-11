@@ -60,6 +60,9 @@ async function montarParaTela(
       ...a,
       silenciado: quieto,
       silenciadoAte: quieto ? diaCurto(e!.silenciadoAte!) : null,
+      // Nível máximo não se adia: 30 dias sem vender é pra resolver hoje, e
+      // "lembrar amanhã" num caso desses é só empurrar com a barriga.
+      podeAdiar: a.nivel < 3,
       // "Novo" aqui é novo PRA ELA DENTRO DO SISTEMA, e não "ainda não foi pro
       // celular". Se fosse o celular, bastaria o push não estar configurado
       // pra tudo ficar novo pra sempre.
@@ -208,7 +211,7 @@ export async function rodarAlertas(hoje: Date = new Date()): Promise<ResultadoDo
     select: { id: true, name: true, email: true, role: true, empresas: true },
   });
   // Quem não é dono de nenhum tipo de alerta não é nem consultado.
-  const donos = equipe.filter(recebeAlgumAlerta);
+  const donos = equipe.filter((p) => recebeAlgumAlerta(p, todos));
 
   const resultado: ResultadoDoRobo = {
     problemas: todos.length,

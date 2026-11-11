@@ -41,9 +41,13 @@ const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   // a agenda de reuniões de todo mundo. É a mesa da direção, não a do dia a
   // dia de quem cuida de campanha.
   calendario: ["ADMIN", "GERENTE"],
-  suporte: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
+  // Desligados por ora, a pedido do Guilherme. Lista de cargos vazia fecha
+  // pra todo mundo, inclusive o dono. Nada foi apagado: as telas, as rotas e
+  // o que já está gravado continuam de pé, e religar é devolver os cargos
+  // nestas duas linhas.
+  suporte: [],
   "gestao-contas": ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
-  playbooks: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
+  playbooks: [],
   configuracoes: ["ADMIN"],
   // Quem lança gravação é a Andrielli, que é Gerente — não o gestor de
   // tráfego. Eu tinha assumido errado quando a tela nasceu.

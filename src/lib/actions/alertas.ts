@@ -29,9 +29,18 @@ async function minhaChave(chave: string): Promise<boolean> {
   return [...ativos, ...silenciados].some((a) => a.chave === chave);
 }
 
+/** O alerta aceita "lembrar amanhã"? No nível máximo, não. */
+async function podeAdiar(chave: string): Promise<boolean> {
+  const { ativos, silenciados } = await meusAlertas();
+  return [...ativos, ...silenciados].some((a) => a.chave === chave && a.podeAdiar);
+}
+
 export async function lembrarAmanha(chave: string) {
   const user = await getCurrentUser();
   if (!(await minhaChave(chave))) return;
+  // Esconder o botão não tranca nada: ação de servidor é chamável por quem
+  // souber o nome dela. A recusa de verdade é esta.
+  if (!(await podeAdiar(chave))) return;
 
   const ate = amanha(new Date());
   await prisma.alertaEstado.upsert({

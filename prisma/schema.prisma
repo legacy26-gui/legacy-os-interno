@@ -58,8 +58,44 @@ model User {
   gravacoes        Gravacao[]        @relation("GravacaoRegistrada")
   etapasConcluidas OnboardingEtapa[] @relation("EtapaConcluida")
   alertas          AlertaEstado[]
+  clientesConferidos ClienteConferido[] @relation("QuemConferiu")
 
   @@map("users")
+}
+
+// A caixinha do dia: "passei por este cliente hoje".
+//
+// NÃO é a revisão diária. A revisão exige foto da campanha e continua
+// existindo do lado — misturar as duas faria um clique valer por uma
+// conferência de verdade, e a foto deixaria de ser cobrada sem ninguém
+// decidir isso.
+//
+// O que esta tabela resolve é outra coisa, e é a frase do Guilherme: não
+// perder cliente de vista. Uma linha por cliente por dia; sem linha, ninguém
+// olhou.
+model ClienteConferido {
+  id       String   @id @default(cuid())
+  clientId String
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  // Só o dia, sem hora: a pergunta é "olhou hoje?", não "a que horas".
+  dia DateTime @db.Date
+
+  quemId String?
+  quem   User?   @relation("QuemConferiu", fields: [quemId], references: [id], onDelete: SetNull)
+
+  // A foto da campanha. Era cobrada todo dia; virou uma por semana, na
+  // segunda-feira — e na segunda a caixinha não fecha sem ela. Cobrança
+  // diária de foto vira foto repetida só pra fechar o quadrado, e aí o
+  // registro deixa de valer como prova de que alguém olhou de verdade.
+  fotoUrl String? @db.Text
+
+  createdAt DateTime @default(now())
+
+  // Um cliente é conferido uma vez por dia: clicar duas vezes não duplica.
+  @@unique([clientId, dia])
+  @@index([dia])
+  @@map("clientes_conferidos")
 }
 
 // O que o banco não sabe sozinho sobre um alerta.
@@ -203,6 +239,7 @@ model Client {
   pinnedInfo      ClientPinnedInfo[]
   onboardings     ClientOnboarding[]
   cobrancasPuladas CobrancaPulada[]
+  conferencias     ClienteConferido[]
   gravacoes        Gravacao[]
 
   @@map("clients")

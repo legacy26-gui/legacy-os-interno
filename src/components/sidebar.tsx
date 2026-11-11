@@ -25,7 +25,6 @@ const TOP_ITEMS: NavLeaf[] = [
   // a tela e encontra ela vazia — que é a verdade, não um erro.
   { href: "/alertas", label: "Alertas", icon: BellRing, module: null },
   { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: "clientes" },
-  { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
 ];
 
 // Menu completo (Admin/Gerente), organizado em pastas.
@@ -44,7 +43,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/controle-vendas", label: "Controle de Vendas", icon: TrendingUp, module: "gestao-contas" },
       { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
       { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
-      { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
     ],
   },
   {
@@ -80,10 +78,11 @@ const EMPLOYEE_ITEMS: NavLeaf[] = [
   { href: "/alertas", label: "Alertas", icon: BellRing, module: null },
   { href: "/meu-dia", label: "Meu Dia", icon: ClipboardList, module: "clientes" },
   // Marcar venda entra no menu mínimo: é tarefa do dia a dia de quem cuida de
-  // loja, e tinha que estar a um clique.
+  // loja, e tinha que estar a um clique. O Controle de Vendas vem junto —
+  // agora ele mostra a carteira da própria pessoa, então deixou de ser tela
+  // só da direção.
   { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
-  { href: "/playbooks", label: "Playbooks", icon: BookOpen, module: "playbooks" },
-  { href: "/suporte", label: "Suporte", icon: LifeBuoy, module: "suporte" },
+  { href: "/controle-vendas", label: "Controle de Vendas", icon: TrendingUp, module: "gestao-contas" },
 ];
 
 function NavLink({ href, label, icon: Icon, active, onClick }: NavLeaf & { active: boolean; onClick: () => void }) {

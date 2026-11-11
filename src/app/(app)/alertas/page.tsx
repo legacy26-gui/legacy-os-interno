@@ -201,7 +201,12 @@ function Cartao({ alerta, mostrarEmpresa }: { alerta: AlertaNaTela; mostrarEmpre
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <AcoesDoAlerta chave={alerta.chave} silenciado={alerta.silenciado} critico={critico} />
+          <AcoesDoAlerta
+            chave={alerta.chave}
+            silenciado={alerta.silenciado}
+            critico={critico}
+            podeAdiar={alerta.podeAdiar}
+          />
           <Link
             href={alerta.link}
             className={`text-xs font-medium px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 transition-colors ${

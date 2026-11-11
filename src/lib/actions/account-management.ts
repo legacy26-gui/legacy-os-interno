@@ -23,8 +23,12 @@ function bool(fd: FormData, name: string) {
 
 export type ReviewFormState = { error?: string } | undefined;
 
-// A foto da campanha é obrigatória: sem ela a revisão diária não é
-// salva e não conta como concluída.
+// A foto da campanha saiu daqui: virou semanal, na conferência de
+// segunda-feira (ver src/lib/actions/conferencia.ts). Cobrança diária de foto
+// vira foto repetida só pra fechar o quadrado, e aí o registro deixa de valer
+// como prova de que alguém olhou de verdade.
+//
+// Aqui ela continua aceita, só não é mais exigida.
 export async function submitDailyReview(
   clientId: string,
   _prevState: ReviewFormState,
@@ -33,18 +37,17 @@ export async function submitDailyReview(
   const user = await requireModuleAccess("gestao-contas");
 
   const photo = formData.get("photo");
-  if (!(photo instanceof File) || photo.size === 0) {
-    return { error: "Anexe a foto da campanha para concluir a revisão diária." };
+  let photoUrl: string | null = null;
+  if (photo instanceof File && photo.size > 0) {
+    if (!photo.type.startsWith("image/")) {
+      return { error: "A foto precisa ser uma imagem (foto ou print)." };
+    }
+    if (photo.size > MAX_PHOTO_BYTES) {
+      return { error: "Foto muito grande (máx. 5MB). Tire uma foto com menos resolução ou comprima." };
+    }
+    const buffer = Buffer.from(await photo.arrayBuffer());
+    photoUrl = `data:${photo.type};base64,${buffer.toString("base64")}`;
   }
-  if (!photo.type.startsWith("image/")) {
-    return { error: "A foto precisa ser uma imagem (foto ou print)." };
-  }
-  if (photo.size > MAX_PHOTO_BYTES) {
-    return { error: "Foto muito grande (máx. 5MB). Tire uma foto com menos resolução ou comprima." };
-  }
-
-  const buffer = Buffer.from(await photo.arrayBuffer());
-  const photoUrl = `data:${photo.type};base64,${buffer.toString("base64")}`;
 
   await prisma.dailyReview.create({
     data: {

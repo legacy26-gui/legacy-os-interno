@@ -51,7 +51,7 @@ async function lojasSemVender(hoje: Date): Promise<Alerta[]> {
       // tirou do controle (consórcio, banco) não gera alerta — era justamente
       // pra parar de aparecer no vermelho pra sempre.
       where: { ...CARTEIRA, controlaVendas: true },
-      select: { id: true, companyName: true, startDate: true, createdAt: true },
+      select: { id: true, companyName: true, startDate: true, createdAt: true, managerId: true },
     }),
     prisma.clientSale.groupBy({ by: ["clientId"], _max: { soldAt: true } }),
   ]);
@@ -78,6 +78,8 @@ async function lojasSemVender(hoje: Date): Promise<Alerta[]> {
         link: "/controle-vendas",
         modulo: "gestao-contas" as const,
         dias: estado.dias,
+        // O gestor da loja também é avisado — ver destinatarios.ts.
+        donoId: l.managerId,
       },
     ];
   });

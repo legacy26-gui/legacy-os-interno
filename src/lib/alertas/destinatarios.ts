@@ -47,8 +47,20 @@ export function ehODono(p: Pessoa): boolean {
   return p.role === "ADMIN" && veTodasAsEmpresas(p.empresas);
 }
 
-const QUEM_RECEBE: Record<TipoDeAlerta, (p: Pessoa) => boolean> = {
-  "venda-parada": (p) => ehAndrielli(p.email),
+/**
+ * A partir de quantos dias sem vender o GESTOR da loja é incomodado.
+ *
+ * Nível 2 são os 15 dias. Abaixo disso (7 dias) a loja só esfriou, e é
+ * trabalho normal — avisar ali faria a notificação virar rotina, e rotina a
+ * gente desliga. Nível 3 são os 30: aí é pra resolver hoje.
+ */
+const NIVEL_QUE_CHAMA_O_GESTOR = 2;
+
+// Recebe a pessoa E o alerta: tem regra que depende de QUAL caso é, não só do
+// tipo. "Cada gestor é cobrado da carteira dele" é uma delas.
+const QUEM_RECEBE: Record<TipoDeAlerta, (p: Pessoa, a: Alerta) => boolean> = {
+  "venda-parada": (p, a) =>
+    ehAndrielli(p.email) || (!!a.donoId && a.donoId === p.id && a.nivel >= NIVEL_QUE_CHAMA_O_GESTOR),
   "gravacao-atrasada": (p) => ehAndrielli(p.email),
   "implantacao-parada": (p) => ehAndrielli(p.email),
   "mensalidade-vencida": ehODono,
@@ -65,7 +77,7 @@ const QUEM_RECEBE: Record<TipoDeAlerta, (p: Pessoa) => boolean> = {
  */
 export function alertaEDaPessoa(pessoa: Pessoa, alerta: Alerta): boolean {
   // 1. É pra ela?
-  if (!QUEM_RECEBE[alerta.tipo](pessoa)) return false;
+  if (!QUEM_RECEBE[alerta.tipo](pessoa, alerta)) return false;
   return podeVerAlerta(pessoa, alerta);
 }
 
@@ -86,6 +98,6 @@ export function podeVerAlerta(pessoa: Pessoa, alerta: Alerta): boolean {
 }
 
 /** Quem é dono de algum tipo de alerta — os únicos que o robô precisa olhar. */
-export function recebeAlgumAlerta(pessoa: Pessoa): boolean {
-  return Object.values(QUEM_RECEBE).some((ehDele) => ehDele(pessoa));
+export function recebeAlgumAlerta(pessoa: Pessoa, alertas: Alerta[]): boolean {
+  return alertas.some((a) => QUEM_RECEBE[a.tipo](pessoa, a));
 }

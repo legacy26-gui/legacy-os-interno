@@ -56,10 +56,20 @@ export interface Alerta {
   modulo: ModuleKey;
   /** Dias que o problema já tem. Ordena a lista: o mais velho primeiro. */
   dias: number;
+  /**
+   * Quem é responsável por ESTE caso — o gestor do cliente, quando existe.
+   *
+   * Sem isto o roteamento só sabia responder "quem recebe este TIPO de
+   * alerta". Com ele dá pra dizer "e também a pessoa dona deste cliente", que
+   * é o que faz cada gestor ser cobrado da carteira dele e de mais ninguém.
+   */
+  donoId?: string | null;
 }
 
 /** O alerta já com o que é de cada pessoa: silenciado, novo, já visto. */
 export interface AlertaNaTela extends Alerta {
+  /** Nível máximo não se adia: é pra resolver hoje. */
+  podeAdiar: boolean;
   /** Verdadeiro enquanto a pessoa pediu pra lembrar depois. */
   silenciado: boolean;
   /** dd/mm até quando está silenciado, pra tela poder dizer. */

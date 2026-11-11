@@ -37,12 +37,25 @@ export function AcoesDoAlerta({
   chave,
   silenciado,
   critico,
+  podeAdiar,
 }: {
   chave: string;
   silenciado: boolean;
   critico: boolean;
+  /** No nível máximo não se adia: é pra resolver hoje. */
+  podeAdiar: boolean;
 }) {
   const [salvando, iniciar] = useTransition();
+
+  // Sem botão, e com a razão escrita: botão ausente sem explicação parece
+  // defeito, e a pessoa fica procurando onde clicou errado.
+  if (!podeAdiar && !silenciado) {
+    return (
+      <span className="text-[11px] font-semibold px-2 py-1 text-red-100 whitespace-nowrap">
+        Resolver hoje
+      </span>
+    );
+  }
 
   const estilo = critico
     ? "text-red-100 hover:bg-red-700/60"

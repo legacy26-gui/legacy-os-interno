@@ -110,6 +110,9 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   // Quais lojas cada pessoa pode marcar é outra regra, e mora em
   // src/lib/vendas-permitidas.ts — esta aqui só diz quem abre a tela.
   { prefix: "/marcar-venda", module: "gestao-contas" },
+  // A tela de destravar uma loja parada. Mesmo módulo: é a mesma gente, e
+  // quais lojas cada um abre é a regra de carteira, não esta lista.
+  { prefix: "/resolver", module: "gestao-contas" },
   { prefix: "/playbooks", module: "playbooks" },
   { prefix: "/configuracoes", module: "configuracoes" },
 ];

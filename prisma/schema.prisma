@@ -59,8 +59,39 @@ model User {
   etapasConcluidas OnboardingEtapa[] @relation("EtapaConcluida")
   alertas          AlertaEstado[]
   clientesConferidos ClienteConferido[] @relation("QuemConferiu")
+  resgatesFeitos     AcaoDeResgate[]    @relation("QuemResgatou")
 
   @@map("users")
+}
+
+// O que foi feito pra destravar uma loja que parou de vender.
+//
+// Vídeo e arte não entram aqui: a entrega da gravação já é registro dela
+// mesma, e a arte é uma data no cliente. O que faltava era o comercial, que
+// não deixa rastro em lugar nenhum — "falei com o dono" morre no WhatsApp.
+//
+// É log e não campo: o que importa é a sequência (falei dia 12, reuni dia
+// 20), e campo único apagaria o anterior a cada passo.
+enum TipoDeResgate {
+  CONTATO
+  REUNIAO
+}
+
+model AcaoDeResgate {
+  id       String        @id @default(cuid())
+  clientId String
+  client   Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tipo     TipoDeResgate
+
+  quando DateTime @default(now())
+
+  quemId String?
+  quem   User?   @relation("QuemResgatou", fields: [quemId], references: [id], onDelete: SetNull)
+
+  observacao String? @db.Text
+
+  @@index([clientId, quando])
+  @@map("acoes_de_resgate")
 }
 
 // A caixinha do dia: "passei por este cliente hoje".
@@ -207,6 +238,10 @@ model Client {
   // Permite excluir o cliente só do fluxo de cobrança mensal (Financeiro)
   // sem mudar o status dele em Clientes — ex: acordo especial, cortesia.
   billingActive Boolean      @default(true)
+  // Quando a arte (os criativos do anúncio) foi renovada pela última vez.
+  // Vazio = nunca renovou desde que entrou. Arte gasta é um dos três motivos
+  // de uma loja parar de vender, junto com falta de vídeo e comercial travado.
+  ultimaArteEm DateTime?
   // Último dia em que alguém da casa foi na loja. Vazio = nunca registrou
   // visita — que não é o mesmo que "nunca foi", é só que ninguém marcou.
   // Guarda só a data, não o histórico: o que se quer saber é há quanto tempo
@@ -240,6 +275,7 @@ model Client {
   onboardings     ClientOnboarding[]
   cobrancasPuladas CobrancaPulada[]
   conferencias     ClienteConferido[]
+  resgates         AcaoDeResgate[]
   gravacoes        Gravacao[]
 
   @@map("clients")

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, Car, Eye, EyeOff, Search, Store, TrendingDown } from "lucide-react";
+import { AlertTriangle, Car, Eye, EyeOff, Search, Store, TrendingDown, Wrench } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
@@ -276,10 +276,27 @@ export default async function ControleVendasPage({
                         </span>
                       </td>
                       <td className="px-5 py-3.5">
-                        {/* Só quem vê a casa inteira tira loja do controle. A
-                            ação no servidor confere de novo — isto evita
-                            mostrar botão que não ia funcionar. */}
-                        {vêTudo && <TirarDoControle clientId={l.id} loja={l.companyName} />}
+                        <div className="flex items-center gap-1.5 justify-end">
+                          {/* O caminho pra agir. Só aparece em quem já passou
+                              dos 15 dias: numa loja vendendo o botão seria
+                              ruído, e ruído todo mundo aprende a pular. */}
+                          {l.estado.dias >= DIAS_VERMELHO && (
+                            <Link
+                              href={`/resolver/${l.id}`}
+                              className={`text-xs font-medium px-2.5 py-1.5 rounded-lg inline-flex items-center gap-1 whitespace-nowrap transition-colors ${
+                                critico
+                                  ? "bg-white text-red-700 hover:bg-red-50"
+                                  : "bg-accent/15 text-accent hover:bg-accent/25"
+                              }`}
+                            >
+                              <Wrench size={12} /> Resolver
+                            </Link>
+                          )}
+                          {/* Só quem vê a casa inteira tira loja do controle. A
+                              ação no servidor confere de novo — isto evita
+                              mostrar botão que não ia funcionar. */}
+                          {vêTudo && <TirarDoControle clientId={l.id} loja={l.companyName} />}
+                        </div>
                       </td>
                     </tr>
                   );

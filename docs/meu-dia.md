@@ -25,6 +25,27 @@ A frase que justifica a caixinha é do Guilherme: *não vamos mais esquecer
 clientes de vista*. É lista de chamada, não conferência técnica — e misturar
 as duas faria um clique valer por uma revisão de verdade.
 
+A revisão diária **não pede mais foto**: a foto obrigatória virou uma por
+semana, na caixinha de segunda-feira.
+
+## A caixinha é grande, e tem setinha do lado
+
+A caixinha tem 36px de lado. Um quadradinho de 20px numa lista de dez linhas
+não parece botão — e o que não parece botão ninguém aperta.
+
+A **setinha** abre a revisão completa ali mesmo, sem sair do Meu Dia. Antes
+era preciso entrar no cliente, e cada ida e volta é um motivo pra deixar pra
+depois.
+
+## Conta que não vende carro não é cobrada de venda
+
+Consórcio, banco e afins ficam fora do Controle de Vendas — e no Meu Dia eles
+aparecem com **"sem venda a cobrar"** no lugar dos dias. Marcar "há 32 dias
+sem vender" num consórcio é cobrar uma coisa que não existe, e cobrança sem
+sentido ensina a equipe a ignorar o resto.
+
+Eles também não entram nos avisos de urgente e não sobem na fila pelo número.
+
 ## A foto virou semanal, na segunda
 
 A foto da campanha era cobrada **todo dia**, na revisão diária. Virou **uma

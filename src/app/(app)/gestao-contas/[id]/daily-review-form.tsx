@@ -44,9 +44,14 @@ export function DailyReviewForm({
       </div>
       <div>
         <p className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1.5">
-          Foto da campanha <span className="text-red-500">*</span>
+          Foto da campanha <span className="font-normal normal-case">(opcional)</span>
         </p>
-        <p className="text-xs text-foreground-muted mb-2">Obrigatório — sem a foto a revisão diária não é concluída.</p>
+        {/* A foto deixou de ser cobrada aqui: virou semanal, na caixinha de
+            segunda-feira do Meu Dia. Cobrar todo dia virava foto repetida só
+            pra fechar o quadrado, e o registro deixava de valer como prova. */}
+        <p className="text-xs text-foreground-muted mb-2">
+          A foto obrigatória agora é uma por semana, na segunda-feira, pela caixinha do Meu Dia.
+        </p>
 
         {/* O input fica sempre montado (só visualmente oculto) para não perder o
             arquivo selecionado quando a prévia é exibida. */}
@@ -56,7 +61,6 @@ export function DailyReviewForm({
           name="photo"
           accept="image/*"
           capture="environment"
-          required
           className="hidden"
           onChange={(e) => {
             const file = e.target.files?.[0];

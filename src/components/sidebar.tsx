@@ -28,6 +28,16 @@ const TOP_ITEMS: NavLeaf[] = [
 ];
 
 // Menu completo (Admin/Gerente), organizado em pastas.
+//
+// Tela que virou ABA de outra não aparece aqui — e nenhuma foi apagada:
+//
+//   Operações ............ aba da Gestão de Contas
+//   Relatórios ........... aba do Tráfego Pago
+//   Análise, DRE, DFC .... abas do Financeiro (que já as tinha)
+//
+// Duas linhas na lateral pra duas telas que respondem a mesma pergunta é
+// menu crescendo pelo organograma, não pelo uso. O caminho continua existindo
+// e os endereços antigos seguem abrindo.
 const NAV_GROUPS: NavGroup[] = [
   {
     label: "Comercial",
@@ -36,7 +46,6 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Operacional",
     items: [
-      { href: "/operacoes", label: "Operações", icon: ListChecks, module: "operacoes" },
       { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
       { href: "/ranking-lojas", label: "Ranking de Lojas", icon: Trophy, module: "gestao-contas" },
       { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
@@ -52,9 +61,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/formularios", label: "Formulários", icon: ClipboardPen, module: "formularios" },
       { href: "/contratos", label: "Contratos", icon: FileText, module: "contratos" },
       { href: "/financeiro", label: "Financeiro", icon: Wallet, module: "financeiro" },
-      { href: "/financeiro/analise", label: "Análise financeira", icon: BarChart3, module: "financeiro" },
-      { href: "/financeiro/dre", label: "DRE", icon: FileBarChart, module: "financeiro" },
-      { href: "/financeiro/dfc", label: "DFC", icon: Waves, module: "financeiro" },
       { href: "/equipe", label: "Equipe", icon: UserCog, module: "equipe" },
     ],
   },

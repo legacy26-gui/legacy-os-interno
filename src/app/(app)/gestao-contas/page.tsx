@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AbasDaSecao } from "@/components/abas-da-secao";
 import { Gauge, ShieldCheck, AlertTriangle, Flame, Trophy, Store, CalendarX, CalendarClock, Zap, ClipboardCheck } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
 import { getAccountsHealth, SCORE_COLORS, type AccountHealth } from "@/lib/account-health";
@@ -54,6 +55,15 @@ export default async function GestaoContasPage() {
           </Link>
         </div>
       </div>
+
+      {/* Duas telas, uma linha no menu: Gestão de Contas e Operações
+          respondem a mesma pergunta — quem cuida do quê e como está indo. */}
+      <AbasDaSecao
+        abas={[
+          { href: "/gestao-contas", label: "Saúde das contas" },
+          { href: "/operacoes", label: "Operações" },
+        ]}
+      />
 
       {/* Cards de saúde */}
       <div className="grid sm:grid-cols-3 gap-4">

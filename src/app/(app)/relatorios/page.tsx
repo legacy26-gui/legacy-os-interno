@@ -1,4 +1,5 @@
 import { Trash2, Printer } from "lucide-react";
+import { AbasDaSecao } from "@/components/abas-da-secao";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { formatCurrency, formatDate } from "@/lib/labels";
@@ -19,6 +20,15 @@ export default async function RelatoriosPage() {
         <h1 className="text-xl font-semibold">Relatórios</h1>
         <p className="text-sm text-foreground-muted mt-0.5">Relatórios de performance por cliente</p>
       </div>
+
+      {/* Tráfego e Relatórios respondem a mesma pergunta — performance por
+          cliente — então viram uma linha no menu e duas abas aqui. */}
+      <AbasDaSecao
+        abas={[
+          { href: "/trafego", label: "Campanhas" },
+          { href: "/relatorios", label: "Relatórios" },
+        ]}
+      />
 
       <div className="rounded-2xl border border-border bg-surface p-5">
         <ReportForm clients={clients} />

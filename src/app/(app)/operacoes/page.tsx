@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AbasDaSecao } from "@/components/abas-da-secao";
 import { Trash2, Users, Gauge, ListChecks, Sparkles, ClipboardCheck, Lightbulb } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
@@ -80,6 +81,15 @@ export default async function OperacoesPage({
         <h1 className="text-xl font-semibold">Operações</h1>
         <p className="text-sm text-foreground-muted mt-0.5">Carteira de clientes e tarefas por operador</p>
       </div>
+
+      {/* Duas telas, uma linha no menu: Gestão de Contas e Operações
+          respondem a mesma pergunta — quem cuida do quê e como está indo. */}
+      <AbasDaSecao
+        abas={[
+          { href: "/gestao-contas", label: "Saúde das contas" },
+          { href: "/operacoes", label: "Operações" },
+        ]}
+      />
 
       {/* Abas por operador */}
       <div className="flex flex-wrap gap-2">

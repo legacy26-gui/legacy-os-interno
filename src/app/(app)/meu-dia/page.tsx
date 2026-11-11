@@ -32,6 +32,7 @@ export default async function MeuDiaPage() {
         companyName: true,
         startDate: true,
         createdAt: true,
+        controlaVendas: true,
       },
       orderBy: { companyName: "asc" },
     }),
@@ -62,15 +63,20 @@ export default async function MeuDiaPage() {
       diasSemVender: estado.dias,
       tomDaVenda: estado.tom,
       textoDaVenda: estado.texto,
+      controlaVendas: c.controlaVendas,
     };
   });
 
   // A ordem: primeiro quem falta conferir, e dentro disso quem está há mais
   // tempo sem vender. É a fila do dia, de cima pra baixo.
+  // Conta fora do Controle de Vendas não tem "dias sem vender" pra ordenar:
+  // consórcio e banco não vendem carro, e deixá-los subir na fila pelo número
+  // empurraria pra baixo as lojas que de fato pararam.
+  const diasQueContam = (l: ClienteDoDia) => (l.controlaVendas ? l.diasSemVender : -1);
   linhas.sort(
     (a, b) =>
       Number(a.conferidoHoje) - Number(b.conferidoHoje) ||
-      b.diasSemVender - a.diasSemVender ||
+      diasQueContam(b) - diasQueContam(a) ||
       a.companyName.localeCompare(b.companyName)
   );
 
@@ -79,9 +85,9 @@ export default async function MeuDiaPage() {
   const tudoFeito = total > 0 && feitos === total;
   const porcento = total > 0 ? Math.round((feitos / total) * 100) : 0;
 
-  const urgentes = linhas.filter((l) => l.diasSemVender >= DIAS_CRITICO);
+  const urgentes = linhas.filter((l) => l.controlaVendas && l.diasSemVender >= DIAS_CRITICO);
   const atencao = linhas.filter(
-    (l) => l.diasSemVender >= DIAS_VERMELHO && l.diasSemVender < DIAS_CRITICO
+    (l) => l.controlaVendas && l.diasSemVender >= DIAS_VERMELHO && l.diasSemVender < DIAS_CRITICO
   );
 
   return (

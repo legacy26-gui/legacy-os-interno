@@ -59,3 +59,22 @@ Dashboard, Alertas, Meu Dia, Playbooks, Suporte, Tráfego, Relatórios e
 Marketing. Calendário e Gravações ficaram fechados pro cargo; Financeiro, DRE,
 DFC, Análise, Contratos, Comercial, Equipe, Configurações e Formulários já
 eram fechados antes.
+
+
+## A lateral: tela que virou aba
+
+Três pares respondiam a mesma pergunta em duas linhas do menu. Viraram uma
+linha e duas abas — **nenhuma tela foi apagada** e os endereços antigos
+continuam abrindo:
+
+| Virou aba de | Tela |
+| --- | --- |
+| Gestão de Contas | Operações |
+| Tráfego Pago | Relatórios |
+| Financeiro | Análise, DRE e DFC (que já eram abas lá dentro) |
+
+O Financeiro era o caso mais claro: as quatro telas **já tinham abas** no alto,
+então as quatro linhas na lateral eram pura repetição.
+
+Duas linhas pra duas telas que respondem a mesma pergunta é menu crescendo
+pelo organograma, não pelo uso.

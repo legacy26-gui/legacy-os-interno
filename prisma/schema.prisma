@@ -284,6 +284,7 @@ model Client {
   cobrancasPuladas CobrancaPulada[]
   conferencias     ClienteConferido[]
   resgates         AcaoDeResgate[]
+  metaAdAccounts   MetaAdAccount[]
   gravacoes        Gravacao[]
 
   @@map("clients")
@@ -1109,4 +1110,91 @@ model OnboardingAnalysis {
   @@index([onboardingId, kind, version])
   @@index([clientId])
   @@map("onboarding_analyses")
+}
+
+// ───────────────────────────── Meta Ads ────────────────────────────────────
+//
+// As contas de anúncio do cliente na Meta, e o que o sistema puxa delas.
+//
+// Até aqui o que existia da Meta era só de saída: a Conversions API contando
+// pra ela o que aconteceu com o lead (ver src/lib/meta-capi.ts). Estas
+// tabelas são o caminho contrário — o que a Meta tem a dizer de volta.
+//
+// Nada disto encosta em `campaigns`, que continua sendo o número digitado à
+// mão: são duas origens diferentes pro mesmo assunto, e misturá-las faria
+// ninguém saber mais qual número veio de onde.
+
+/** Uma conta de anúncio. Um cliente pode ter mais de uma. */
+model MetaAdAccount {
+  id             String   @id @default(cuid())
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id])
+  // O id da conta lá na Meta (act_...). Único no sistema inteiro: a mesma
+  // conta pendurada em dois clientes duplicaria gasto e lead no relatório.
+  metaAccountId  String   @unique
+  name           String?
+  // Conta pré-paga: o saldo acaba e o anúncio para sem avisar ninguém.
+  isPrepay       Boolean  @default(false)
+  // Qual ação da Meta conta como "lead" nesta conta. Varia por cliente —
+  // conversa iniciada no WhatsApp não é o mesmo que formulário preenchido.
+  leadActionType String   @default("onsite_conversion.messaging_conversation_started_7d")
+  active         Boolean  @default(true)
+  lastSyncedAt   DateTime?
+  // O erro da última tentativa, pra a falha aparecer na tela em vez de só no
+  // log — sincronização que falha calada vira número velho passando por novo.
+  lastSyncError  String?
+  createdAt      DateTime @default(now())
+
+  balanceSnapshots BalanceSnapshot[]
+  adsetInsights    AdsetInsightDaily[]
+
+  @@index([clientId])
+  @@map("meta_ad_accounts")
+}
+
+/**
+ * O saldo da conta pré-paga, fotografado a cada sincronização.
+ *
+ * É histórico e não campo único de propósito: o que interessa não é só
+ * quanto tem agora, é a queda — dá pra prever em quantos dias acaba.
+ *
+ * Em centavos (Int), não em decimal: dinheiro em ponto flutuante perde
+ * centavo em conta, e a Meta já devolve inteiro.
+ */
+model BalanceSnapshot {
+  id             String        @id @default(cuid())
+  adAccountId    String
+  adAccount      MetaAdAccount @relation(fields: [adAccountId], references: [id])
+  availableCents Int
+  capturedAt     DateTime      @default(now())
+
+  @@index([adAccountId, capturedAt(sort: Desc)])
+  @@map("balance_snapshots")
+}
+
+/**
+ * O resultado de cada conjunto de anúncios, por dia.
+ *
+ * A chave única (conta + conjunto + dia) é o que deixa a sincronização ser
+ * repetida à vontade: puxar o mesmo dia duas vezes atualiza a linha em vez de
+ * duplicar o gasto.
+ */
+model AdsetInsightDaily {
+  id          String        @id @default(cuid())
+  adAccountId String
+  adAccount   MetaAdAccount @relation(fields: [adAccountId], references: [id])
+  adsetId     String
+  adsetName   String
+  campaignId  String?
+  // Só a data, sem hora: o dado da Meta é fechado por dia.
+  date        DateTime      @db.Date
+  spendCents  Int
+  impressions Int
+  clicks      Int
+  linkClicks  Int
+  leads       Int
+
+  @@unique([adAccountId, adsetId, date])
+  @@index([adAccountId, date])
+  @@map("adset_insights_daily")
 }

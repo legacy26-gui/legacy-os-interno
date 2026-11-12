@@ -1,0 +1,12 @@
+-- Tira o DEFAULT da coluna updatedAt de alerta_estados.
+--
+-- A tabela nasceu de migration escrita à mão, com DEFAULT CURRENT_TIMESTAMP
+-- nessa coluna. O schema do Prisma só diz @updatedAt, que não gera default no
+-- banco — então banco e schema estavam diferentes, e toda migration futura
+-- carregava essa correção de carona.
+--
+-- Não quebra escrita nenhuma: o @updatedAt faz o Prisma mandar o valor na
+-- criação e na atualização, e não existe SQL escrito à mão gravando nesta
+-- tabela (conferido no código: as únicas escritas são prisma.alertaEstado
+-- .upsert e .updateMany).
+ALTER TABLE "alerta_estados" ALTER COLUMN "updatedAt" DROP DEFAULT;

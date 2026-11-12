@@ -1,15 +1,3 @@
-/*
-  Warnings:
-
-  - You are about to drop the `adset_insights_daily` table. If the table is not empty, all the data it contains will be lost.
-
-*/
--- DropForeignKey
-ALTER TABLE "adset_insights_daily" DROP CONSTRAINT "adset_insights_daily_adAccountId_fkey";
-
--- DropTable
-DROP TABLE "adset_insights_daily";
-
 -- CreateTable
 CREATE TABLE "meta_insights_daily" (
     "id" TEXT NOT NULL,

@@ -6,7 +6,7 @@ import { CARTEIRA, escopoDaCarteira, clienteEDaCarteira, veTodaACarteira } from 
 import { lerIntervalo, reais, numero, textoDaData, diaCurto } from "@/lib/meta/insights";
 import { montarRelatorio } from "@/lib/meta/relatorio";
 import { FormDoRelatorio } from "./form";
-import { BotaoImprimir } from "./imprimir";
+import { BotaoImagem } from "./imprimir";
 
 // O relatório que vai pro dono da loja.
 //
@@ -114,9 +114,17 @@ export default async function RelatorioPage({
         />
         <div className="flex items-center justify-between gap-3">
           <p className="text-sm text-foreground-muted">
-            Confira antes de mandar. “Imprimir” salva em PDF.
+            Confira abaixo e baixe a imagem pra mandar no WhatsApp da loja.
           </p>
-          <BotaoImprimir />
+          <BotaoImagem
+            endereco={`/api/meta-ads/relatorio?${new URLSearchParams({
+              loja: busca.loja,
+              ...(busca.periodo ? { periodo: busca.periodo } : {}),
+              ...(busca.de ? { de: busca.de } : {}),
+              ...(busca.ate ? { ate: busca.ate } : {}),
+            })}`}
+            nome={`${r.loja.replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}.png`}
+          />
         </div>
       </div>
 

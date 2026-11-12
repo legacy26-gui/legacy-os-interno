@@ -8,6 +8,7 @@ import {
   desdeQuando,
   DIAS_DE_INSIGHT,
   type LinhaCrua,
+  type LinhaLimpa,
 } from "./insights";
 
 // Buscar os números das campanhas e guardar.
@@ -28,8 +29,27 @@ const MAX_PAGINAS = 10;
 /** Quantas linhas pedir por página. */
 const POR_PAGINA = 300;
 
-/** Quantas linhas gravar por vez. Lote grande demais estoura o tempo. */
-const LINHAS_POR_LOTE = 50;
+/**
+ * Quantas linhas por inserção.
+ *
+ * Não é mais uma viagem por linha — é uma viagem por lote — então o número
+ * pode ser alto. 500 mantém o comando num tamanho que o banco engole sem
+ * reclamar.
+ */
+const LINHAS_POR_LOTE = 500;
+
+/**
+ * Tira linha repetida do mesmo conjunto no mesmo dia.
+ *
+ * O banco não aceita duas (a chave é conta + conjunto + dia), e agora que a
+ * inserção é em massa uma repetida derrubaria o lote inteiro em vez de só
+ * sobrescrever. A última vence.
+ */
+function semRepetir(linhas: LinhaLimpa[]): LinhaLimpa[] {
+  const porChave = new Map<string, LinhaLimpa>();
+  for (const l of linhas) porChave.set(`${l.adsetId}|${l.date.toISOString()}`, l);
+  return [...porChave.values()];
+}
 
 export type ResultadoDosInsights =
   | { ok: true; linhas: number; dias: number }
@@ -124,54 +144,51 @@ export async function sincronizarInsights(
     if (!aindaDaTempo(prazo)) break;
   }
 
-  const linhas = limparLinhas(todas, conta.leadActionType);
+  const linhas = semRepetir(limparLinhas(todas, conta.leadActionType));
 
-  // Grava em lotes, e não tudo numa transação só.
+  // ── Apaga a janela e regrava, em vez de um upsert por linha ─────────────
   //
-  // Trinta dias × todos os conjuntos de uma conta grande passa fácil de mil
-  // linhas, e uma transação desse tamanho num banco na nuvem estoura o tempo
-  // da função — e aí NADA entra, nem o que já tinha sido lido.
+  // Antes isto era um upsert por linha. Pareceu natural (cada linha é um dia
+  // de um conjunto, o upsert resolve novo e repetido do mesmo jeito) e estava
+  // errado pelo motivo que não se vê escrevendo o código: cada upsert é uma
+  // IDA E VOLTA até o banco. Cinquenta linhas são cinquenta viagens, e o
+  // Prisma derruba qualquer transação que passe de 5 segundos. Numa máquina
+  // local, onde o banco responde em 1ms, isso nunca aparece; contra um banco
+  // na nuvem, estoura.
   //
-  // O preço é que uma falha no meio deixa parte do período gravada. Dá pra
-  // conviver: cada linha é um dia de um conjunto, o upsert é idempotente, e
-  // apertar o botão de novo completa o que faltou. Perder tudo por causa do
-  // tamanho seria pior.
-  for (let i = 0; i < linhas.length; i += LINHAS_POR_LOTE) {
-    const lote = linhas.slice(i, i + LINHAS_POR_LOTE);
-    await prisma.$transaction(
-      lote.map((l) =>
-        prisma.adsetInsightDaily.upsert({
-        where: {
-          adAccountId_adsetId_date: {
-            adAccountId: conta.id,
-            adsetId: l.adsetId,
-            date: l.date,
-          },
-        },
-        // Sempre sobrescreve: a Meta reprocessa os últimos dias, e o número
-        // dela é a verdade. O nosso é cópia.
-        update: {
-          adsetName: l.adsetName,
-          campaignId: l.campaignId,
-          campaignName: l.campaignName,
-          spendCents: l.spendCents,
-          impressions: l.impressions,
-          clicks: l.clicks,
-          linkClicks: l.linkClicks,
-          leads: l.leads,
-        },
-        create: { adAccountId: conta.id, ...l },
-        })
-      )
-    );
-  }
+  // Agora são DUAS consultas, não importa se vierem 20 linhas ou 2 mil: apaga
+  // o período dos conjuntos que vieram agora, e insere tudo de uma vez.
+  //
+  // Apagar só os conjuntos que vieram (e não a janela inteira) é o que mantém
+  // isso seguro quando a busca para no meio por falta de tempo: o que não foi
+  // relido continua lá, com o número antigo, em vez de sumir da tela.
+  const conjuntos = [...new Set(linhas.map((l) => l.adsetId))];
 
-  // O carimbo vai por último, fora dos lotes: ele diz "esta conta está em
-  // dia", e só é verdade depois que tudo entrou.
-  await prisma.metaAdAccount.update({
-    where: { id: conta.id },
-    data: { lastSyncedAt: new Date(), lastSyncError: null },
-  });
+  await prisma.$transaction(
+    async (tx) => {
+      if (conjuntos.length > 0) {
+        await tx.adsetInsightDaily.deleteMany({
+          where: { adAccountId: conta.id, date: { gte: de }, adsetId: { in: conjuntos } },
+        });
+      }
+      for (let i = 0; i < linhas.length; i += LINHAS_POR_LOTE) {
+        await tx.adsetInsightDaily.createMany({
+          data: linhas.slice(i, i + LINHAS_POR_LOTE).map((l) => ({ adAccountId: conta.id, ...l })),
+        });
+      }
+      // O carimbo entra junto: "esta conta está em dia" só é verdade se os
+      // números entraram. Separado, uma falha no meio deixaria a conta
+      // marcada como atualizada sem os dados.
+      await tx.metaAdAccount.update({
+        where: { id: conta.id },
+        data: { lastSyncedAt: new Date(), lastSyncError: null },
+      });
+    },
+    // O limite do Prisma é 5s e não dá pra contar com ele: o banco fica longe
+    // e a latência varia. 20s cabe com folga e continua bem abaixo do tempo
+    // da função.
+    { timeout: 20_000, maxWait: 10_000 }
+  );
 
   return { ok: true, linhas: linhas.length, dias: DIAS_DE_INSIGHT };
 }

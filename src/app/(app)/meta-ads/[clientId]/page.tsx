@@ -135,7 +135,8 @@ export default async function LojaNoMetaAdsPage({
   // Nunca buscado não é zero: antes da primeira leitura, "R$ 0,00 investido"
   // diria que a loja não gastou nada, quando a verdade é que ninguém
   // perguntou ainda.
-  const jaBuscou = contas.some((c) => c.lastSyncedAt);
+  // Com sucesso: tentativa que deu erro não ensina nada sobre o gasto.
+  const jaBuscou = contas.some((c) => c.lastSyncedAt && !c.lastSyncError);
 
   const podeConfigurar = user.role === "ADMIN" || user.role === "GERENTE";
   const tiposUsados = [...new Set(contas.map((c) => c.leadActionType))];

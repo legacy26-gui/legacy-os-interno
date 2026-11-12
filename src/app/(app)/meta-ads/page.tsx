@@ -115,7 +115,14 @@ export default async function MetaAdsPage({
   // traiçoeiro: zero de gasto parece notícia boa.
   //
   // Depois de buscado, zero é zero de verdade: a conta não rodou no período.
-  const jaBuscou = clientes.some((c) => c.metaAdAccounts.some((a) => a.lastSyncedAt));
+  //
+  // "Buscado" quer dizer buscado COM SUCESSO. Tentativa que terminou em erro
+  // não ensina nada sobre o gasto, e mostrar R$ 0,00 em cima dela seria a
+  // mesma mentira de antes — com o agravante de que zero de gasto parece
+  // notícia boa.
+  const jaBuscou = clientes.some((c) =>
+    c.metaAdAccounts.some((a) => a.lastSyncedAt && !a.lastSyncError)
+  );
 
   return (
     <div className="flex flex-col gap-5 max-w-6xl">

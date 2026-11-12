@@ -410,6 +410,7 @@ async function carregar(user: Parameters<typeof escopoDaCarteira>[0], periodo: I
   const SOMAS = {
     spendCents: true,
     impressions: true,
+    reach: true,
     clicks: true,
     linkClicks: true,
     leads: true,
@@ -443,6 +444,7 @@ async function carregar(user: Parameters<typeof escopoDaCarteira>[0], periodo: I
       {
         spendCents: g._sum.spendCents ?? 0,
         impressions: g._sum.impressions ?? 0,
+        reach: g._sum.reach ?? 0,
         clicks: g._sum.clicks ?? 0,
         linkClicks: g._sum.linkClicks ?? 0,
         leads: g._sum.leads ?? 0,

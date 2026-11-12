@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { sincronizarSaldo } from "./sincronizar-saldo";
 import { sincronizarCriativos } from "./sincronizar-criativos";
+import { sincronizarEstrutura } from "./sincronizar-estrutura";
 import {
   sincronizarInsights,
   sincronizarVidaInteira,
@@ -84,13 +85,22 @@ async function umaConta(conta: ContaDaVarredura, prazo: Prazo): Promise<boolean>
     // último porque é a menos urgente das três.
     const vida = await sincronizarVidaInteira(conta);
 
-    // A arte não entra no veredito, de propósito: ela é enfeite útil, e não
+    // A arte e o cadastro não entram no veredito, de propósito: são enfeite
+    // útil, e não
     // ter a miniatura não pode pintar a loja de amarelo como se o GASTO
     // estivesse desatualizado. Falhou, fica sem imagem e pronto.
     try {
       await sincronizarCriativos(conta);
     } catch (erro) {
       console.error("[meta] falhou a arte de", conta.metaAccountId, erro);
+    }
+
+    // O cadastro (campanhas e conjuntos, com status e orçamento) também fica
+    // fora do veredito: cadastro velho é chato, mas não é o gasto errado.
+    try {
+      await sincronizarEstrutura(conta);
+    } catch (erro) {
+      console.error("[meta] falhou o cadastro de", conta.metaAccountId, erro);
     }
 
     return saldo.ok && numeros.ok && vida.ok;

@@ -113,7 +113,7 @@ export async function sincronizarInsights(
       until: comoDataDaMeta(ate),
     }),
     fields:
-      "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions",
+      "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,clicks,inline_link_clicks,actions",
     limit: String(POR_PAGINA),
   };
 
@@ -215,7 +215,7 @@ export async function sincronizarVidaInteira(
       level: "ad",
       date_preset: "maximum",
       fields:
-        "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions",
+        "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,clicks,inline_link_clicks,actions",
       limit: String(POR_PAGINA),
       ...(depois ? { after: depois } : {}),
     });

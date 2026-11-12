@@ -52,6 +52,7 @@ const CAMPOS = {
   campaignName: true,
   spendCents: true,
   impressions: true,
+  reach: true,
   clicks: true,
   linkClicks: true,
   leads: true,

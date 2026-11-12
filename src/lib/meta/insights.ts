@@ -212,6 +212,7 @@ export interface LinhaCrua {
   campaign_name?: string;
   spend?: string;
   impressions?: string;
+  reach?: string;
   clicks?: string;
   inline_link_clicks?: string;
   actions?: { action_type?: string; value?: string }[];
@@ -230,6 +231,7 @@ export interface LinhaLimpa {
   date: Date;
   spendCents: number;
   impressions: number;
+  reach: number;
   clicks: number;
   linkClicks: number;
   leads: number;
@@ -298,6 +300,7 @@ export function limparLinhas(linhas: LinhaCrua[], tipoDeLead: string): LinhaLimp
       date: new Date(Date.UTC(ano, mes - 1, dia, 12)),
       spendCents: gastoEmCentavos(l.spend),
       impressions: inteiro(l.impressions),
+      reach: inteiro(l.reach),
       clicks: inteiro(l.clicks),
       linkClicks: inteiro(l.inline_link_clicks),
       leads: contarLeads(l.actions, tipoDeLead),
@@ -325,6 +328,7 @@ export interface VidaInteira {
   campaignName: string | null;
   spendCents: number;
   impressions: number;
+  reach: number;
   clicks: number;
   linkClicks: number;
   leads: number;
@@ -351,6 +355,7 @@ export function limparVidaInteira(linhas: LinhaCrua[], tipoDeLead: string): Vida
       campaignName: l.campaign_name ?? null,
       spendCents: gastoEmCentavos(l.spend),
       impressions: inteiro(l.impressions),
+      reach: inteiro(l.reach),
       clicks: inteiro(l.clicks),
       linkClicks: inteiro(l.inline_link_clicks),
       leads: contarLeads(l.actions, tipoDeLead),
@@ -366,6 +371,8 @@ export function limparVidaInteira(linhas: LinhaCrua[], tipoDeLead: string): Vida
 export interface Numeros {
   spendCents: number;
   impressions: number;
+  /** Pessoas alcançadas. Impressões conta VEZES; isto conta gente. */
+  reach: number;
   clicks: number;
   linkClicks: number;
   leads: number;
@@ -374,6 +381,7 @@ export interface Numeros {
 export const ZERO: Numeros = {
   spendCents: 0,
   impressions: 0,
+  reach: 0,
   clicks: 0,
   linkClicks: 0,
   leads: 0,
@@ -384,6 +392,12 @@ export function somar(linhas: Numeros[]): Numeros {
     (t, l) => ({
       spendCents: t.spendCents + l.spendCents,
       impressions: t.impressions + l.impressions,
+      // Alcance NÃO se soma de verdade — a mesma pessoa pode estar em dois
+      // conjuntos, e somando ela conta duas vezes. A Meta só sabe o número
+      // certo no nível que ela mesma calculou. Somamos porque é a melhor
+      // aproximação que temos, e a tela chama de "alcance somado" pra não
+      // prometer exatidão que não existe.
+      reach: t.reach + l.reach,
       clicks: t.clicks + l.clicks,
       linkClicks: t.linkClicks + l.linkClicks,
       leads: t.leads + l.leads,

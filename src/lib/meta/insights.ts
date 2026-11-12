@@ -22,16 +22,160 @@ export const DIAS_PADRAO = 7;
 export const PERIODOS = [7, 14, 30] as const;
 export type Periodo = (typeof PERIODOS)[number];
 
-/** O que a tela mostra: uma janela de dias, ou tudo desde o começo. */
-export type Janela = Periodo | "tudo";
+// ──────────────────────── O período da tela ────────────────────────────────
+//
+// Um intervalo com começo e fim, e não mais "quantos dias atrás". Porque
+// "do dia 5 ao dia 12" não cabe em número de dias, e porque é assim que se
+// pergunta de verdade: ninguém quer saber dos "últimos 14 dias", quer saber
+// da quinzena, do mês passado, da semana da campanha de fim de ano.
+//
+// `de` e `ate` são meio-dia UTC, a mesma âncora das datas gravadas. Meio-dia
+// e não meia-noite porque fuso horário num campo de data faz o dia 5 virar o
+// dia 4 em algum lugar do caminho.
 
-export function janelaDoTexto(texto: string | undefined): Janela {
-  if (texto === "tudo") return "tudo";
-  return PERIODOS.find((p) => String(p) === texto) ?? DIAS_PADRAO;
+export interface Intervalo {
+  /** `null` em "vida inteira": não há começo, é tudo que existe. */
+  de: Date | null;
+  ate: Date | null;
+  /** Como aparece escrito na tela. */
+  rotulo: string;
+  /** Como vai na URL (`?periodo=...`). */
+  chave: string;
+  /** Vida inteira vem da outra tabela: um total por anúncio, não um por dia. */
+  vidaInteira: boolean;
 }
 
-export function rotuloDaJanela(j: Janela): string {
-  return j === "tudo" ? "Vida inteira" : `${j} dias`;
+/** Os atalhos, na ordem em que aparecem. */
+export const ATALHOS = [
+  "hoje",
+  "ontem",
+  "7",
+  "14",
+  "30",
+  "mes",
+  "mes-passado",
+  "tudo",
+] as const;
+export type Atalho = (typeof ATALHOS)[number];
+
+export const ROTULO_DO_ATALHO: Record<Atalho, string> = {
+  hoje: "Hoje",
+  ontem: "Ontem",
+  "7": "7 dias",
+  "14": "14 dias",
+  "30": "30 dias",
+  mes: "Este mês",
+  "mes-passado": "Mês passado",
+  tudo: "Vida inteira",
+};
+
+function meioDia(ano: number, mes: number, dia: number) {
+  return new Date(Date.UTC(ano, mes, dia, 12));
+}
+
+function hojeUTC(agora = new Date()) {
+  return meioDia(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate());
+}
+
+function somarDias(d: Date, n: number) {
+  const x = new Date(d);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x;
+}
+
+/** "2026-11-05" → data, ou null se não for data de verdade. */
+export function dataDoTexto(texto: string | undefined | null): Date | null {
+  if (!texto || !/^\d{4}-\d{2}-\d{2}$/.test(texto)) return null;
+  const [ano, mes, dia] = texto.split("-").map(Number);
+  if (mes < 1 || mes > 12 || dia < 1 || dia > 31) return null;
+  const d = meioDia(ano, mes - 1, dia);
+  // Confere que a data existe mesmo: 31 de fevereiro vira 3 de março, e aí
+  // o mês não bate.
+  return d.getUTCMonth() === mes - 1 ? d : null;
+}
+
+/** Data → "2026-11-05", pro campo do formulário e pra Graph API. */
+export function textoDaData(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/** "5 de nov" / "5 de nov de 2025" quando o ano não é o de agora. */
+export function diaCurto(d: Date, agora = new Date()): string {
+  const mesmoAno = d.getUTCFullYear() === agora.getUTCFullYear();
+  return d.toLocaleDateString("pt-BR", {
+    day: "numeric",
+    month: "short",
+    ...(mesmoAno ? {} : { year: "numeric" }),
+    timeZone: "UTC",
+  });
+}
+
+function doAtalho(a: Atalho, agora: Date): Intervalo {
+  const hoje = hojeUTC(agora);
+  const rotulo = ROTULO_DO_ATALHO[a];
+
+  if (a === "tudo") return { de: null, ate: null, rotulo, chave: a, vidaInteira: true };
+  if (a === "hoje") return { de: hoje, ate: hoje, rotulo, chave: a, vidaInteira: false };
+  if (a === "ontem") {
+    const o = somarDias(hoje, -1);
+    return { de: o, ate: o, rotulo, chave: a, vidaInteira: false };
+  }
+  if (a === "mes") {
+    return {
+      de: meioDia(agora.getUTCFullYear(), agora.getUTCMonth(), 1),
+      ate: hoje,
+      rotulo,
+      chave: a,
+      vidaInteira: false,
+    };
+  }
+  if (a === "mes-passado") {
+    const primeiroDesteMes = meioDia(agora.getUTCFullYear(), agora.getUTCMonth(), 1);
+    const ultimoDoPassado = somarDias(primeiroDesteMes, -1);
+    return {
+      de: meioDia(ultimoDoPassado.getUTCFullYear(), ultimoDoPassado.getUTCMonth(), 1),
+      ate: ultimoDoPassado,
+      rotulo,
+      chave: a,
+      vidaInteira: false,
+    };
+  }
+  // 7, 14, 30: inclui hoje, então 7 dias é hoje e os 6 anteriores.
+  const n = Number(a);
+  return { de: somarDias(hoje, -(n - 1)), ate: hoje, rotulo, chave: a, vidaInteira: false };
+}
+
+/**
+ * Lê o período da URL.
+ *
+ * Datas soltas (`de`/`ate`) ganham do atalho: se a pessoa escolheu um
+ * intervalo à mão, é esse que vale. Data inválida cai no padrão em vez de
+ * quebrar a tela — endereço se edita à mão e se compartilha torto.
+ */
+export function lerIntervalo(
+  busca: { periodo?: string; de?: string; ate?: string },
+  agora = new Date()
+): Intervalo {
+  const de = dataDoTexto(busca.de);
+  const ate = dataDoTexto(busca.ate);
+
+  if (de && ate) {
+    // Invertido é engano de digitação, não erro: troca e segue.
+    const [inicio, fim] = de <= ate ? [de, ate] : [ate, de];
+    return {
+      de: inicio,
+      ate: fim,
+      rotulo:
+        inicio.getTime() === fim.getTime()
+          ? diaCurto(inicio, agora)
+          : `${diaCurto(inicio, agora)} a ${diaCurto(fim, agora)}`,
+      chave: "",
+      vidaInteira: false,
+    };
+  }
+
+  const atalho = ATALHOS.find((a) => a === busca.periodo) ?? String(DIAS_PADRAO);
+  return doAtalho(atalho as Atalho, agora);
 }
 
 /**

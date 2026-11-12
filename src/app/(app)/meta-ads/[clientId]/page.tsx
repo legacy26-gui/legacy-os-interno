@@ -10,15 +10,23 @@ import {
   ctr,
   reais,
   numero,
-  janelaDoTexto,
-  rotuloDaJanela,
+  lerIntervalo,
+  textoDaData,
   rotuloDoTipoDeLead,
-  PERIODOS,
-  DIAS_PADRAO,
 } from "@/lib/meta/insights";
 import { AbasDaSecao } from "@/components/abas-da-secao";
+import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
 import { AcoesDaLoja } from "./acoes";
-import { linhasDaLoja, porCampanha, porConjunto, porAnuncio, nomeDe, type Nivel } from "./dados";
+import { Criativo } from "./criativo";
+import {
+  linhasDaLoja,
+  porCampanha,
+  porConjunto,
+  porAnuncio,
+  nomeDe,
+  criativosDe,
+  type Nivel,
+} from "./dados";
 
 // Uma loja, do jeito que se olha no Gerenciador: campanha → conjunto →
 // anúncio, descendo um nível a cada clique.
@@ -35,7 +43,14 @@ import { linhasDaLoja, porCampanha, porConjunto, porAnuncio, nomeDe, type Nivel 
 
 export const maxDuration = 60;
 
-type Busca = { dias?: string; conta?: string; campanha?: string; conjunto?: string };
+type Busca = {
+  periodo?: string;
+  de?: string;
+  ate?: string;
+  conta?: string;
+  campanha?: string;
+  conjunto?: string;
+};
 
 export default async function LojaNoMetaAdsPage({
   params,
@@ -56,10 +71,11 @@ export default async function LojaNoMetaAdsPage({
     manager: { select: { name: true } },
   });
 
-  const janela = janelaDoTexto(busca.dias);
+  const periodo = lerIntervalo(busca);
 
   let contas: Awaited<ReturnType<typeof carregarContas>>;
   let linhas: Awaited<ReturnType<typeof linhasDaLoja>>;
+  let artes: Awaited<ReturnType<typeof criativosDe>>;
   try {
     contas = await carregarContas(clientId);
     // A conta escolhida no seletor. Vinda da URL, então é conferida contra as
@@ -67,7 +83,8 @@ export default async function LojaNoMetaAdsPage({
     // gasto de outra.
     const escolhida = contas.find((c) => c.metaAccountId === busca.conta);
     const doFiltro = escolhida ? [escolhida.id] : contas.map((c) => c.id);
-    linhas = await linhasDaLoja(doFiltro, janela);
+    linhas = await linhasDaLoja(doFiltro, periodo);
+    artes = await criativosDe(doFiltro);
   } catch (erro) {
     const detalhe = erro instanceof Error ? erro.message : String(erro);
     return <Falha nome={cliente.companyName} detalhe={podeVerDetalhe(user.role) ? detalhe : null} />;
@@ -87,7 +104,11 @@ export default async function LojaNoMetaAdsPage({
       : linhas;
 
   const itens: Nivel[] = conjuntoAberto
-    ? porAnuncio(doNivel)
+    ? porAnuncio(doNivel).map((a) => ({
+        ...a,
+        miniatura: artes.get(a.id)?.thumbnailUrl ?? null,
+        preview: artes.get(a.id)?.previewUrl ?? null,
+      }))
     : campanhaAberta
       ? porConjunto(doNivel)
       : porCampanha(doNivel);
@@ -117,7 +138,9 @@ export default async function LojaNoMetaAdsPage({
   const href = (mudar: Partial<Busca>) => {
     const q = new URLSearchParams();
     const final = { ...busca, ...mudar };
-    if (final.dias && final.dias !== String(DIAS_PADRAO)) q.set("dias", final.dias);
+    if (final.periodo) q.set("periodo", final.periodo);
+    if (final.de) q.set("de", final.de);
+    if (final.ate) q.set("ate", final.ate);
     if (final.conta) q.set("conta", final.conta);
     if (final.campanha) q.set("campanha", final.campanha);
     if (final.conjunto) q.set("conjunto", final.conjunto);
@@ -176,11 +199,16 @@ export default async function LojaNoMetaAdsPage({
         </div>
       )}
 
-      <AbasDaSecao
-        abas={[
-          ...PERIODOS.map((p) => ({ href: href({ dias: String(p) }), label: `${p} dias` })),
-          { href: href({ dias: "tudo" }), label: "Vida inteira" },
-        ]}
+      <SeletorDePeriodo
+        caminho={`/meta-ads/${cliente.id}`}
+        manter={{
+          ...(busca.conta ? { conta: busca.conta } : {}),
+          ...(campanhaAberta ? { campanha: campanhaAberta } : {}),
+          ...(conjuntoAberto ? { conjunto: conjuntoAberto } : {}),
+        }}
+        atalhoAtivo={periodo.chave}
+        deAtual={periodo.de && !periodo.chave ? textoDaData(periodo.de) : ""}
+        ateAtual={periodo.ate && !periodo.chave ? textoDaData(periodo.ate) : ""}
       />
 
       {contas.some((c) => c.lastSyncError) && (
@@ -241,7 +269,7 @@ export default async function LojaNoMetaAdsPage({
       {total.spendCents > 0 && total.leads === 0 && (
         <div className="rounded-xl border border-amber-500/50 bg-amber-500/10 px-4 py-3">
           <p className="text-sm text-amber-600 dark:text-amber-400">
-            Gastou {reais(total.spendCents)} {janela === "tudo" ? "na vida inteira" : `nestes ${janela} dias`}{" "}
+            Gastou {reais(total.spendCents)} {periodo.vidaInteira ? "na vida inteira" : `no período de ${periodo.rotulo}`}{" "}
             e não registrou nenhum lead. Hoje esta loja conta como lead:{" "}
             <strong>{tiposUsados.map(rotuloDoTipoDeLead).join(", ")}</strong>. Se as campanhas dela
             são de outro tipo, o número fica em zero mesmo havendo resultado — dá pra trocar aqui
@@ -297,7 +325,7 @@ export default async function LojaNoMetaAdsPage({
         </Vazio>
       ) : itens.length === 0 ? (
         <Vazio>
-          Nenhum número {janela === "tudo" ? "guardado" : `nestes ${janela} dias`}. Aperte
+          Nenhum número em {periodo.rotulo.toLowerCase()}. Aperte
           “Atualizar agora” pra buscar na Meta — ou a conta não rodou nada no período.
         </Vazio>
       ) : (
@@ -307,7 +335,7 @@ export default async function LojaNoMetaAdsPage({
               {itens.length} {rotuloDoNivel.toLowerCase()}
               {itens.length === 1 ? "" : "s"}
             </p>
-            <p className="text-xs text-foreground-muted">{rotuloDaJanela(janela)}</p>
+            <p className="text-xs text-foreground-muted">{periodo.rotulo}</p>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -334,6 +362,11 @@ export default async function LojaNoMetaAdsPage({
                   return (
                     <tr key={i.id} className="hover:bg-surface-muted transition-colors">
                       <td className="px-5 py-3">
+                        <div className="flex items-start gap-3">
+                          {conjuntoAberto && (
+                            <Criativo url={i.miniatura ?? null} preview={i.preview ?? null} nome={i.nome} />
+                          )}
+                          <div className="min-w-0">
                         {destino ? (
                           <Link href={destino} className="font-medium hover:text-accent">
                             {i.nome}
@@ -347,6 +380,8 @@ export default async function LojaNoMetaAdsPage({
                             {i.dentro === 1 ? "" : "s"}
                           </span>
                         )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-5 py-3 text-right tabular-nums align-top">
                         {reais(i.spendCents)}
@@ -393,15 +428,16 @@ export default async function LojaNoMetaAdsPage({
       )}
 
       <p className="text-xs text-foreground-muted">
-        {janela === "tudo" ? (
+        {periodo.vidaInteira ? (
           <>
             Vida inteira é o acumulado que a Meta devolve para o que ainda existe na conta —
             campanha apagada lá some daqui também, e isso é limite dela, não do sistema.
           </>
         ) : (
           <>
-            Números dos últimos {janela} dias, dia a dia, como a Meta fecha. O sistema guarda 30
-            dias de detalhe; para períodos entre 30 dias e a vida inteira, o Gerenciador.
+            Números de {periodo.rotulo.toLowerCase()}, dia a dia, como a Meta fecha. O sistema
+            busca os últimos 30 dias a cada passada e guarda o que já buscou, então o histórico
+            cresce sozinho: datas anteriores ao dia em que a loja foi ligada aqui não existem.
           </>
         )}{" "}
         O investido aqui é o gasto na Meta, não a mensalidade da loja.

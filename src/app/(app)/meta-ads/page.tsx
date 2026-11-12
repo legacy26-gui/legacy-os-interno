@@ -15,15 +15,13 @@ import {
   custoPorLead,
   reais,
   numero,
-  desdeQuando,
-  janelaDoTexto,
-  PERIODOS,
-  DIAS_PADRAO,
-  ZERO,
+  lerIntervalo,
+  textoDaData,
   type Numeros,
-  type Janela,
+  type Intervalo,
+  ZERO,
 } from "@/lib/meta/insights";
-import { AbasDaSecao } from "@/components/abas-da-secao";
+import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
 import { AtualizarLoja } from "./atualizar-loja";
 
@@ -49,12 +47,12 @@ export const maxDuration = 60;
 export default async function MetaAdsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ dias?: string }>;
+  searchParams: Promise<{ periodo?: string; de?: string; ate?: string }>;
 }) {
   const user = await requireModuleAccess("clientes");
-  const { dias } = await searchParams;
+  const busca = await searchParams;
 
-  const janela = janelaDoTexto(dias);
+  const periodo = lerIntervalo(busca);
 
   // Buscar os dados dentro de um try: se o banco recusar alguma coisa, a
   // direção vê a MENSAGEM, não a tela preta do Next.
@@ -65,7 +63,7 @@ export default async function MetaAdsPage({
   // fazer algo com ela.
   let dados: Awaited<ReturnType<typeof carregar>>;
   try {
-    dados = await carregar(user, janela);
+    dados = await carregar(user, periodo);
   } catch (erro) {
     const detalhe = erro instanceof Error ? erro.message : String(erro);
     return (
@@ -139,14 +137,12 @@ export default async function MetaAdsPage({
         <BotaoAtualizarTudo />
       </div>
 
-      <AbasDaSecao
-        abas={[
-          ...PERIODOS.map((p) => ({
-            href: p === DIAS_PADRAO ? "/meta-ads" : `/meta-ads?dias=${p}`,
-            label: `${p} dias`,
-          })),
-          { href: "/meta-ads?dias=tudo", label: "Vida inteira" },
-        ]}
+      <SeletorDePeriodo
+        caminho="/meta-ads"
+        manter={{}}
+        atalhoAtivo={periodo.chave}
+        deAtual={periodo.de && !periodo.chave ? textoDaData(periodo.de) : ""}
+        ateAtual={periodo.ate && !periodo.chave ? textoDaData(periodo.ate) : ""}
       />
 
       {acabando.length > 0 && (
@@ -172,7 +168,7 @@ export default async function MetaAdsPage({
                 {gastandoSemLead.length}{" "}
                 {gastandoSemLead.length === 1 ? "loja gastou" : "lojas gastaram"} sem nenhum lead
               </strong>{" "}
-              {janela === "tudo" ? " na vida inteira das contas" : ` nestes ${janela} dias`}:{" "}
+              {periodo.vidaInteira ? " na vida inteira das contas" : ` em ${periodo.rotulo.toLowerCase()}`}:{" "}
               {gastandoSemLead.map((l) => l.cliente.companyName).join(", ")}. Pode ser campanha sem
               resultado mesmo, ou o tipo de lead configurado não ser o que a conta usa — abra a
               loja pra ver.
@@ -231,7 +227,15 @@ export default async function MetaAdsPage({
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              {/* As lojas precisam ser claramente separadas: quarenta linhas
+                  coladas viram parede, e o olho perde a linha no meio do
+                  caminho entre o nome e o número da direita.
+
+                  Três coisas juntas, porque uma só não resolve: mais ar
+                  (py-4), uma divisória mais forte que a do resto do sistema, e
+                  faixa alternada — que é o que de fato leva o olho do nome até
+                  a última coluna sem escorregar pra linha de baixo. */}
+              <tbody className="divide-y-2 divide-border/70">
                 {linhas.map(({ cliente: c, numeros: n, cpl }) => {
                   const contas = c.metaAdAccounts;
                   const prePagas = contas.filter((a) => a.isPrepay);
@@ -247,8 +251,11 @@ export default async function MetaAdsPage({
                   const erro = contas.find((a) => a.lastSyncError)?.lastSyncError ?? null;
 
                   return (
-                    <tr key={c.id} className="hover:bg-surface-muted transition-colors">
-                      <td className="px-4 py-3 align-top">
+                    <tr
+                      key={c.id}
+                      className="odd:bg-surface-muted/30 hover:bg-surface-muted transition-colors"
+                    >
+                      <td className="px-4 py-4 align-top">
                         {contas.length > 0 ? (
                           <Link
                             href={`/meta-ads/${c.id}`}
@@ -277,11 +284,11 @@ export default async function MetaAdsPage({
                         )}
                       </td>
                       {vePorGestor && (
-                        <td className="px-4 py-3 text-foreground-muted hidden xl:table-cell align-top">
+                        <td className="px-4 py-4 text-foreground-muted hidden xl:table-cell align-top">
                           {c.manager?.name?.split(" ")[0] ?? "—"}
                         </td>
                       )}
-                      <td className="px-4 py-3 text-right align-top">
+                      <td className="px-4 py-4 text-right align-top">
                         {prePagas.length === 0 ? (
                           <span className="text-xs text-foreground-muted">cartão</span>
                         ) : saldo === null ? (
@@ -294,21 +301,21 @@ export default async function MetaAdsPage({
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right align-top tabular-nums">
+                      <td className="px-4 py-4 text-right align-top tabular-nums">
                         {n.spendCents > 0 ? (
                           reais(n.spendCents)
                         ) : (
                           <span className="text-foreground-muted">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right align-top tabular-nums">
+                      <td className="px-4 py-4 text-right align-top tabular-nums">
                         {n.leads > 0 ? (
                           <span className="font-semibold">{numero(n.leads)}</span>
                         ) : (
                           <span className="text-foreground-muted">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right align-top tabular-nums">
+                      <td className="px-4 py-4 text-right align-top tabular-nums">
                         {/* Sem lead não existe custo por lead: "—" e não
                             R$ 0,00. Gastar sem lead é problema, e zero ali
                             pareceria o melhor resultado da lista. */}
@@ -318,10 +325,10 @@ export default async function MetaAdsPage({
                           reais(cpl)
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-xs text-foreground-muted hidden lg:table-cell align-top">
+                      <td className="px-4 py-4 text-right text-xs text-foreground-muted hidden lg:table-cell align-top">
                         {quando ? tempoDesde(quando) : contas.length ? "nunca" : ""}
                       </td>
-                      <td className="px-2 py-3 align-top text-right">
+                      <td className="px-2 py-4 align-top text-right">
                         {/* Loja sem conta não tem o que buscar. */}
                         {contas.length > 0 && (
                           <AtualizarLoja clientId={c.id} nome={c.companyName} />
@@ -337,10 +344,9 @@ export default async function MetaAdsPage({
       )}
 
       <p className="text-xs text-foreground-muted">
-        Clique na loja pra ver campanha por campanha. Investido, leads e custo por lead são dos
-        {janela === "tudo" ? "toda a vida das contas" : `últimos ${janela} dias`}. Para vincular
-        uma conta, abra a loja e use o bloco “Meta Ads” na
-        ficha dela.
+        Clique na loja pra ver campanha por campanha. Investido, leads e custo por lead são de{" "}
+        {periodo.vidaInteira ? "toda a vida das contas" : periodo.rotulo.toLowerCase()}. Para
+        vincular uma conta, abra a loja e use o bloco “Meta Ads” na ficha dela.
       </p>
     </div>
   );
@@ -350,7 +356,7 @@ export default async function MetaAdsPage({
  * As duas consultas da tela, num lugar só pra poderem ser protegidas por um
  * try/catch sem embrulhar o desenho da página junto.
  */
-async function carregar(user: Parameters<typeof escopoDaCarteira>[0], janela: Janela) {
+async function carregar(user: Parameters<typeof escopoDaCarteira>[0], periodo: Intervalo) {
   const clientes = await prisma.client.findMany({
     where: { ...CARTEIRA, ...escopoDaCarteira(user) },
     orderBy: { companyName: "asc" },
@@ -393,7 +399,7 @@ async function carregar(user: Parameters<typeof escopoDaCarteira>[0], janela: Ja
   // de um por dia, justamente pra não ter que somar anos de linha toda vez.
   const porConta = !idsDasContas.length
     ? []
-    : janela === "tudo"
+    : periodo.vidaInteira
       ? await prisma.metaLifetime.groupBy({
           by: ["adAccountId"],
           where: { adAccountId: { in: idsDasContas } },
@@ -401,7 +407,13 @@ async function carregar(user: Parameters<typeof escopoDaCarteira>[0], janela: Ja
         })
       : await prisma.metaInsightDaily.groupBy({
           by: ["adAccountId"],
-          where: { adAccountId: { in: idsDasContas }, date: { gte: desdeQuando(janela) } },
+          where: {
+            adAccountId: { in: idsDasContas },
+            date: {
+              ...(periodo.de ? { gte: periodo.de } : {}),
+              ...(periodo.ate ? { lte: periodo.ate } : {}),
+            },
+          },
           _sum: SOMAS,
         });
 

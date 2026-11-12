@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { sincronizarSaldo } from "./sincronizar-saldo";
+import { sincronizarCriativos } from "./sincronizar-criativos";
 import {
   sincronizarInsights,
   sincronizarVidaInteira,
@@ -82,6 +83,16 @@ async function umaConta(conta: ContaDaVarredura, prazo: Prazo): Promise<boolean>
     // A vida inteira é uma chamada só e não paginada na prática; vem por
     // último porque é a menos urgente das três.
     const vida = await sincronizarVidaInteira(conta);
+
+    // A arte não entra no veredito, de propósito: ela é enfeite útil, e não
+    // ter a miniatura não pode pintar a loja de amarelo como se o GASTO
+    // estivesse desatualizado. Falhou, fica sem imagem e pronto.
+    try {
+      await sincronizarCriativos(conta);
+    } catch (erro) {
+      console.error("[meta] falhou a arte de", conta.metaAccountId, erro);
+    }
+
     return saldo.ok && numeros.ok && vida.ok;
   } catch (erro) {
     console.error("[meta] falhou a conta", conta.metaAccountId, erro);

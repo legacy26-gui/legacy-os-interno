@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { somar, custoPorLead, ctr, desdeQuando, type Numeros, type Janela } from "@/lib/meta/insights";
+import { somar, custoPorLead, ctr, type Numeros, type Intervalo } from "@/lib/meta/insights";
 
 // De onde vêm os números da tela da loja.
 //
@@ -19,6 +19,9 @@ import { somar, custoPorLead, ctr, desdeQuando, type Numeros, type Janela } from
 export interface Nivel extends Numeros {
   id: string;
   nome: string;
+  /** Só no nível do anúncio: a arte, quando o sistema a tem. */
+  miniatura?: string | null;
+  preview?: string | null;
   /** Quantos itens tem dentro (conjuntos numa campanha, anúncios num conjunto). */
   dentro: number;
   cpl: number | null;
@@ -57,18 +60,24 @@ const CAMPOS = {
  */
 export async function linhasDaLoja(
   idsDasContas: string[],
-  janela: Janela
+  periodo: Intervalo
 ): Promise<LinhaCrua[]> {
   if (idsDasContas.length === 0) return [];
 
-  if (janela === "tudo") {
+  if (periodo.vidaInteira) {
     return prisma.metaLifetime.findMany({
       where: { adAccountId: { in: idsDasContas } },
       select: CAMPOS,
     });
   }
   return prisma.metaInsightDaily.findMany({
-    where: { adAccountId: { in: idsDasContas }, date: { gte: desdeQuando(janela) } },
+    where: {
+      adAccountId: { in: idsDasContas },
+      date: {
+        ...(periodo.de ? { gte: periodo.de } : {}),
+        ...(periodo.ate ? { lte: periodo.ate } : {}),
+      },
+    },
     select: CAMPOS,
   });
 }
@@ -121,6 +130,16 @@ export function porConjunto(linhas: LinhaCrua[]): Nivel[] {
 
 export function porAnuncio(linhas: LinhaCrua[]): Nivel[] {
   return agrupar(linhas, (l) => ({ id: l.adId, nome: l.adName }), (l) => l.adId);
+}
+
+/** A arte dos anúncios de uma conta, pra pendurar nas linhas do nível. */
+export async function criativosDe(idsDasContas: string[]) {
+  if (idsDasContas.length === 0) return new Map<string, { thumbnailUrl: string | null; previewUrl: string | null }>();
+  const linhas = await prisma.metaAdCreative.findMany({
+    where: { adAccountId: { in: idsDasContas } },
+    select: { adId: true, thumbnailUrl: true, previewUrl: true },
+  });
+  return new Map(linhas.map((c) => [c.adId, c]));
 }
 
 /** O nome de uma campanha ou conjunto, pra escrever no caminho de volta. */

@@ -1148,6 +1148,7 @@ model MetaAdAccount {
   balanceSnapshots BalanceSnapshot[]
   insights         MetaInsightDaily[]
   lifetime         MetaLifetime[]
+  criativos        MetaAdCreative[]
 
   @@index([clientId])
   @@map("meta_ad_accounts")
@@ -1246,4 +1247,33 @@ model MetaLifetime {
   @@unique([adAccountId, adId])
   @@index([adAccountId, campaignId])
   @@map("meta_lifetime")
+}
+
+// O criativo do anúncio: a miniatura e o link pra ver inteiro.
+//
+// Tabela separada das duas de números porque muda numa frequência
+// completamente outra: número muda todo dia, criativo muda quando alguém
+// troca a arte. E porque a miniatura é um endereço na CDN da Meta, que
+// expira — guardar junto do número faria a linha de ontem carregar uma imagem
+// quebrada de hoje.
+model MetaAdCreative {
+  id          String        @id @default(cuid())
+  adAccountId String
+  adAccount   MetaAdAccount @relation(fields: [adAccountId], references: [id])
+
+  adId   String
+  adName String
+  // ATIVO, PAUSADO, etc. — como a Meta escreve. Guardado como veio, sem
+  // traduzir: traduzir aqui é inventar um vocabulário nosso em cima do dela.
+  status String?
+
+  // Endereço da miniatura na CDN da Meta. Pode expirar, e a tela trata isso.
+  thumbnailUrl String?
+  // O link de pré-visualização que a Meta gera: é o "ver o anúncio" dela.
+  previewUrl   String?
+
+  atualizadoEm DateTime @default(now())
+
+  @@unique([adAccountId, adId])
+  @@map("meta_ad_creatives")
 }

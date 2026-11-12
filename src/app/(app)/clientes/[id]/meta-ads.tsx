@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { Megaphone, RefreshCw, AlertTriangle, Plus, BarChart3 } from "lucide-react";
 import {
   vincularContaAnuncios,
-  atualizarSaldoAgora,
+  atualizarLojaAgora,
   type MetaAdsState,
 } from "@/lib/actions/meta-ads";
 
@@ -41,7 +41,7 @@ export function BlocoMetaAds({
   const [abrirForm, setAbrirForm] = useState(false);
 
   function atualizar() {
-    comecar(async () => setEstado(await atualizarSaldoAgora(clientId)));
+    comecar(async () => setEstado(await atualizarLojaAgora(clientId)));
   }
 
   function vincular(formData: FormData) {

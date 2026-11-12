@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { rodarAlertas, ROBO_DOS_ALERTAS } from "@/lib/alertas/robo";
+import { varrerCasa } from "@/lib/meta/varredura";
+import { prazoDe } from "@/lib/meta/sincronizar-insights";
 
 // A porta que o robô usa pra acordar.
 //
@@ -34,12 +36,20 @@ import { rodarAlertas, ROBO_DOS_ALERTAS } from "@/lib/alertas/robo";
 // fecha a porta de vez, sem mexer em mais nada.
 
 export const dynamic = "force-dynamic";
-// O robô consulta quatro coisas e manda os avisos. 60s é folga de sobra pro
-// tamanho da agência, e evita cortar no meio se um dia a lista crescer.
-export const maxDuration = 60;
+// Os alertas são quatro consultas e uns avisos — rápido. O que pesa agora é a
+// passada na Meta: dezenas de contas, duas chamadas cada. Daí os 300s.
+export const maxDuration = 300;
 
 /** Sem segredo configurado, o robô só trabalha de novo depois disto. */
 const INTERVALO_SEM_SEGREDO_MIN = 15;
+
+/**
+ * Quanto tempo a passada na Meta pode gastar.
+ *
+ * Sobra tempo de função depois dela pros alertas, que é o trabalho que não
+ * pode faltar. A Meta é importante; os alertas são a razão de o robô existir.
+ */
+const ORCAMENTO_DA_META_MS = 200_000;
 
 export async function GET(req: Request) {
   const segredo = process.env.CRON_SECRET?.trim();
@@ -64,9 +74,26 @@ export async function GET(req: Request) {
   }
 
   try {
+    // A Meta primeiro, e dentro do próprio try/catch.
+    //
+    // Primeiro porque os alertas leem o que ela trouxe — rodar na ordem
+    // contrária avisaria sobre os números de ontem.
+    //
+    // Em try/catch separado porque a Meta é de fora: ela cai, muda, recusa
+    // token. Nada disso pode impedir o aviso de gravação atrasada de sair. O
+    // que falhou já guardou o motivo em lastSyncError e aparece na tela.
+    let meta: unknown = "não rodou";
+    try {
+      meta = await varrerCasa(prazoDe(ORCAMENTO_DA_META_MS));
+      console.log("[meta] varredura da noite:", JSON.stringify(meta));
+    } catch (erro) {
+      console.error("[meta] varredura falhou", erro);
+      meta = "falhou";
+    }
+
     const r = await rodarAlertas();
     console.log("[alertas] robô rodou:", JSON.stringify(r));
-    return NextResponse.json({ ok: true, ...r });
+    return NextResponse.json({ ok: true, ...r, meta });
   } catch (erro) {
     // Devolve 500 de propósito: a Vercel marca a execução como falha e o
     // problema aparece no painel, em vez de um "ok" mentiroso todo dia.

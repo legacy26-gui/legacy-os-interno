@@ -6,16 +6,8 @@ import { requireModuleAccess } from "@/lib/dal";
 import { clienteEDaCarteira, escopoDaCarteira, CARTEIRA } from "@/lib/carteira";
 import { contaValida } from "@/lib/meta/saldo";
 import { TIPOS_DE_LEAD } from "@/lib/meta/insights";
-import {
-  sincronizarSaldo,
-  sincronizarSaldosDoCliente,
-} from "@/lib/meta/sincronizar-saldo";
-import {
-  sincronizarInsights,
-  sincronizarInsightsDoCliente,
-  prazoDe,
-  aindaDaTempo,
-} from "@/lib/meta/sincronizar-insights";
+import { prazoDe } from "@/lib/meta/sincronizar-insights";
+import { varrerContas, varrerCliente } from "@/lib/meta/varredura";
 
 // Vincular conta de anúncio da Meta e buscar o saldo.
 //
@@ -126,53 +118,6 @@ export async function vincularContaAnuncios(
   });
 }
 
-/**
- * Busca o saldo na Meta agora, sem esperar rotina nenhuma.
- *
- * Quem aperta isso normalmente está no telefone com a loja. A resposta diz o
- * que deu, inclusive quando não deu: "indisponível" com motivo é informação,
- * botão que parece ter funcionado sem ter funcionado não é.
- *
- * Gestor de tráfego também pode apertar — ele não escolhe a conta, mas precisa
- * do número.
- */
-export async function atualizarSaldoAgora(
-  clientId: string,
-): Promise<MetaAdsState> {
-  return semQuebrar(async () => {
-    const user = await requireModuleAccess("clientes");
-    if (!(await clienteEDaCarteira(user, clientId))) {
-      return { erro: "Esta loja não está na sua lista." };
-    }
-
-    const resultados = await sincronizarSaldosDoCliente(clientId);
-    revalidar(clientId);
-
-    if (resultados.length === 0) {
-      return { erro: "Nenhuma conta de anúncio vinculada a este cliente." };
-    }
-
-    const falhas = resultados.filter((r) => !r.resultado.ok);
-    if (falhas.length === resultados.length) {
-      // Uma conta só: mostra o motivo. Várias: mostra quantas, e o motivo de
-      // cada uma fica na linha dela, na tela.
-      const unica =
-        falhas.length === 1 && !falhas[0].resultado.ok
-          ? falhas[0].resultado.erro
-          : null;
-      return {
-        erro: unica ?? `Não deu pra ler o saldo de ${falhas.length} conta(s).`,
-      };
-    }
-
-    return {
-      ok:
-        falhas.length === 0
-          ? "Saldo atualizado."
-          : `Saldo atualizado, menos de ${falhas.length} conta(s).`,
-    };
-  });
-}
 
 /**
  * Quantas contas uma varredura busca de uma vez.
@@ -237,96 +182,66 @@ export async function atualizarCarteira(): Promise<MetaAdsState> {
       };
     }
 
-    const prazo = prazoDe(ORCAMENTO_MS);
-    let ok = 0;
-    let falhou = 0;
-    let naoDeuTempo = 0;
-
-    for (const conta of contas) {
-      // Acabou o tempo: para e conta quantas ficaram. A ordem é "mais velha
-      // primeiro", então apertar de novo continua de onde parou — ninguém
-      // precisa saber quais faltaram.
-      if (!aindaDaTempo(prazo)) {
-        naoDeuTempo = contas.length - (ok + falhou);
-        break;
-      }
-      // Saldo primeiro: é o número que para a campanha. Se a conta está
-      // quebrada, melhor saber disso antes de gastar a segunda chamada.
-      const s = await sincronizarSaldo(conta);
-      const i = await sincronizarInsights(conta, prazo);
-      if (s.ok && i.ok) ok++;
-      else falhou++;
-    }
-
+    const r = await varrerContas(contas, prazoDe(ORCAMENTO_MS));
     revalidatePath("/meta-ads");
 
-    const faltou = naoDeuTempo > 0 ? ` Faltaram ${naoDeuTempo} — aperte de novo pra continuar.` : "";
+    const faltou =
+      r.naoDeuTempo > 0 ? ` Faltaram ${r.naoDeuTempo} — aperte de novo pra continuar.` : "";
 
-    if (ok === 0 && falhou === 0) {
+    if (r.ok === 0 && r.falhou === 0) {
       return { erro: "Não deu tempo de atualizar nenhuma conta. Aperte de novo." };
     }
-    if (ok === 0) {
+    if (r.ok === 0) {
       return {
-        erro: `Não deu pra atualizar nenhuma das ${falhou} contas. O motivo está na linha de cada uma.${faltou}`,
+        erro: `Não deu pra atualizar nenhuma das ${r.falhou} contas. O motivo está na linha de cada uma.${faltou}`,
       };
     }
     return {
       ok:
-        (falhou === 0
-          ? `${ok} ${ok === 1 ? "conta atualizada" : "contas atualizadas"}.`
-          : `${ok} atualizada(s), ${falhou} com problema — o motivo está na linha de cada uma.`) +
+        (r.falhou === 0
+          ? `${r.ok} ${r.ok === 1 ? "conta atualizada" : "contas atualizadas"}.`
+          : `${r.ok} atualizada(s), ${r.falhou} com problema — o motivo está na linha de cada uma.`) +
         faltou,
     };
   });
 }
 
 /**
- * Busca os números de campanha de um cliente agora.
+ * Atualiza UMA loja: saldo e números, de uma vez.
  *
- * Separado do saldo porque na ficha da loja são duas perguntas diferentes:
- * "quanto tem na conta" e "o que as campanhas fizeram".
+ * É o botão da linha da lista e o da ficha. Existe porque a pergunta mais
+ * comum não é "como está a casa", é "como está ESSA loja" — normalmente com
+ * alguém no telefone do outro lado. Uma loja são duas chamadas: responde em
+ * segundos, sem prazo apertado e sem risco de morrer no meio.
+ *
+ * Saldo e números juntos de propósito. Separados, um dia alguém aperta um e
+ * esquece o outro, e metade da tela fica velha sem ninguém perceber.
  */
-export async function atualizarCampanhasAgora(
-  clientId: string,
-): Promise<MetaAdsState> {
+export async function atualizarLojaAgora(clientId: string): Promise<MetaAdsState> {
   return semQuebrar(async () => {
     const user = await requireModuleAccess("clientes");
     if (!(await clienteEDaCarteira(user, clientId))) {
       return { erro: "Esta loja não está na sua lista." };
     }
 
-    const resultados = await sincronizarInsightsDoCliente(clientId, prazoDe(ORCAMENTO_MS));
+    const r = await varrerCliente(clientId);
     revalidar(clientId);
 
-    if (resultados.length === 0) {
-      return { erro: "Nenhuma conta de anúncio vinculada a este cliente." };
+    if (r.total === 0) {
+      return { erro: "Nenhuma conta de anúncio vinculada a esta loja." };
     }
-
-    const falhas = resultados.filter((r) => !r.resultado.ok);
-    if (falhas.length === resultados.length) {
-      const unica =
-        falhas.length === 1 && !falhas[0].resultado.ok
-          ? falhas[0].resultado.erro
-          : null;
-      return {
-        erro:
-          unica ??
-          `Não deu pra buscar os números de ${falhas.length} conta(s).`,
-      };
+    if (r.ok === 0) {
+      return { erro: "Não deu pra atualizar. O motivo está na linha da conta." };
     }
-
-    const linhas = resultados.reduce(
-      (t, r) => t + (r.resultado.ok ? r.resultado.linhas : 0),
-      0,
-    );
     return {
       ok:
-        falhas.length === 0
-          ? `Números atualizados (${linhas} dias de conjunto).`
-          : `Números atualizados, menos de ${falhas.length} conta(s).`,
+        r.falhou === 0
+          ? "Atualizado."
+          : `Atualizado, menos de ${r.falhou} conta(s) — o motivo está na linha de cada uma.`,
     };
   });
 }
+
 
 /**
  * Troca o que conta como "lead" numa conta.
@@ -345,7 +260,9 @@ export async function definirTipoDeLead(
 ): Promise<MetaAdsState> {
   return semQuebrar(async () => {
     const user = await quemPodeVincular(clientId);
-    if (!user) return { erro: "Só a direção muda o que conta como lead." };
+    if (!user) {
+      return { erro: "Só a direção muda o que conta como lead." };
+    }
 
     if (!TIPOS_DE_LEAD.some((t) => t.valor === tipo)) {
       return { erro: "Tipo de lead desconhecido." };
@@ -361,7 +278,7 @@ export async function definirTipoDeLead(
 
     revalidar(clientId);
     return {
-      ok: "Tipo de lead trocado. Aperte “Atualizar números” pra recontar os últimos 30 dias.",
+      ok: "Tipo de lead trocado. Aperte “Atualizar agora” pra recontar os últimos 30 dias.",
     };
   });
 }

@@ -24,6 +24,7 @@ import {
 } from "@/lib/meta/insights";
 import { AbasDaSecao } from "@/components/abas-da-secao";
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
+import { AtualizarLoja } from "./atualizar-loja";
 
 // Meta Ads: a carteira inteira numa tela — saldo e resultado de cada loja.
 //
@@ -223,6 +224,9 @@ export default async function MetaAdsPage({
                   <th className="px-4 py-3 font-medium text-right hidden lg:table-cell">
                     Atualizado
                   </th>
+                  <th className="px-2 py-3 font-medium w-10">
+                    <span className="sr-only">Atualizar</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -314,6 +318,12 @@ export default async function MetaAdsPage({
                       </td>
                       <td className="px-4 py-3 text-right text-xs text-foreground-muted hidden lg:table-cell align-top">
                         {quando ? tempoDesde(quando) : contas.length ? "nunca" : ""}
+                      </td>
+                      <td className="px-2 py-3 align-top text-right">
+                        {/* Loja sem conta não tem o que buscar. */}
+                        {contas.length > 0 && (
+                          <AtualizarLoja clientId={c.id} nome={c.companyName} />
+                        )}
                       </td>
                     </tr>
                   );

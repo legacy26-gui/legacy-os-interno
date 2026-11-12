@@ -2,12 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { RefreshCw, SlidersHorizontal } from "lucide-react";
-import {
-  atualizarCampanhasAgora,
-  atualizarSaldoAgora,
-  definirTipoDeLead,
-  type MetaAdsState,
-} from "@/lib/actions/meta-ads";
+import { atualizarLojaAgora, definirTipoDeLead, type MetaAdsState } from "@/lib/actions/meta-ads";
 import { TIPOS_DE_LEAD } from "@/lib/meta/insights";
 
 interface ContaConfig {
@@ -19,9 +14,10 @@ interface ContaConfig {
 /**
  * Os botões da tela da loja.
  *
- * Saldo e números em botões separados aqui (e juntos na lista) de propósito:
- * na tela da loja a pessoa já sabe o que veio ver, e buscar as duas coisas
- * toda vez seria chamada de rede à toa.
+ * UM botão de atualizar, não dois. Tinha separado saldo e números achando que
+ * economizava chamada; o que isso economiza é uma chamada e o que custa é a
+ * pessoa apertar um, não apertar o outro e ler meia tela velha achando que é
+ * nova. Uma loja são duas chamadas de rede: não vale a pena.
  */
 export function AcoesDaLoja({
   clientId,
@@ -42,19 +38,11 @@ export function AcoesDaLoja({
         <button
           type="button"
           disabled={pendente}
-          onClick={() => comecar(async () => setEstado(await atualizarCampanhasAgora(clientId)))}
+          onClick={() => comecar(async () => setEstado(await atualizarLojaAgora(clientId)))}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted disabled:opacity-60"
         >
           <RefreshCw size={14} className={pendente ? "animate-spin" : ""} />
-          Atualizar números
-        </button>
-        <button
-          type="button"
-          disabled={pendente}
-          onClick={() => comecar(async () => setEstado(await atualizarSaldoAgora(clientId)))}
-          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-surface border border-border rounded-lg text-sm hover:bg-surface-muted disabled:opacity-60"
-        >
-          Atualizar saldo
+          {pendente ? "Buscando…" : "Atualizar agora"}
         </button>
         {podeConfigurar && contas.length > 0 && (
           <button
@@ -78,7 +66,7 @@ export function AcoesDaLoja({
         <div className="w-full sm:w-96 rounded-xl border border-border bg-surface p-4 flex flex-col gap-3">
           <p className="text-xs text-foreground-muted">
             Qual ação da Meta conta como lead nesta loja. Trocar aqui não reescreve o que já está
-            gravado — aperte “Atualizar números” depois pra recontar os 30 dias.
+            gravado — aperte “Atualizar agora” depois pra recontar os 30 dias.
           </p>
           {contas.map((c) => (
             <label key={c.id} className="flex flex-col gap-1.5">

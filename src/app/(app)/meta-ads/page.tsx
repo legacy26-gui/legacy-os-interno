@@ -44,6 +44,15 @@ import { AtualizarLoja } from "./atualizar-loja";
 // qualquer plano da Vercel — 300 só vale em alguns.
 export const maxDuration = 60;
 
+// Cada loja é um cartão de verdade: fundo próprio, borda em volta e espaço
+// entre um e outro (border-spacing-y na tabela).
+//
+// A borda fica nas CÉLULAS e não na linha porque <tr> não aceita borda
+// arredondada: a primeira célula fecha o canto da esquerda, a última o da
+// direita, e as do meio só levam as bordas de cima e de baixo.
+const CEL = "bg-surface border-y border-border";
+const LINHA = "transition-colors [&>td]:hover:bg-surface-muted";
+
 export default async function MetaAdsPage({
   searchParams,
 }: {
@@ -206,36 +215,33 @@ export default async function MetaAdsPage({
           Nenhuma loja na sua carteira ainda.
         </p>
       ) : (
-        <div className="rounded-2xl border border-border bg-surface overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+        /* Cada loja é um cartão, com espaço de verdade entre um e outro.
+           Tentei antes com faixa alternada e divisória mais forte, e no tema
+           CLARO isso some: a faixa é #f1f1f3 a 30% sobre branco, ou seja,
+           branco. Espaço vazio não tem esse problema — ele se enxerga igual
+           no claro e no escuro, que é o único jeito de resolver isto de uma
+           vez em vez de ficar calibrando cinza. */
+        <div className="overflow-x-auto -mx-1 px-1">
+            <table className="w-full text-sm border-separate border-spacing-y-2">
               <thead>
-                <tr className="border-b border-border text-left text-foreground-muted text-xs uppercase tracking-wide">
-                  <th className="px-4 py-3 font-medium">Loja</th>
+                <tr className="text-left text-foreground-muted text-xs uppercase tracking-wide">
+                  <th className="px-4 pb-1 font-medium">Loja</th>
                   {vePorGestor && (
-                    <th className="px-4 py-3 font-medium hidden xl:table-cell">Gestor</th>
+                    <th className="px-4 pb-1 font-medium hidden xl:table-cell">Gestor</th>
                   )}
-                  <th className="px-4 py-3 font-medium text-right">Saldo</th>
-                  <th className="px-4 py-3 font-medium text-right">Investido</th>
-                  <th className="px-4 py-3 font-medium text-right">Leads</th>
-                  <th className="px-4 py-3 font-medium text-right">Custo/lead</th>
-                  <th className="px-4 py-3 font-medium text-right hidden lg:table-cell">
+                  <th className="px-4 pb-1 font-medium text-right">Saldo</th>
+                  <th className="px-4 pb-1 font-medium text-right">Investido</th>
+                  <th className="px-4 pb-1 font-medium text-right">Leads</th>
+                  <th className="px-4 pb-1 font-medium text-right">Custo/lead</th>
+                  <th className="px-4 pb-1 font-medium text-right hidden lg:table-cell">
                     Atualizado
                   </th>
-                  <th className="px-2 py-3 font-medium w-10">
+                  <th className="px-2 pb-1 font-medium w-10">
                     <span className="sr-only">Atualizar</span>
                   </th>
                 </tr>
               </thead>
-              {/* As lojas precisam ser claramente separadas: quarenta linhas
-                  coladas viram parede, e o olho perde a linha no meio do
-                  caminho entre o nome e o número da direita.
-
-                  Três coisas juntas, porque uma só não resolve: mais ar
-                  (py-4), uma divisória mais forte que a do resto do sistema, e
-                  faixa alternada — que é o que de fato leva o olho do nome até
-                  a última coluna sem escorregar pra linha de baixo. */}
-              <tbody className="divide-y-2 divide-border/70">
+              <tbody>
                 {linhas.map(({ cliente: c, numeros: n, cpl }) => {
                   const contas = c.metaAdAccounts;
                   const prePagas = contas.filter((a) => a.isPrepay);
@@ -251,11 +257,8 @@ export default async function MetaAdsPage({
                   const erro = contas.find((a) => a.lastSyncError)?.lastSyncError ?? null;
 
                   return (
-                    <tr
-                      key={c.id}
-                      className="odd:bg-surface-muted/30 hover:bg-surface-muted transition-colors"
-                    >
-                      <td className="px-4 py-4 align-top">
+                    <tr key={c.id} className={LINHA}>
+                      <td className={`px-4 py-4 align-top ${CEL} border-l rounded-l-xl`}>
                         {contas.length > 0 ? (
                           <Link
                             href={`/meta-ads/${c.id}`}
@@ -284,11 +287,11 @@ export default async function MetaAdsPage({
                         )}
                       </td>
                       {vePorGestor && (
-                        <td className="px-4 py-4 text-foreground-muted hidden xl:table-cell align-top">
+                        <td className={`px-4 py-4 text-foreground-muted hidden xl:table-cell align-top ${CEL}`}>
                           {c.manager?.name?.split(" ")[0] ?? "—"}
                         </td>
                       )}
-                      <td className="px-4 py-4 text-right align-top">
+                      <td className={`px-4 py-4 text-right align-top ${CEL}`}>
                         {prePagas.length === 0 ? (
                           <span className="text-xs text-foreground-muted">cartão</span>
                         ) : saldo === null ? (
@@ -301,21 +304,21 @@ export default async function MetaAdsPage({
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-right align-top tabular-nums">
+                      <td className={`px-4 py-4 text-right align-top tabular-nums ${CEL}`}>
                         {n.spendCents > 0 ? (
                           reais(n.spendCents)
                         ) : (
                           <span className="text-foreground-muted">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-right align-top tabular-nums">
+                      <td className={`px-4 py-4 text-right align-top tabular-nums ${CEL}`}>
                         {n.leads > 0 ? (
                           <span className="font-semibold">{numero(n.leads)}</span>
                         ) : (
                           <span className="text-foreground-muted">—</span>
                         )}
                       </td>
-                      <td className="px-4 py-4 text-right align-top tabular-nums">
+                      <td className={`px-4 py-4 text-right align-top tabular-nums ${CEL}`}>
                         {/* Sem lead não existe custo por lead: "—" e não
                             R$ 0,00. Gastar sem lead é problema, e zero ali
                             pareceria o melhor resultado da lista. */}
@@ -325,10 +328,10 @@ export default async function MetaAdsPage({
                           reais(cpl)
                         )}
                       </td>
-                      <td className="px-4 py-4 text-right text-xs text-foreground-muted hidden lg:table-cell align-top">
+                      <td className={`px-4 py-4 text-right text-xs text-foreground-muted hidden lg:table-cell align-top ${CEL}`}>
                         {quando ? tempoDesde(quando) : contas.length ? "nunca" : ""}
                       </td>
-                      <td className="px-2 py-4 align-top text-right">
+                      <td className={`px-2 py-4 align-top text-right ${CEL} border-r rounded-r-xl`}>
                         {/* Loja sem conta não tem o que buscar. */}
                         {contas.length > 0 && (
                           <AtualizarLoja clientId={c.id} nome={c.companyName} />
@@ -339,7 +342,6 @@ export default async function MetaAdsPage({
                 })}
               </tbody>
             </table>
-          </div>
         </div>
       )}
 

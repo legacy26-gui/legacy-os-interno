@@ -29,7 +29,7 @@ import { AcoesDaLoja } from "./acoes";
 // campanha que não entrega nada é dinheiro queimado devagar, que é pior
 // porque ninguém percebe.
 
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 export default async function LojaNoMetaAdsPage({
   params,

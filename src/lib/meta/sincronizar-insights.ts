@@ -47,13 +47,39 @@ export interface ContaPraInsights {
 }
 
 /**
+ * O relógio da varredura.
+ *
+ * A função que roda isso tem tempo contado pela Vercel. Quando estoura, ela é
+ * MORTA — não lança erro, não cai em try/catch, não deixa mensagem: a tela só
+ * morre com "This page couldn't load". Por isso o tempo é controlado aqui
+ * dentro, parando antes do limite em vez de descobrir que passou.
+ */
+export interface Prazo {
+  /** Quanto tempo ainda dá pra gastar, em milissegundos. */
+  restante(): number;
+}
+
+export function prazoDe(ms: number): Prazo {
+  const fim = Date.now() + ms;
+  return { restante: () => fim - Date.now() };
+}
+
+/** Abaixo disso não vale começar outra chamada que pode levar 10 segundos. */
+const MINIMO_PRA_TENTAR_MS = 12_000;
+
+export function aindaDaTempo(prazo: Prazo | undefined): boolean {
+  return !prazo || prazo.restante() > MINIMO_PRA_TENTAR_MS;
+}
+
+/**
  * Busca os últimos 30 dias de uma conta e grava.
  *
  * Pede dia a dia (`time_increment: 1`) de propósito: é o que permite montar
  * qualquer período depois sem nova chamada.
  */
 export async function sincronizarInsights(
-  conta: ContaPraInsights
+  conta: ContaPraInsights,
+  prazo?: Prazo
 ): Promise<ResultadoDosInsights> {
   const ate = new Date();
   const de = desdeQuando(DIAS_DE_INSIGHT, ate);
@@ -93,6 +119,9 @@ export async function sincronizarInsights(
     depois = resposta.dados.paging?.cursors?.after;
     // Sem próxima página, ou página vazia: acabou.
     if (!resposta.dados.paging?.next || lote.length === 0) break;
+    // Sem tempo pra outra página: para aqui e grava o que já veio. Meio
+    // período gravado é melhor que a função morrer sem gravar nada.
+    if (!aindaDaTempo(prazo)) break;
   }
 
   const linhas = limparLinhas(todas, conta.leadActionType);
@@ -155,7 +184,7 @@ async function registrarErro(contaId: string, erro: string) {
 }
 
 /** Todas as contas ativas de um cliente. */
-export async function sincronizarInsightsDoCliente(clientId: string) {
+export async function sincronizarInsightsDoCliente(clientId: string, prazo?: Prazo) {
   const contas = await prisma.metaAdAccount.findMany({
     where: { clientId, active: true },
     select: { id: true, metaAccountId: true, leadActionType: true },
@@ -163,9 +192,10 @@ export async function sincronizarInsightsDoCliente(clientId: string) {
 
   const resultados = [];
   for (const conta of contas) {
+    if (!aindaDaTempo(prazo)) break;
     // Em sequência: a Meta limita chamadas por token, e nada aqui tem pressa
     // que justifique levar bloqueio.
-    resultados.push({ conta, resultado: await sincronizarInsights(conta) });
+    resultados.push({ conta, resultado: await sincronizarInsights(conta, prazo) });
   }
   return resultados;
 }

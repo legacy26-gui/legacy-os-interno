@@ -13,6 +13,8 @@ import {
 import {
   sincronizarInsights,
   sincronizarInsightsDoCliente,
+  prazoDe,
+  aindaDaTempo,
 } from "@/lib/meta/sincronizar-insights";
 
 // Vincular conta de anúncio da Meta e buscar o saldo.
@@ -182,6 +184,21 @@ export async function atualizarSaldoAgora(
 const CONTAS_POR_VARREDURA = 25;
 
 /**
+ * Quanto tempo a varredura pode gastar antes de devolver o que conseguiu.
+ *
+ * A Vercel MATA a função quando o tempo dela acaba — sem erro, sem mensagem,
+ * sem passar por try/catch nenhum. O que a pessoa vê é a tela preta do Next e
+ * nada atualizado. Por isso o limite é controlado aqui dentro, abaixo do da
+ * plataforma: a função termina sozinha, com resposta na mão, antes de alguém
+ * desligar ela na tomada.
+ *
+ * 45 segundos cabe folgado no menor limite da Vercel (60s). Carteira grande
+ * precisa de dois ou três apertos, e a tela diz isso — melhor que um aperto
+ * que morre no meio e não grava nada.
+ */
+const ORCAMENTO_MS = 45_000;
+
+/**
  * Atualiza saldo e números de todas as contas que a pessoa enxerga.
  *
  * O recorte é o mesmo do resto do sistema: gestor de tráfego varre a carteira
@@ -220,29 +237,45 @@ export async function atualizarCarteira(): Promise<MetaAdsState> {
       };
     }
 
+    const prazo = prazoDe(ORCAMENTO_MS);
     let ok = 0;
     let falhou = 0;
+    let naoDeuTempo = 0;
+
     for (const conta of contas) {
+      // Acabou o tempo: para e conta quantas ficaram. A ordem é "mais velha
+      // primeiro", então apertar de novo continua de onde parou — ninguém
+      // precisa saber quais faltaram.
+      if (!aindaDaTempo(prazo)) {
+        naoDeuTempo = contas.length - (ok + falhou);
+        break;
+      }
       // Saldo primeiro: é o número que para a campanha. Se a conta está
       // quebrada, melhor saber disso antes de gastar a segunda chamada.
       const s = await sincronizarSaldo(conta);
-      const i = await sincronizarInsights(conta);
+      const i = await sincronizarInsights(conta, prazo);
       if (s.ok && i.ok) ok++;
       else falhou++;
     }
 
     revalidatePath("/meta-ads");
 
+    const faltou = naoDeuTempo > 0 ? ` Faltaram ${naoDeuTempo} — aperte de novo pra continuar.` : "";
+
+    if (ok === 0 && falhou === 0) {
+      return { erro: "Não deu tempo de atualizar nenhuma conta. Aperte de novo." };
+    }
     if (ok === 0) {
       return {
-        erro: `Não deu pra atualizar nenhuma das ${falhou} contas. O motivo está na linha de cada uma.`,
+        erro: `Não deu pra atualizar nenhuma das ${falhou} contas. O motivo está na linha de cada uma.${faltou}`,
       };
     }
     return {
       ok:
-        falhou === 0
+        (falhou === 0
           ? `${ok} ${ok === 1 ? "conta atualizada" : "contas atualizadas"}.`
-          : `${ok} atualizada(s), ${falhou} com problema — o motivo está na linha de cada uma.`,
+          : `${ok} atualizada(s), ${falhou} com problema — o motivo está na linha de cada uma.`) +
+        faltou,
     };
   });
 }
@@ -262,7 +295,7 @@ export async function atualizarCampanhasAgora(
       return { erro: "Esta loja não está na sua lista." };
     }
 
-    const resultados = await sincronizarInsightsDoCliente(clientId);
+    const resultados = await sincronizarInsightsDoCliente(clientId, prazoDe(ORCAMENTO_MS));
     revalidar(clientId);
 
     if (resultados.length === 0) {

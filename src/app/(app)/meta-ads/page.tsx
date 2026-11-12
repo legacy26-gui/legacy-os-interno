@@ -39,8 +39,10 @@ import { BotaoAtualizarTudo } from "./atualizar-tudo";
 // pelo saldo embaralha a tela a cada atualização, e aí ninguém acha a loja que
 // veio procurar. A urgência vem da cor e do aviso no topo, não da posição.
 
-// A varredura é duas chamadas de rede por conta, em sequência.
-export const maxDuration = 300;
+// A varredura tem orçamento de 45s (ver ORCAMENTO_MS em lib/actions/meta-ads).
+// 60 aqui dá a folga pra ela terminar e responder, e é um valor que vale em
+// qualquer plano da Vercel — 300 só vale em alguns.
+export const maxDuration = 60;
 
 export default async function MetaAdsPage({
   searchParams,

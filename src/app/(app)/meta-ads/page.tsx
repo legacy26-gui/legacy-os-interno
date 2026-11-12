@@ -22,9 +22,10 @@ import {
   ZERO,
 } from "@/lib/meta/insights";
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
+import { tomDaLoja, FAIXA_DA_LOJA, ETIQUETA_DA_LOJA } from "@/lib/meta/estado-da-loja";
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
 import { AtualizarLoja } from "./atualizar-loja";
-import { Link2, FileBarChart } from "lucide-react";
+import { Link2, FileBarChart, Wallet, TrendingUp, Users, Target } from "lucide-react";
 
 // Meta Ads: a carteira inteira numa tela — saldo e resultado de cada loja.
 //
@@ -51,7 +52,7 @@ export const maxDuration = 60;
 // A borda fica nas CÉLULAS e não na linha porque <tr> não aceita borda
 // arredondada: a primeira célula fecha o canto da esquerda, a última o da
 // direita, e as do meio só levam as bordas de cima e de baixo.
-const CEL = "bg-surface border-y border-border";
+const CEL = "bg-surface border-y border-border-forte";
 const LINHA = "transition-colors [&>td]:hover:bg-surface-muted";
 
 export default async function MetaAdsPage({
@@ -207,21 +208,29 @@ export default async function MetaAdsPage({
       {/* O resumo do período: é o número que se olha antes de olhar a lista. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Resumo
+          icone={TrendingUp}
+          cor="text-sky-500"
           titulo="Investido"
           valor={jaBuscou ? reais(totalDaCasa.spendCents) : "—"}
           fraco={!jaBuscou}
         />
         <Resumo
+          icone={Users}
+          cor="text-emerald-500"
           titulo="Leads"
           valor={jaBuscou ? numero(totalDaCasa.leads) : "—"}
           fraco={!jaBuscou}
         />
         <Resumo
+          icone={Target}
+          cor="text-violet-500"
           titulo="Custo por lead"
           valor={jaBuscou && cplDaCasa !== null ? reais(cplDaCasa) : "—"}
           fraco={!jaBuscou || cplDaCasa === null}
         />
         <Resumo
+          icone={Wallet}
+          cor="text-amber-500"
           titulo="Lojas com conta"
           valor={`${comConta.length} de ${clientes.length}`}
           fraco={semConta.length > 0}
@@ -240,9 +249,10 @@ export default async function MetaAdsPage({
            no claro e no escuro, que é o único jeito de resolver isto de uma
            vez em vez de ficar calibrando cinza. */
         <div className="overflow-x-auto -mx-1 px-1">
-            <table className="w-full text-sm border-separate border-spacing-y-2">
+            <table className="w-full text-sm border-separate border-spacing-y-3">
               <thead>
                 <tr className="text-left text-foreground-muted text-xs uppercase tracking-wide">
+                  <th className="w-1.5 pb-1" />
                   <th className="px-4 pb-1 font-medium">Loja</th>
                   {vePorGestor && (
                     <th className="px-4 pb-1 font-medium hidden xl:table-cell">Gestor</th>
@@ -273,20 +283,44 @@ export default async function MetaAdsPage({
                   const capturas = comSaldo.map((a) => a.balanceSnapshots[0].capturedAt.getTime());
                   const quando = capturas.length ? new Date(Math.min(...capturas)) : null;
                   const erro = contas.find((a) => a.lastSyncError)?.lastSyncError ?? null;
+                  const tom = tomDaLoja({
+                    temConta: contas.length > 0,
+                    saldoCents: saldo,
+                    temPrePaga: prePagas.length > 0,
+                    comErro: !!erro,
+                    gastoCents: n.spendCents,
+                    leads: n.leads,
+                  });
+                  const etiqueta = ETIQUETA_DA_LOJA[tom];
 
                   return (
                     <tr key={c.id} className={LINHA}>
-                      <td className={`px-4 py-4 align-top ${CEL} border-l rounded-l-xl`}>
-                        {contas.length > 0 ? (
-                          <Link
-                            href={`/meta-ads/${c.id}`}
-                            className="font-medium hover:text-accent"
-                          >
-                            {c.companyName}
-                          </Link>
-                        ) : (
-                          <span className="font-medium">{c.companyName}</span>
-                        )}
+                      {/* A faixa colorida na beirada: diz o estado da loja
+                          antes de qualquer número ser lido, e é ela que separa
+                          uma linha da outra mesmo de longe. */}
+                      <td className={`p-0 align-top ${CEL} border-l rounded-l-xl overflow-hidden w-1.5`}>
+                        <div className={`w-1.5 h-full min-h-[4.5rem] ${FAIXA_DA_LOJA[tom]}`} />
+                      </td>
+                      <td className={`px-4 py-4 align-top ${CEL}`}>
+                        <span className="flex items-center gap-2 flex-wrap">
+                          {contas.length > 0 ? (
+                            <Link
+                              href={`/meta-ads/${c.id}`}
+                              className="font-semibold text-[15px] hover:text-accent"
+                            >
+                              {c.companyName}
+                            </Link>
+                          ) : (
+                            <span className="font-semibold text-[15px]">{c.companyName}</span>
+                          )}
+                          {etiqueta && (
+                            <span
+                              className={`text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded-full border ${etiqueta.classe}`}
+                            >
+                              {etiqueta.texto}
+                            </span>
+                          )}
+                        </span>
                         <span className="block text-xs font-mono text-foreground-muted mt-0.5">
                           {contas.map((a) => a.metaAccountId).join(" · ") || (
                             <Link
@@ -477,20 +511,34 @@ function TelaDeFalha({ detalhe }: { detalhe: string | null }) {
   );
 }
 
+/**
+ * Um número do resumo, com ícone.
+ *
+ * O ícone colorido não é enfeite: ele dá um ponto de referência pro olho
+ * voltar sempre ao mesmo cartão. Num painel de quatro números iguais, achar
+ * "leads" exige LER os quatro; com ícone, não.
+ */
 function Resumo({
+  icone: Icone,
+  cor,
   titulo,
   valor,
   fraco,
 }: {
+  icone: typeof Wallet;
+  cor: string;
   titulo: string;
   valor: string;
   fraco?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-border bg-surface px-4 py-3">
-      <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium">{titulo}</p>
+    <div className="rounded-xl border border-border-forte bg-surface px-4 py-3.5">
+      <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium flex items-center gap-1.5">
+        <Icone size={13} className={fraco ? "text-foreground-muted" : cor} />
+        {titulo}
+      </p>
       <p
-        className={`text-xl font-semibold mt-1 tabular-nums ${fraco ? "text-foreground-muted" : ""}`}
+        className={`text-2xl font-semibold mt-1.5 tabular-nums ${fraco ? "text-foreground-muted" : ""}`}
       >
         {valor}
       </p>

@@ -9,6 +9,10 @@
   --foreground: #18181b;
   --foreground-muted: #71717a;
   --border: #e4e4e7;
+  /* Para separar de verdade: a borda normal (#e4e4e7) quase some sobre
+     branco, e quarenta linhas com ela viram parede. Esta é a da divisa
+     entre blocos que precisam ser lidos como coisas separadas. */
+  --border-forte: #d4d4d8;
   --accent: #4f46e5;
   --accent-foreground: #ffffff;
   --sidebar: #0b0b0f;
@@ -22,6 +26,7 @@
   --foreground: #f4f4f5;
   --foreground-muted: #a1a1aa;
   --border: #27272a;
+  --border-forte: #3f3f46;
   --accent: #6366f1;
   --accent-foreground: #ffffff;
   --sidebar: #000000;
@@ -35,6 +40,7 @@
   --color-foreground: var(--foreground);
   --color-foreground-muted: var(--foreground-muted);
   --color-border: var(--border);
+  --color-border-forte: var(--border-forte);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-sidebar: var(--sidebar);
@@ -58,6 +64,18 @@ body {
   overscroll-behavior-y: none;
 }
 
-* {
-  border-color: var(--border);
+/* A cor padrão de qualquer borda, pra não precisar repetir em todo lugar.
+ *
+ * DENTRO de @layer base de propósito. Solta, fora de camada, esta regra
+ * vencia TODAS as classes de cor de borda do Tailwind — que moram na camada
+ * utilities, e no CSS moderno regra sem camada ganha de regra em camada,
+ * não importa a especificidade.
+ *
+ * O efeito era silencioso e do tipo pior: `border-red-500` não dava erro
+ * nenhum, só pintava de cinza. Toda borda colorida do sistema estava assim.
+ * Em base, ela continua sendo o padrão e qualquer classe explícita vence. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }

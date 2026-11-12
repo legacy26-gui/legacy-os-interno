@@ -16,11 +16,12 @@ import {
   reais,
   numero,
   desdeQuando,
+  janelaDoTexto,
   PERIODOS,
   DIAS_PADRAO,
   ZERO,
   type Numeros,
-  type Periodo,
+  type Janela,
 } from "@/lib/meta/insights";
 import { AbasDaSecao } from "@/components/abas-da-secao";
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
@@ -53,9 +54,7 @@ export default async function MetaAdsPage({
   const user = await requireModuleAccess("clientes");
   const { dias } = await searchParams;
 
-  const periodo: Periodo =
-    PERIODOS.find((p) => String(p) === dias) ?? DIAS_PADRAO;
-  const de = desdeQuando(periodo);
+  const janela = janelaDoTexto(dias);
 
   // Buscar os dados dentro de um try: se o banco recusar alguma coisa, a
   // direção vê a MENSAGEM, não a tela preta do Next.
@@ -66,7 +65,7 @@ export default async function MetaAdsPage({
   // fazer algo com ela.
   let dados: Awaited<ReturnType<typeof carregar>>;
   try {
-    dados = await carregar(user, de);
+    dados = await carregar(user, janela);
   } catch (erro) {
     const detalhe = erro instanceof Error ? erro.message : String(erro);
     return (
@@ -141,10 +140,13 @@ export default async function MetaAdsPage({
       </div>
 
       <AbasDaSecao
-        abas={PERIODOS.map((p) => ({
-          href: p === DIAS_PADRAO ? "/meta-ads" : `/meta-ads?dias=${p}`,
-          label: `${p} dias`,
-        }))}
+        abas={[
+          ...PERIODOS.map((p) => ({
+            href: p === DIAS_PADRAO ? "/meta-ads" : `/meta-ads?dias=${p}`,
+            label: `${p} dias`,
+          })),
+          { href: "/meta-ads?dias=tudo", label: "Vida inteira" },
+        ]}
       />
 
       {acabando.length > 0 && (
@@ -170,7 +172,7 @@ export default async function MetaAdsPage({
                 {gastandoSemLead.length}{" "}
                 {gastandoSemLead.length === 1 ? "loja gastou" : "lojas gastaram"} sem nenhum lead
               </strong>{" "}
-              nestes {periodo} dias:{" "}
+              {janela === "tudo" ? " na vida inteira das contas" : ` nestes ${janela} dias`}:{" "}
               {gastandoSemLead.map((l) => l.cliente.companyName).join(", ")}. Pode ser campanha sem
               resultado mesmo, ou o tipo de lead configurado não ser o que a conta usa — abra a
               loja pra ver.
@@ -336,7 +338,8 @@ export default async function MetaAdsPage({
 
       <p className="text-xs text-foreground-muted">
         Clique na loja pra ver campanha por campanha. Investido, leads e custo por lead são dos
-        últimos {periodo} dias. Para vincular uma conta, abra a loja e use o bloco “Meta Ads” na
+        {janela === "tudo" ? "toda a vida das contas" : `últimos ${janela} dias`}. Para vincular
+        uma conta, abra a loja e use o bloco “Meta Ads” na
         ficha dela.
       </p>
     </div>
@@ -347,7 +350,7 @@ export default async function MetaAdsPage({
  * As duas consultas da tela, num lugar só pra poderem ser protegidas por um
  * try/catch sem embrulhar o desenho da página junto.
  */
-async function carregar(user: Parameters<typeof escopoDaCarteira>[0], de: Date) {
+async function carregar(user: Parameters<typeof escopoDaCarteira>[0], janela: Janela) {
   const clientes = await prisma.client.findMany({
     where: { ...CARTEIRA, ...escopoDaCarteira(user) },
     orderBy: { companyName: "asc" },
@@ -378,22 +381,32 @@ async function carregar(user: Parameters<typeof escopoDaCarteira>[0], de: Date) 
   // JavaScript: trinta dias de conjunto de anúncio por loja é muita linha pra
   // trazer só pra somar.
   const idsDasContas = clientes.flatMap((c) => c.metaAdAccounts.map((a) => a.id));
-  const porConta = idsDasContas.length
-    ? await prisma.adsetInsightDaily.groupBy({
-        by: ["adAccountId"],
-        where: { adAccountId: { in: idsDasContas }, date: { gte: de } },
-        _sum: {
-          spendCents: true,
-          impressions: true,
-          clicks: true,
-          linkClicks: true,
-          leads: true,
-        },
-      })
-    : [];
+  const SOMAS = {
+    spendCents: true,
+    impressions: true,
+    clicks: true,
+    linkClicks: true,
+    leads: true,
+  } as const;
+
+  // "Vida inteira" vem da outra tabela: ela guarda um total por anúncio em vez
+  // de um por dia, justamente pra não ter que somar anos de linha toda vez.
+  const porConta = !idsDasContas.length
+    ? []
+    : janela === "tudo"
+      ? await prisma.metaLifetime.groupBy({
+          by: ["adAccountId"],
+          where: { adAccountId: { in: idsDasContas } },
+          _sum: SOMAS,
+        })
+      : await prisma.metaInsightDaily.groupBy({
+          by: ["adAccountId"],
+          where: { adAccountId: { in: idsDasContas }, date: { gte: desdeQuando(janela) } },
+          _sum: SOMAS,
+        });
 
   const numerosDaConta = new Map<string, Numeros>(
-    porConta.map((g) => [
+    porConta.map((g: (typeof porConta)[number]) => [
       g.adAccountId,
       {
         spendCents: g._sum.spendCents ?? 0,

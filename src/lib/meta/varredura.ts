@@ -3,7 +3,13 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { sincronizarSaldo } from "./sincronizar-saldo";
-import { sincronizarInsights, aindaDaTempo, prazoDe, type Prazo } from "./sincronizar-insights";
+import {
+  sincronizarInsights,
+  sincronizarVidaInteira,
+  aindaDaTempo,
+  prazoDe,
+  type Prazo,
+} from "./sincronizar-insights";
 
 // Buscar saldo e números de um monte de contas de uma vez.
 //
@@ -63,7 +69,7 @@ const CAMPOS: Prisma.MetaAdAccountSelect = {
  * Busca uma conta: saldo primeiro, números depois.
  *
  * O saldo vem antes porque é o número que PARA a campanha — se a conta está
- * quebrada, é melhor saber disso antes de gastar a segunda chamada.
+ * quebrada, é melhor saber disso antes de gastar as outras chamadas.
  *
  * Nada aqui lança erro pra cima: a conta que deu problema já guardou o motivo
  * em lastSyncError, e uma conta ruim não pode derrubar a varredura das
@@ -73,7 +79,10 @@ async function umaConta(conta: ContaDaVarredura, prazo: Prazo): Promise<boolean>
   try {
     const saldo = await sincronizarSaldo(conta);
     const numeros = await sincronizarInsights(conta, prazo);
-    return saldo.ok && numeros.ok;
+    // A vida inteira é uma chamada só e não paginada na prática; vem por
+    // último porque é a menos urgente das três.
+    const vida = await sincronizarVidaInteira(conta);
+    return saldo.ok && numeros.ok && vida.ok;
   } catch (erro) {
     console.error("[meta] falhou a conta", conta.metaAccountId, erro);
     return false;

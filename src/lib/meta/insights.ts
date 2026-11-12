@@ -18,9 +18,21 @@ export const DIAS_DE_INSIGHT = 30;
 /** O período padrão da tela: a última semana, como no Gerenciador. */
 export const DIAS_PADRAO = 7;
 
-/** Períodos que a tela oferece. */
+/** Períodos que a tela oferece. "tudo" é a vida inteira da conta. */
 export const PERIODOS = [7, 14, 30] as const;
 export type Periodo = (typeof PERIODOS)[number];
+
+/** O que a tela mostra: uma janela de dias, ou tudo desde o começo. */
+export type Janela = Periodo | "tudo";
+
+export function janelaDoTexto(texto: string | undefined): Janela {
+  if (texto === "tudo") return "tudo";
+  return PERIODOS.find((p) => String(p) === texto) ?? DIAS_PADRAO;
+}
+
+export function rotuloDaJanela(j: Janela): string {
+  return j === "tudo" ? "Vida inteira" : `${j} dias`;
+}
 
 /**
  * Tipos de "lead" que aparecem nas contas de loja de carro.
@@ -48,6 +60,8 @@ export function rotuloDoTipoDeLead(valor: string): string {
 
 /** Uma linha crua de /insights, com tudo que pode faltar como opcional. */
 export interface LinhaCrua {
+  ad_id?: string;
+  ad_name?: string;
   adset_id?: string;
   adset_name?: string;
   campaign_id?: string;
@@ -58,9 +72,12 @@ export interface LinhaCrua {
   inline_link_clicks?: string;
   actions?: { action_type?: string; value?: string }[];
   date_start?: string;
+  date_stop?: string;
 }
 
 export interface LinhaLimpa {
+  adId: string;
+  adName: string;
   adsetId: string;
   adsetName: string;
   campaignId: string | null;
@@ -124,10 +141,12 @@ export function temOTipoDeLead(linhas: LinhaCrua[], tipoDeLead: string): boolean
 export function limparLinhas(linhas: LinhaCrua[], tipoDeLead: string): LinhaLimpa[] {
   const limpas: LinhaLimpa[] = [];
   for (const l of linhas) {
-    if (!l.adset_id || !l.date_start) continue;
+    if (!l.ad_id || !l.adset_id || !l.date_start) continue;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(l.date_start)) continue;
     const [ano, mes, dia] = l.date_start.split("-").map(Number);
     limpas.push({
+      adId: l.ad_id,
+      adName: l.ad_name ?? l.ad_id,
       adsetId: l.adset_id,
       adsetName: l.adset_name ?? l.adset_id,
       campaignId: l.campaign_id ?? null,
@@ -138,6 +157,61 @@ export function limparLinhas(linhas: LinhaCrua[], tipoDeLead: string): LinhaLimp
       clicks: inteiro(l.clicks),
       linkClicks: inteiro(l.inline_link_clicks),
       leads: contarLeads(l.actions, tipoDeLead),
+    });
+  }
+  return limpas;
+}
+
+// ──────────────────────────── Vida inteira ─────────────────────────────────
+//
+// O acumulado desde que a campanha nasceu. Vem da Meta com
+// `date_preset=maximum` e SEM `time_increment`: um total por anúncio, não um
+// por dia. Pedir dia a dia a vida inteira seriam anos de linha pra somar
+// sempre tudo, por um número que só se olha de vez em quando.
+//
+// Limite que a Meta impõe e não dá pra contornar: campanha APAGADA some. O
+// que ela chama de "máximo" é o máximo do que ainda existe na conta.
+
+export interface VidaInteira {
+  adId: string;
+  adName: string;
+  adsetId: string;
+  adsetName: string;
+  campaignId: string | null;
+  campaignName: string | null;
+  spendCents: number;
+  impressions: number;
+  clicks: number;
+  linkClicks: number;
+  leads: number;
+  desde: Date | null;
+  ate: Date | null;
+}
+
+function comoData(texto: string | undefined): Date | null {
+  if (!texto || !/^\d{4}-\d{2}-\d{2}$/.test(texto)) return null;
+  const [ano, mes, dia] = texto.split("-").map(Number);
+  return new Date(Date.UTC(ano, mes - 1, dia, 12));
+}
+
+export function limparVidaInteira(linhas: LinhaCrua[], tipoDeLead: string): VidaInteira[] {
+  const limpas: VidaInteira[] = [];
+  for (const l of linhas) {
+    if (!l.ad_id || !l.adset_id) continue;
+    limpas.push({
+      adId: l.ad_id,
+      adName: l.ad_name ?? l.ad_id,
+      adsetId: l.adset_id,
+      adsetName: l.adset_name ?? l.adset_id,
+      campaignId: l.campaign_id ?? null,
+      campaignName: l.campaign_name ?? null,
+      spendCents: gastoEmCentavos(l.spend),
+      impressions: inteiro(l.impressions),
+      clicks: inteiro(l.clicks),
+      linkClicks: inteiro(l.inline_link_clicks),
+      leads: contarLeads(l.actions, tipoDeLead),
+      desde: comoData(l.date_start),
+      ate: comoData(l.date_stop),
     });
   }
   return limpas;

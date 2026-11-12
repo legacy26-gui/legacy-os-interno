@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { buscarNaGraph } from "./cliente-graph";
 import {
   limparLinhas,
+  limparVidaInteira,
   comoDataDaMeta,
   desdeQuando,
   DIAS_DE_INSIGHT,
@@ -24,10 +25,10 @@ import {
 // impossível.
 
 /** Quantas páginas de resposta seguir antes de parar. */
-const MAX_PAGINAS = 10;
+const MAX_PAGINAS = 25;
 
 /** Quantas linhas pedir por página. */
-const POR_PAGINA = 300;
+const POR_PAGINA = 500;
 
 /**
  * Quantas linhas por inserção.
@@ -41,13 +42,13 @@ const LINHAS_POR_LOTE = 500;
 /**
  * Tira linha repetida do mesmo conjunto no mesmo dia.
  *
- * O banco não aceita duas (a chave é conta + conjunto + dia), e agora que a
+ * O banco não aceita duas (a chave é conta + anúncio + dia), e agora que a
  * inserção é em massa uma repetida derrubaria o lote inteiro em vez de só
  * sobrescrever. A última vence.
  */
 function semRepetir(linhas: LinhaLimpa[]): LinhaLimpa[] {
   const porChave = new Map<string, LinhaLimpa>();
-  for (const l of linhas) porChave.set(`${l.adsetId}|${l.date.toISOString()}`, l);
+  for (const l of linhas) porChave.set(`${l.adId}|${l.date.toISOString()}`, l);
   return [...porChave.values()];
 }
 
@@ -105,14 +106,14 @@ export async function sincronizarInsights(
   const de = desdeQuando(DIAS_DE_INSIGHT, ate);
 
   const params: Record<string, string> = {
-    level: "adset",
+    level: "ad",
     time_increment: "1",
     time_range: JSON.stringify({
       since: comoDataDaMeta(de),
       until: comoDataDaMeta(ate),
     }),
     fields:
-      "adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions",
+      "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions",
     limit: String(POR_PAGINA),
   };
 
@@ -159,20 +160,20 @@ export async function sincronizarInsights(
   // Agora são DUAS consultas, não importa se vierem 20 linhas ou 2 mil: apaga
   // o período dos conjuntos que vieram agora, e insere tudo de uma vez.
   //
-  // Apagar só os conjuntos que vieram (e não a janela inteira) é o que mantém
+  // Apagar só os anúncios que vieram (e não a janela inteira) é o que mantém
   // isso seguro quando a busca para no meio por falta de tempo: o que não foi
   // relido continua lá, com o número antigo, em vez de sumir da tela.
-  const conjuntos = [...new Set(linhas.map((l) => l.adsetId))];
+  const anuncios = [...new Set(linhas.map((l) => l.adId))];
 
   await prisma.$transaction(
     async (tx) => {
-      if (conjuntos.length > 0) {
-        await tx.adsetInsightDaily.deleteMany({
-          where: { adAccountId: conta.id, date: { gte: de }, adsetId: { in: conjuntos } },
+      if (anuncios.length > 0) {
+        await tx.metaInsightDaily.deleteMany({
+          where: { adAccountId: conta.id, date: { gte: de }, adId: { in: anuncios } },
         });
       }
       for (let i = 0; i < linhas.length; i += LINHAS_POR_LOTE) {
-        await tx.adsetInsightDaily.createMany({
+        await tx.metaInsightDaily.createMany({
           data: linhas.slice(i, i + LINHAS_POR_LOTE).map((l) => ({ adAccountId: conta.id, ...l })),
         });
       }
@@ -191,6 +192,66 @@ export async function sincronizarInsights(
   );
 
   return { ok: true, linhas: linhas.length, dias: DIAS_DE_INSIGHT };
+}
+
+/**
+ * O acumulado de vida inteira, por anúncio.
+ *
+ * Uma chamada só: `date_preset=maximum` e SEM `time_increment`, então a Meta
+ * devolve um total por anúncio em vez de um por dia. Por isso é barato o
+ * bastante pra rodar junto da busca diária.
+ *
+ * Substitui o que havia: é um retrato, não um histórico. Guardar versões do
+ * acumulado não serviria pra nada — quem quer a evolução olha a diária.
+ */
+export async function sincronizarVidaInteira(
+  conta: ContaPraInsights
+): Promise<ResultadoDosInsights> {
+  const todas: LinhaCrua[] = [];
+  let depois: string | undefined;
+
+  for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
+    const resposta = await buscarNaGraph<RespostaInsights>(`${conta.metaAccountId}/insights`, {
+      level: "ad",
+      date_preset: "maximum",
+      fields:
+        "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,actions",
+      limit: String(POR_PAGINA),
+      ...(depois ? { after: depois } : {}),
+    });
+
+    if (!resposta.ok) {
+      await registrarErro(conta.id, resposta.erro);
+      return { ok: false, erro: resposta.erro };
+    }
+
+    const lote = resposta.dados.data ?? [];
+    todas.push(...lote);
+    depois = resposta.dados.paging?.cursors?.after;
+    if (!resposta.dados.paging?.next || lote.length === 0) break;
+  }
+
+  const linhas = limparVidaInteira(todas, conta.leadActionType);
+  // Um anúncio só pode ter uma linha de vida inteira.
+  const porAnuncio = new Map(linhas.map((l) => [l.adId, l]));
+  const unicas = [...porAnuncio.values()];
+
+  await prisma.$transaction(
+    async (tx) => {
+      // Apaga e regrava a conta inteira: o acumulado de um anúncio que sumiu
+      // da Meta não vale mais nada, e deixar pra trás faria a soma da
+      // campanha contar um anúncio que não existe.
+      await tx.metaLifetime.deleteMany({ where: { adAccountId: conta.id } });
+      for (let i = 0; i < unicas.length; i += LINHAS_POR_LOTE) {
+        await tx.metaLifetime.createMany({
+          data: unicas.slice(i, i + LINHAS_POR_LOTE).map((l) => ({ adAccountId: conta.id, ...l })),
+        });
+      }
+    },
+    { timeout: 20_000, maxWait: 10_000 }
+  );
+
+  return { ok: true, linhas: unicas.length, dias: 0 };
 }
 
 async function registrarErro(contaId: string, erro: string) {

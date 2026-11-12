@@ -1146,7 +1146,8 @@ model MetaAdAccount {
   createdAt      DateTime @default(now())
 
   balanceSnapshots BalanceSnapshot[]
-  adsetInsights    AdsetInsightDaily[]
+  insights         MetaInsightDaily[]
+  lifetime         MetaLifetime[]
 
   @@index([clientId])
   @@map("meta_ad_accounts")
@@ -1179,26 +1180,70 @@ model BalanceSnapshot {
  * repetida à vontade: puxar o mesmo dia duas vezes atualiza a linha em vez de
  * duplicar o gasto.
  */
-model AdsetInsightDaily {
+model MetaInsightDaily {
   id          String        @id @default(cuid())
   adAccountId String
   adAccount   MetaAdAccount @relation(fields: [adAccountId], references: [id])
-  adsetId     String
-  adsetName   String
-  campaignId  String?
-  // O nome da campanha como está escrito lá na Meta. Guardado junto do
-  // número e não buscado na hora de mostrar: campanha renomeada ou apagada
-  // deixaria o histórico sem nome, e relatório sem nome não se lê.
+
+  // O grão é o ANÚNCIO, o mais fino que a Meta entrega. Conjunto e campanha
+  // saem somando daqui — e nunca o contrário: total não se desfaz. Guardar
+  // por conjunto, como era antes, tornava a tela de anúncios impossível sem
+  // refazer a busca inteira.
+  adId         String
+  adName       String
+  adsetId      String
+  adsetName    String
+  campaignId   String?
+  // Nome guardado junto do número: campanha renomeada ou apagada deixaria o
+  // histórico sem nome, e relatório sem nome não se lê.
   campaignName String?
+
   // Só a data, sem hora: o dado da Meta é fechado por dia.
-  date        DateTime      @db.Date
+  date        DateTime @db.Date
   spendCents  Int
   impressions Int
   clicks      Int
   linkClicks  Int
   leads       Int
 
-  @@unique([adAccountId, adsetId, date])
+  @@unique([adAccountId, adId, date])
   @@index([adAccountId, date])
-  @@map("adset_insights_daily")
+  @@index([adAccountId, campaignId, date])
+  @@map("meta_insights_daily")
+}
+
+// O acumulado de vida inteira, por anúncio.
+//
+// Tabela separada da diária porque a pergunta é outra: a diária responde "o
+// que aconteceu nestes 7 dias" e a Meta a reprocessa; esta responde "quanto
+// essa campanha já consumiu desde que nasceu", e para isso guardar dia a dia
+// o histórico inteiro seria anos de linha pra somar sempre tudo.
+//
+// É um retrato, não um histórico: cada busca substitui o número anterior.
+model MetaLifetime {
+  id          String        @id @default(cuid())
+  adAccountId String
+  adAccount   MetaAdAccount @relation(fields: [adAccountId], references: [id])
+
+  adId         String
+  adName       String
+  adsetId      String
+  adsetName    String
+  campaignId   String?
+  campaignName String?
+
+  spendCents  Int
+  impressions Int
+  clicks      Int
+  linkClicks  Int
+  leads       Int
+  // Desde quando a Meta contou. Ela devolve junto, e sem isso "vida inteira"
+  // é uma palavra sem data.
+  desde       DateTime? @db.Date
+  ate         DateTime? @db.Date
+  atualizadoEm DateTime @default(now())
+
+  @@unique([adAccountId, adId])
+  @@index([adAccountId, campaignId])
+  @@map("meta_lifetime")
 }

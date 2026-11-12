@@ -6,8 +6,10 @@ import { requireModuleAccess } from "@/lib/dal";
 import { escopoDaCarteira } from "@/lib/carteira";
 import { canAccessModule } from "@/lib/permissions";
 import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate, formatDateTime } from "@/lib/labels";
+import { saldoEmReais, tempoDesde } from "@/lib/meta/saldo";
 import { deleteClient } from "@/lib/actions/clients";
 import { DiagnosticoSection } from "@/components/diagnostico/diagnostico-section";
+import { BlocoMetaAds, type ContaNaTela } from "./meta-ads";
 import { HistoryForm } from "./history-form";
 import { AttachmentForm } from "./attachment-form";
 import { DeleteClientButton } from "../delete-client-button";
@@ -45,6 +47,25 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
         take: 1,
         select: { entregueEm: true, gravadoEm: true, quantidade: true },
       },
+      // Contas de anúncio da Meta, com a última leitura de saldo de cada uma.
+      // take: 1 no snapshot porque a tela só mostra o número de agora — o
+      // histórico existe pra olhar consumo, e isso é outra tela.
+      metaAdAccounts: {
+        where: { active: true },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          metaAccountId: true,
+          isPrepay: true,
+          lastSyncedAt: true,
+          lastSyncError: true,
+          balanceSnapshots: {
+            orderBy: { capturedAt: "desc" },
+            take: 1,
+            select: { availableCents: true, capturedAt: true },
+          },
+        },
+      },
     },
   });
 
@@ -56,6 +77,26 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
     : null;
 
   const boundDelete = deleteClient.bind(null, client.id);
+
+  // Vincular conta é da direção; ver o saldo é de quem cuida da loja.
+  const podeVincularConta = user.role === "ADMIN" || user.role === "GERENTE";
+
+  // "Atualizado há X" conta a idade do NÚMERO (quando o saldo foi capturado),
+  // não da tentativa. Se a última busca falhou, o saldo na tela continua sendo
+  // o de ontem — e dizer "atualizado agora" em cima dele seria mentira, com o
+  // erro logo abaixo desmentindo a própria tela.
+  const contasMeta: ContaNaTela[] = client.metaAdAccounts.map((c) => {
+    const ultimo = c.balanceSnapshots[0] ?? null;
+    const quando = c.isPrepay ? (ultimo?.capturedAt ?? null) : c.lastSyncedAt;
+    return {
+      id: c.id,
+      metaAccountId: c.metaAccountId,
+      isPrepay: c.isPrepay,
+      saldoTexto: ultimo ? saldoEmReais(ultimo.availableCents) : null,
+      atualizadoTexto: quando ? tempoDesde(quando) : null,
+      erro: c.lastSyncError,
+    };
+  });
 
   return (
     <div className="flex flex-col gap-6 max-w-5xl">
@@ -156,6 +197,10 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
           <p className="text-sm text-foreground-muted">Nenhuma entrega registrada ainda</p>
         )}
       </div>
+
+      {/* Meta Ads: saldo pré-pago (Pix). Conta que zera para a campanha, e
+          campanha parada é loja sem lead no dia seguinte. */}
+      <BlocoMetaAds clientId={client.id} contas={contasMeta} podeVincular={podeVincularConta} />
 
       {client.onboardings[0] && (
         <DiagnosticoSection

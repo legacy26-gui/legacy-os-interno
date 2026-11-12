@@ -24,7 +24,7 @@ import {
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
 import { AtualizarLoja } from "./atualizar-loja";
-import { Link2 } from "lucide-react";
+import { Link2, FileBarChart } from "lucide-react";
 
 // Meta Ads: a carteira inteira numa tela — saldo e resultado de cada loja.
 //
@@ -154,6 +154,12 @@ export default async function MetaAdsPage({
               <Link2 size={15} /> Vincular contas
             </Link>
           )}
+          <Link
+            href="/meta-ads/relatorio"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted"
+          >
+            <FileBarChart size={15} /> Relatório
+          </Link>
           <BotaoAtualizarTudo />
         </div>
       </div>

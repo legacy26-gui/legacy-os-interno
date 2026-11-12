@@ -282,3 +282,116 @@ export async function definirTipoDeLead(
     };
   });
 }
+
+/**
+ * Vincula várias contas de uma vez, a partir da tela de descoberta.
+ *
+ * Cada par vem conferido por gente na tela — a sugestão por nome é palpite, e
+ * conta vinculada à loja errada manda o gasto de uma pra ficha de outra sem
+ * ninguém desconfiar.
+ *
+ * Nada de transação única: uma conta já usada por outra loja não pode
+ * derrubar as outras trinta que estavam certas. Cada uma por si, e no fim a
+ * tela diz quantas entraram e o que travou.
+ */
+export async function vincularVarias(
+  pares: { clientId: string; metaAccountId: string; isPrepay: boolean }[]
+): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (user.role !== "ADMIN" && user.role !== "GERENTE") {
+      return { erro: "Só a direção vincula conta de anúncio." };
+    }
+    if (pares.length === 0) return { erro: "Nenhuma conta marcada." };
+
+    // As lojas da carteira, de uma vez: confere todos os clientId sem uma
+    // consulta por par.
+    const lojas = new Set(
+      (
+        await prisma.client.findMany({
+          where: { ...CARTEIRA, ...escopoDaCarteira(user) },
+          select: { id: true },
+        })
+      ).map((c) => c.id)
+    );
+
+    let entraram = 0;
+    const problemas: string[] = [];
+
+    for (const par of pares) {
+      if (!lojas.has(par.clientId)) {
+        problemas.push("uma loja fora da sua lista");
+        continue;
+      }
+      if (!contaValida(par.metaAccountId)) {
+        problemas.push(`${par.metaAccountId} não tem o formato act_<números>`);
+        continue;
+      }
+      const jaExiste = await prisma.metaAdAccount.findUnique({
+        where: { metaAccountId: par.metaAccountId },
+        select: { client: { select: { companyName: true } } },
+      });
+      if (jaExiste) {
+        problemas.push(`${par.metaAccountId} já é de ${jaExiste.client.companyName}`);
+        continue;
+      }
+      await prisma.metaAdAccount.create({
+        data: {
+          clientId: par.clientId,
+          metaAccountId: par.metaAccountId,
+          isPrepay: par.isPrepay,
+        },
+      });
+      entraram++;
+    }
+
+    revalidatePath("/meta-ads");
+    revalidatePath("/meta-ads/vincular");
+
+    if (entraram === 0) {
+      return { erro: `Nenhuma vinculada. ${problemas.join("; ")}.` };
+    }
+    return {
+      ok:
+        problemas.length === 0
+          ? `${entraram} ${entraram === 1 ? "conta vinculada" : "contas vinculadas"}. Aperte “Atualizar tudo” pra buscar os números.`
+          : `${entraram} vinculada(s). Ficaram de fora: ${problemas.join("; ")}.`,
+    };
+  });
+}
+
+/** Desfaz um vínculo — e leva junto o que foi buscado por causa dele. */
+export async function desvincularConta(contaId: string): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (user.role !== "ADMIN" && user.role !== "GERENTE") {
+      return { erro: "Só a direção desvincula conta de anúncio." };
+    }
+
+    const conta = await prisma.metaAdAccount.findUnique({
+      where: { id: contaId },
+      select: { clientId: true, metaAccountId: true },
+    });
+    if (!conta) return { erro: "Conta não encontrada." };
+    if (!(await clienteEDaCarteira(user, conta.clientId))) {
+      return { erro: "Essa loja não está na sua lista." };
+    }
+
+    // Os números vão junto: são cópia do que está na Meta, e ficar com o
+    // gasto de uma conta que não é mais desta loja seria pior que perder.
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.metaInsightDaily.deleteMany({ where: { adAccountId: contaId } });
+        await tx.metaLifetime.deleteMany({ where: { adAccountId: contaId } });
+        await tx.metaAdCreative.deleteMany({ where: { adAccountId: contaId } });
+        await tx.balanceSnapshot.deleteMany({ where: { adAccountId: contaId } });
+        await tx.metaAdAccount.delete({ where: { id: contaId } });
+      },
+      { timeout: 20_000, maxWait: 10_000 }
+    );
+
+    revalidar(conta.clientId);
+    revalidatePath("/meta-ads/vincular");
+    return { ok: `${conta.metaAccountId} desvinculada.` };
+  });
+}

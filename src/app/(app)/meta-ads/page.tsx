@@ -24,6 +24,7 @@ import {
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
 import { AtualizarLoja } from "./atualizar-loja";
+import { Link2 } from "lucide-react";
 
 // Meta Ads: a carteira inteira numa tela — saldo e resultado de cada loja.
 //
@@ -113,6 +114,7 @@ export default async function MetaAdsPage({
   const totalDaCasa = somar(linhas.map((l) => l.numeros));
   const cplDaCasa = custoPorLead(totalDaCasa);
   const vePorGestor = veTodaACarteira(user);
+  const podeVincular = user.role === "ADMIN" || user.role === "GERENTE";
 
   // Nunca buscado não é zero.
   //
@@ -143,7 +145,17 @@ export default async function MetaAdsPage({
             {vePorGestor ? "Todas as lojas da casa." : "Suas lojas."}
           </p>
         </div>
-        <BotaoAtualizarTudo />
+        <div className="flex flex-wrap items-center gap-2">
+          {podeVincular && (
+            <Link
+              href="/meta-ads/vincular"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted"
+            >
+              <Link2 size={15} /> Vincular contas
+            </Link>
+          )}
+          <BotaoAtualizarTudo />
+        </div>
       </div>
 
       <SeletorDePeriodo

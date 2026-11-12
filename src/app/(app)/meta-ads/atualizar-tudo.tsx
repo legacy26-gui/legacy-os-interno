@@ -2,14 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { RefreshCw } from "lucide-react";
-import { atualizarSaldosDaCarteira, type MetaAdsState } from "@/lib/actions/meta-ads";
+import { atualizarCarteira, type MetaAdsState } from "@/lib/actions/meta-ads";
 
 /**
- * Busca o saldo de todas as contas que a pessoa enxerga.
+ * Busca saldo e números de todas as contas que a pessoa enxerga.
  *
- * O botão fica desabilitado enquanto roda, e o texto muda: é uma chamada de
- * rede por conta, em sequência, e pode levar alguns segundos. Botão que não dá
- * sinal de vida é botão que a pessoa aperta três vezes.
+ * O botão fica desabilitado enquanto roda, e o texto muda: são duas chamadas
+ * de rede por conta, em sequência, e pode levar alguns segundos. Botão que não
+ * dá sinal de vida é botão que a pessoa aperta três vezes.
  */
 export function BotaoAtualizarTudo() {
   const [estado, setEstado] = useState<MetaAdsState>({});
@@ -19,12 +19,12 @@ export function BotaoAtualizarTudo() {
     <div className="flex flex-col items-start sm:items-end gap-1.5">
       <button
         type="button"
-        onClick={() => comecar(async () => setEstado(await atualizarSaldosDaCarteira()))}
+        onClick={() => comecar(async () => setEstado(await atualizarCarteira()))}
         disabled={pendente}
         className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted disabled:opacity-60"
       >
         <RefreshCw size={15} className={pendente ? "animate-spin" : ""} />
-        {pendente ? "Buscando saldos…" : "Atualizar saldos"}
+        {pendente ? "Buscando na Meta…" : "Atualizar tudo"}
       </button>
       {estado.erro && <p className="text-xs text-red-500 max-w-xs sm:text-right">{estado.erro}</p>}
       {estado.ok && (

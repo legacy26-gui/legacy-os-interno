@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Megaphone, RefreshCw, AlertTriangle, Plus } from "lucide-react";
+import { Megaphone, RefreshCw, AlertTriangle, Plus, BarChart3 } from "lucide-react";
 import {
   vincularContaAnuncios,
   atualizarSaldoAgora,
@@ -124,6 +125,15 @@ export function BlocoMetaAds({
 
       {estado.erro && <p className="text-sm text-red-500">{estado.erro}</p>}
       {estado.ok && <p className="text-sm text-emerald-600 dark:text-emerald-400">{estado.ok}</p>}
+
+      {contas.length > 0 && (
+        <Link
+          href={`/meta-ads/${clientId}`}
+          className="self-start inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground"
+        >
+          <BarChart3 size={14} /> Ver campanhas: investido, leads e custo por lead
+        </Link>
+      )}
 
       {podeVincular &&
         (abrirForm ? (

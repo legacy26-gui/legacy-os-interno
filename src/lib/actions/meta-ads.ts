@@ -5,7 +5,12 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { clienteEDaCarteira, escopoDaCarteira, CARTEIRA } from "@/lib/carteira";
 import { contaValida } from "@/lib/meta/saldo";
+import { TIPOS_DE_LEAD } from "@/lib/meta/insights";
 import { sincronizarSaldo, sincronizarSaldosDoCliente } from "@/lib/meta/sincronizar-saldo";
+import {
+  sincronizarInsights,
+  sincronizarInsightsDoCliente,
+} from "@/lib/meta/sincronizar-insights";
 
 // Vincular conta de anúncio da Meta e buscar o saldo.
 //
@@ -30,6 +35,7 @@ async function quemPodeVincular(clientId: string) {
 function revalidar(clientId: string) {
   revalidatePath(`/clientes/${clientId}`);
   revalidatePath("/meta-ads");
+  revalidatePath(`/meta-ads/${clientId}`);
 }
 
 /**
@@ -128,56 +134,136 @@ export async function atualizarSaldoAgora(clientId: string): Promise<MetaAdsStat
 /**
  * Quantas contas uma varredura busca de uma vez.
  *
- * Teto porque a busca é uma chamada de rede por conta, em sequência, e a
- * função tem tempo limitado pra responder. Melhor atualizar 40 e dizer que
- * faltaram do que estourar no meio e não atualizar nenhuma.
+ * Teto porque cada conta custa DUAS chamadas de rede (saldo e números), em
+ * sequência, e a função tem tempo limitado pra responder. Melhor atualizar 25
+ * e dizer que faltaram do que estourar no meio e não atualizar nenhuma.
  */
-const CONTAS_POR_VARREDURA = 40;
+const CONTAS_POR_VARREDURA = 25;
 
 /**
- * Atualiza o saldo de todas as contas que a pessoa enxerga.
+ * Atualiza saldo e números de todas as contas que a pessoa enxerga.
  *
  * O recorte é o mesmo do resto do sistema: gestor de tráfego varre a carteira
  * dele, direção varre a casa. Quem não vê a loja não dispara chamada em nome
  * dela.
+ *
+ * Saldo e números num botão só porque são a mesma pergunta na cabeça de quem
+ * aperta: "como está essa loja hoje". Dois botões garantiriam que um dia
+ * alguém aperta um e esquece o outro, e aí metade da tela fica velha sem
+ * ninguém perceber.
  */
-export async function atualizarSaldosDaCarteira(): Promise<MetaAdsState> {
+export async function atualizarCarteira(): Promise<MetaAdsState> {
   const user = await requireModuleAccess("clientes");
 
   const contas = await prisma.metaAdAccount.findMany({
     where: {
       active: true,
-      isPrepay: true,
       client: { ...CARTEIRA, ...escopoDaCarteira(user) },
     },
     // Mais velha primeiro: numa carteira maior que o teto, a varredura seguinte
     // pega quem ficou pra trás em vez de buscar sempre as mesmas.
     orderBy: { lastSyncedAt: { sort: "asc", nulls: "first" } },
     take: CONTAS_POR_VARREDURA,
-    select: { id: true, metaAccountId: true, isPrepay: true },
+    select: { id: true, metaAccountId: true, isPrepay: true, leadActionType: true },
   });
 
   if (contas.length === 0) {
-    return { erro: "Nenhuma conta pré-paga vinculada nas suas lojas ainda." };
+    return { erro: "Nenhuma conta de anúncio vinculada nas suas lojas ainda." };
   }
 
   let ok = 0;
   let falhou = 0;
   for (const conta of contas) {
-    const r = await sincronizarSaldo(conta);
-    if (r.ok) ok++;
+    // Saldo primeiro: é o número que para a campanha. Se a conta está
+    // quebrada, melhor saber disso antes de gastar a segunda chamada.
+    const s = await sincronizarSaldo(conta);
+    const i = await sincronizarInsights(conta);
+    if (s.ok && i.ok) ok++;
     else falhou++;
   }
 
   revalidatePath("/meta-ads");
 
   if (ok === 0) {
-    return { erro: `Não deu pra ler o saldo de nenhuma das ${falhou} contas. O motivo está em cada linha.` };
+    return {
+      erro: `Não deu pra atualizar nenhuma das ${falhou} contas. O motivo está na linha de cada uma.`,
+    };
   }
   return {
     ok:
       falhou === 0
         ? `${ok} ${ok === 1 ? "conta atualizada" : "contas atualizadas"}.`
-        : `${ok} atualizada(s), ${falhou} com erro — o motivo está na linha de cada uma.`,
+        : `${ok} atualizada(s), ${falhou} com problema — o motivo está na linha de cada uma.`,
   };
+}
+
+/**
+ * Busca os números de campanha de um cliente agora.
+ *
+ * Separado do saldo porque na ficha da loja são duas perguntas diferentes:
+ * "quanto tem na conta" e "o que as campanhas fizeram".
+ */
+export async function atualizarCampanhasAgora(clientId: string): Promise<MetaAdsState> {
+  const user = await requireModuleAccess("clientes");
+  if (!(await clienteEDaCarteira(user, clientId))) {
+    return { erro: "Esta loja não está na sua lista." };
+  }
+
+  const resultados = await sincronizarInsightsDoCliente(clientId);
+  revalidar(clientId);
+
+  if (resultados.length === 0) {
+    return { erro: "Nenhuma conta de anúncio vinculada a este cliente." };
+  }
+
+  const falhas = resultados.filter((r) => !r.resultado.ok);
+  if (falhas.length === resultados.length) {
+    const unica = falhas.length === 1 && !falhas[0].resultado.ok ? falhas[0].resultado.erro : null;
+    return { erro: unica ?? `Não deu pra buscar os números de ${falhas.length} conta(s).` };
+  }
+
+  const linhas = resultados.reduce(
+    (t, r) => t + (r.resultado.ok ? r.resultado.linhas : 0),
+    0
+  );
+  return {
+    ok:
+      falhas.length === 0
+        ? `Números atualizados (${linhas} dias de conjunto).`
+        : `Números atualizados, menos de ${falhas.length} conta(s).`,
+  };
+}
+
+/**
+ * Troca o que conta como "lead" numa conta.
+ *
+ * É configuração da conta, não do sistema: uma loja roda campanha de WhatsApp,
+ * outra de formulário. Somar as duas como se fossem a mesma coisa daria um
+ * custo por lead que não quer dizer nada.
+ *
+ * Mexer aqui NÃO reescreve o histórico sozinho — os dias já gravados ficam
+ * com a contagem antiga até a próxima busca. A tela avisa disso.
+ */
+export async function definirTipoDeLead(
+  clientId: string,
+  contaId: string,
+  tipo: string
+): Promise<MetaAdsState> {
+  const user = await quemPodeVincular(clientId);
+  if (!user) return { erro: "Só a direção muda o que conta como lead." };
+
+  if (!TIPOS_DE_LEAD.some((t) => t.valor === tipo)) {
+    return { erro: "Tipo de lead desconhecido." };
+  }
+
+  // updateMany com o clientId junto: o id da conta vem do navegador, e assim
+  // não dá pra mexer na conta de outra loja mandando outro id.
+  const { count } = await prisma.metaAdAccount.updateMany({
+    where: { id: contaId, clientId },
+    data: { leadActionType: tipo },
+  });
+  if (count === 0) return { erro: "Conta não encontrada nesta loja." };
+
+  revalidar(clientId);
+  return { ok: "Tipo de lead trocado. Aperte “Atualizar números” pra recontar os últimos 30 dias." };
 }

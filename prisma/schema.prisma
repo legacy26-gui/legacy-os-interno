@@ -1186,6 +1186,10 @@ model AdsetInsightDaily {
   adsetId     String
   adsetName   String
   campaignId  String?
+  // O nome da campanha como está escrito lá na Meta. Guardado junto do
+  // número e não buscado na hora de mostrar: campanha renomeada ou apagada
+  // deixaria o histórico sem nome, e relatório sem nome não se lê.
+  campaignName String?
   // Só a data, sem hora: o dado da Meta é fechado por dia.
   date        DateTime      @db.Date
   spendCents  Int

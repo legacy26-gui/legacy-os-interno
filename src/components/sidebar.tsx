@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
-  Trophy, Video, Car, BellRing, TrendingUp,
+  Trophy, Video, Car, BellRing, TrendingUp, Megaphone,
 } from "lucide-react";
 import type { Empresa, Role } from "@/generated/prisma/enums";
 import { canAccessModule, moduleServesEmpresa, type ModuleKey } from "@/lib/permissions";
@@ -50,6 +50,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/ranking-lojas", label: "Ranking de Lojas", icon: Trophy, module: "gestao-contas" },
       { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
       { href: "/controle-vendas", label: "Controle de Vendas", icon: TrendingUp, module: "gestao-contas" },
+      { href: "/meta-ads", label: "Meta Ads", icon: Megaphone, module: "clientes" },
       { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
       { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
     ],
@@ -89,6 +90,9 @@ const EMPLOYEE_ITEMS: NavLeaf[] = [
   // só da direção.
   { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
   { href: "/controle-vendas", label: "Controle de Vendas", icon: TrendingUp, module: "gestao-contas" },
+  // Saldo da conta de anúncio é trabalho do gestor de tráfego: conta zerada
+  // para a campanha dele. Vê só as lojas dele, pela regra de carteira.
+  { href: "/meta-ads", label: "Meta Ads", icon: Megaphone, module: "clientes" },
 ];
 
 function NavLink({ href, label, icon: Icon, active, onClick }: NavLeaf & { active: boolean; onClick: () => void }) {

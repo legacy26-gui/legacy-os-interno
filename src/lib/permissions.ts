@@ -83,6 +83,12 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   // conferência de empresa, como ficou até aqui.
   { prefix: "/meu-dia", module: "clientes" },
   { prefix: "/clientes", module: "clientes" },
+  // Meta Ads lista loja por loja com o saldo da conta de anúncio. Vai na chave
+  // "clientes" porque é a carteira da pessoa que está na tela — quais lojas
+  // cada um vê é a regra de carteira (escopoDaCarteira), não esta lista. E
+  // como "clientes" não está liberado pro Treinamentos, esta tela fica fora de
+  // lá automaticamente.
+  { prefix: "/meta-ads", module: "clientes" },
   { prefix: "/formularios", module: "formularios" },
   { prefix: "/financeiro", module: "financeiro" },
   { prefix: "/contratos", module: "contratos" },

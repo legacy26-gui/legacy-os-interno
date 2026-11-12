@@ -75,6 +75,37 @@ export function tempoDesde(quando: Date, agora = new Date()): string {
   return dias === 1 ? "há 1 dia" : `há ${dias} dias`;
 }
 
+// ───────────────────────── Quando o saldo preocupa ─────────────────────────
+//
+// ATENÇÃO: estes dois números são um PALPITE meu, não a regra da casa. Ponho
+// um valor pra tela ter cor — lista de saldo sem sinal de urgência é só uma
+// lista, e ninguém olha. Guilherme: me diga quanto é "acabando" pra uma loja
+// de vocês e eu troco aqui, num lugar só.
+//
+// Pensado em cima do gasto diário: conta que gasta R$ 50/dia e tem R$ 50
+// morre amanhã; com R$ 150 dá o fim de semana. É isso que a cor tenta dizer —
+// não "é pouco dinheiro", e sim "quantos dias ainda roda".
+
+/** Abaixo disso a campanha para em pouco tempo. */
+export const SALDO_CRITICO = 5_000; // R$ 50,00
+
+/** Abaixo disso já é hora de pedir Pix. */
+export const SALDO_BAIXO = 15_000; // R$ 150,00
+
+export type TomDoSaldo = "critico" | "baixo" | "ok";
+
+export function estadoDoSaldo(centavos: number): TomDoSaldo {
+  if (centavos < SALDO_CRITICO) return "critico";
+  if (centavos < SALDO_BAIXO) return "baixo";
+  return "ok";
+}
+
+export const COR_DO_SALDO: Record<TomDoSaldo, string> = {
+  critico: "text-red-500",
+  baixo: "text-amber-600 dark:text-amber-400",
+  ok: "text-foreground",
+};
+
 /** Formato de ID de conta de anúncio da Meta: "act_" e só números depois. */
 export const FORMATO_DA_CONTA = /^act_\d+$/;
 

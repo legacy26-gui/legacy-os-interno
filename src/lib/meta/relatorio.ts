@@ -1,15 +1,19 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import {
-  somar,
-  custoPorLead,
-  type Numeros,
-  type Intervalo,
-  type NivelDoRelatorio,
-} from "./insights";
+import { somar, custoPorLead, type Numeros, type Intervalo } from "./insights";
 
 // Os números do relatório do cliente.
+//
+// ── Uma campanha por linha, e só ──────────────────────────────────────────
+//
+// Nada de conjunto e nada de anúncio. É relatório de cliente, mandado uma vez
+// por semana: o dono da loja quer saber se a semana foi boa, não qual público
+// converteu melhor. Abrir em vinte conjuntos transforma a resposta ("foi boa")
+// numa planilha que ele não vai ler.
+//
+// Quem precisa do detalhe é a equipe, e a equipe tem a tela interna inteira
+// pra isso — campanha, conjunto, anúncio, CTR e cliques.
 //
 // ── O que entra, e o que fica de fora ─────────────────────────────────────
 //
@@ -25,8 +29,6 @@ export interface LinhaDoRelatorio extends Numeros {
   id: string;
   nome: string;
   cpl: number | null;
-  /** A arte, quando é anúncio e o sistema a tem. */
-  miniatura: string | null;
 }
 
 export interface Relatorio {
@@ -58,8 +60,7 @@ const CAMPOS = {
 /** Monta o relatório de uma loja num período. */
 export async function montarRelatorio(
   clientId: string,
-  periodo: Intervalo,
-  nivel: NivelDoRelatorio
+  periodo: Intervalo
 ): Promise<Relatorio | null> {
   const cliente = await prisma.client.findUnique({
     where: { id: clientId },
@@ -99,16 +100,12 @@ export async function montarRelatorio(
       )
     : new Map<string, string | null>();
 
-  // Agrupa no nível pedido. Mesma ideia da tela: o grão guardado é o anúncio,
-  // e conjunto e campanha são somas dele — então os três sempre batem.
+  // Agrupa por campanha. O grão guardado é o anúncio, e campanha é soma dele
+  // — então o total da folha sempre bate com a tela interna.
   const caixas = new Map<string, { nome: string; linhas: typeof cru }>();
   for (const l of cru) {
-    const [id, nome] =
-      nivel === "anuncio"
-        ? [l.adId, l.adName]
-        : nivel === "conjunto"
-          ? [l.adsetId, l.adsetName]
-          : [l.campaignId ?? "sem-campanha", l.campaignName ?? "Campanha sem nome"];
+    const id = l.campaignId ?? "sem-campanha";
+    const nome = l.campaignName ?? "Campanha sem nome";
     if (!caixas.has(id)) caixas.set(id, { nome, linhas: [] });
     const caixa = caixas.get(id)!;
     if (nome) caixa.nome = nome;
@@ -118,13 +115,7 @@ export async function montarRelatorio(
   const linhas: LinhaDoRelatorio[] = [...caixas.entries()]
     .map(([id, caixa]) => {
       const n = somar(caixa.linhas);
-      return {
-        id,
-        nome: caixa.nome,
-        cpl: custoPorLead(n),
-        miniatura: nivel === "anuncio" ? (artes.get(id) ?? null) : null,
-        ...n,
-      };
+      return { id, nome: caixa.nome, cpl: custoPorLead(n), ...n };
     })
     // Quem mais consumiu dinheiro primeiro.
     .sort((a, b) => b.spendCents - a.spendCents);

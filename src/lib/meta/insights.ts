@@ -432,29 +432,3 @@ export function desdeQuando(dias: number, hoje = new Date()): Date {
 export function comoDataDaMeta(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
-
-// ───────────────────── Os níveis do relatório ──────────────────────────────
-//
-// Mora aqui e não no arquivo do relatório porque o FORMULÁRIO precisa deles, e
-// formulário é tela de navegador: arquivo server-only não atravessa pra lá.
-// Este aqui é puro, serve aos dois lados.
-
-export type NivelDoRelatorio = "campanha" | "conjunto" | "anuncio";
-
-export const NIVEIS: { valor: NivelDoRelatorio; rotulo: string; explica: string }[] = [
-  {
-    valor: "campanha",
-    rotulo: "Por campanha",
-    explica: "Uma linha por campanha. É o que o dono da loja entende sem explicação.",
-  },
-  {
-    valor: "conjunto",
-    rotulo: "Por conjunto",
-    explica: "Abre as campanhas em conjuntos — público por público.",
-  },
-  {
-    valor: "anuncio",
-    rotulo: "Por anúncio",
-    explica: "Anúncio por anúncio, com a arte de cada um.",
-  },
-];

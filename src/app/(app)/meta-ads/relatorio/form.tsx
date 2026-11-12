@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileBarChart } from "lucide-react";
-import { ATALHOS, ROTULO_DO_ATALHO, NIVEIS } from "@/lib/meta/insights";
+import { ATALHOS, ROTULO_DO_ATALHO } from "@/lib/meta/insights";
 
 
 // O formulário do relatório: loja, período, detalhe.
@@ -23,7 +23,6 @@ export function FormDoRelatorio({
   lojas,
   mostrarGestor,
   lojaAtual,
-  nivelAtual,
   periodoAtual,
   deAtual,
   ateAtual,
@@ -32,7 +31,6 @@ export function FormDoRelatorio({
   /** Gestor só serve pra quem vê a casa toda; o gestor já só tem as dele. */
   mostrarGestor: boolean;
   lojaAtual: string;
-  nivelAtual: string;
   periodoAtual: string;
   deAtual: string;
   ateAtual: string;
@@ -40,8 +38,8 @@ export function FormDoRelatorio({
   const router = useRouter();
   const [gestor, setGestor] = useState("");
   const [loja, setLoja] = useState(lojaAtual);
-  const [nivel, setNivel] = useState(nivelAtual);
-  const [periodo, setPeriodo] = useState(periodoAtual || (deAtual ? "" : "30"));
+  // 7 dias por padrão: o relatório vai pro cliente uma vez por semana.
+  const [periodo, setPeriodo] = useState(periodoAtual || (deAtual ? "" : "7"));
   const [de, setDe] = useState(deAtual);
   const [ate, setAte] = useState(ateAtual);
 
@@ -51,7 +49,7 @@ export function FormDoRelatorio({
   function gerar(e: React.FormEvent) {
     e.preventDefault();
     if (!loja) return;
-    const q = new URLSearchParams({ loja, nivel });
+    const q = new URLSearchParams({ loja });
     if (periodo) q.set("periodo", periodo);
     else if (de && ate) {
       q.set("de", de);
@@ -156,30 +154,6 @@ export function FormDoRelatorio({
             />
           </label>
         </div>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs text-foreground-muted">Detalhe</span>
-        <div className="flex flex-wrap gap-2">
-          {NIVEIS.map((n) => (
-            <button
-              key={n.valor}
-              type="button"
-              title={n.explica}
-              onClick={() => setNivel(n.valor)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
-                nivel === n.valor
-                  ? "bg-accent text-white border-accent"
-                  : "border-border bg-surface text-foreground-muted hover:bg-surface-muted"
-              }`}
-            >
-              {n.rotulo}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs text-foreground-muted">
-          {NIVEIS.find((n) => n.valor === nivel)?.explica}
-        </p>
       </div>
 
       <button

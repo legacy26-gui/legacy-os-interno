@@ -3,10 +3,8 @@ import { ArrowLeft, FileBarChart, AlertTriangle } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CARTEIRA, escopoDaCarteira, clienteEDaCarteira, veTodaACarteira } from "@/lib/carteira";
-import { lerIntervalo, reais, numero, textoDaData } from "@/lib/meta/insights";
+import { lerIntervalo, reais, numero, textoDaData, diaCurto } from "@/lib/meta/insights";
 import { montarRelatorio } from "@/lib/meta/relatorio";
-import { NIVEIS, type NivelDoRelatorio } from "@/lib/meta/insights";
-import { Criativo } from "../[clientId]/criativo";
 import { FormDoRelatorio } from "./form";
 import { BotaoImprimir } from "./imprimir";
 
@@ -33,7 +31,6 @@ export const maxDuration = 60;
 
 type Busca = {
   loja?: string;
-  nivel?: string;
   periodo?: string;
   de?: string;
   ate?: string;
@@ -47,7 +44,6 @@ export default async function RelatorioPage({
   const user = await requireModuleAccess("clientes");
   const busca = await searchParams;
   const periodo = lerIntervalo(busca);
-  const nivel = (NIVEIS.find((n) => n.valor === busca.nivel)?.valor ?? "campanha") as NivelDoRelatorio;
 
   const lojas = await prisma.client.findMany({
     where: { ...CARTEIRA, ...escopoDaCarteira(user) },
@@ -74,7 +70,6 @@ export default async function RelatorioPage({
           }))}
           mostrarGestor={veTodaACarteira(user)}
           lojaAtual=""
-          nivelAtual={nivel}
           periodoAtual={periodo.chave}
           deAtual={periodo.de && !periodo.chave ? textoDaData(periodo.de) : ""}
           ateAtual={periodo.ate && !periodo.chave ? textoDaData(periodo.ate) : ""}
@@ -95,7 +90,7 @@ export default async function RelatorioPage({
     );
   }
 
-  const r = await montarRelatorio(busca.loja, periodo, nivel);
+  const r = await montarRelatorio(busca.loja, periodo);
   if (!r) return <p className="text-sm text-foreground-muted">Loja não encontrada.</p>;
 
   return (
@@ -113,7 +108,6 @@ export default async function RelatorioPage({
           }))}
           mostrarGestor={veTodaACarteira(user)}
           lojaAtual={busca.loja}
-          nivelAtual={nivel}
           periodoAtual={periodo.chave}
           deAtual={periodo.de && !periodo.chave ? textoDaData(periodo.de) : ""}
           ateAtual={periodo.ate && !periodo.chave ? textoDaData(periodo.ate) : ""}
@@ -138,7 +132,19 @@ export default async function RelatorioPage({
           </p>
         </div>
       ) : (
-        <Folha relatorio={r} periodo={periodo.rotulo} nivel={nivel} />
+        <Folha
+          relatorio={r}
+          periodo={
+            // Datas de verdade e não "7 dias": o relatório vai pro cliente, e
+            // "5 a 12 de nov" é conferível — "7 dias" depende de saber quando
+            // o papel foi impresso.
+            periodo.vidaInteira || !periodo.de || !periodo.ate
+              ? periodo.rotulo
+              : periodo.de.getTime() === periodo.ate.getTime()
+                ? diaCurto(periodo.de)
+                : `${diaCurto(periodo.de)} a ${diaCurto(periodo.ate)}`
+          }
+        />
       )}
     </div>
   );
@@ -172,11 +178,9 @@ function Cabecalho() {
 function Folha({
   relatorio: r,
   periodo,
-  nivel,
 }: {
   relatorio: NonNullable<Awaited<ReturnType<typeof montarRelatorio>>>;
   periodo: string;
-  nivel: NivelDoRelatorio;
 }) {
   return (
     <div className="bg-white text-zinc-900 rounded-2xl border border-border print:border-0 print:rounded-none overflow-hidden">
@@ -216,14 +220,11 @@ function Folha({
       {r.linhas.length > 0 && (
         <div className="px-8 py-6">
           <p className="text-[11px] uppercase tracking-wide text-zinc-500 font-medium mb-3">
-            {nivel === "campanha" ? "Por campanha" : nivel === "conjunto" ? "Por conjunto" : "Por anúncio"}
+Por campanha
           </p>
           <div className="flex flex-col divide-y divide-zinc-200">
             {r.linhas.map((l) => (
               <div key={l.id} className="py-3 flex items-center gap-3">
-                {nivel === "anuncio" && (
-                  <Criativo url={l.miniatura} preview={null} nome={l.nome} />
-                )}
                 <span className="flex-1 min-w-0 text-sm font-medium truncate">{l.nome}</span>
                 <span className="text-sm tabular-nums text-right w-24 shrink-0">
                   {reais(l.spendCents)}

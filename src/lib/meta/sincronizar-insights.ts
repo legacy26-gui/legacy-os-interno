@@ -28,6 +28,9 @@ const MAX_PAGINAS = 10;
 /** Quantas linhas pedir por página. */
 const POR_PAGINA = 300;
 
+/** Quantas linhas gravar por vez. Lote grande demais estoura o tempo. */
+const LINHAS_POR_LOTE = 50;
+
 export type ResultadoDosInsights =
   | { ok: true; linhas: number; dias: number }
   | { ok: false; erro: string };
@@ -94,11 +97,21 @@ export async function sincronizarInsights(
 
   const linhas = limparLinhas(todas, conta.leadActionType);
 
-  // Grava tudo de uma vez: ou o período inteiro entra, ou nada entra. Meia
-  // gravação daria um relatório com buraco no meio que ninguém notaria.
-  await prisma.$transaction([
-    ...linhas.map((l) =>
-      prisma.adsetInsightDaily.upsert({
+  // Grava em lotes, e não tudo numa transação só.
+  //
+  // Trinta dias × todos os conjuntos de uma conta grande passa fácil de mil
+  // linhas, e uma transação desse tamanho num banco na nuvem estoura o tempo
+  // da função — e aí NADA entra, nem o que já tinha sido lido.
+  //
+  // O preço é que uma falha no meio deixa parte do período gravada. Dá pra
+  // conviver: cada linha é um dia de um conjunto, o upsert é idempotente, e
+  // apertar o botão de novo completa o que faltou. Perder tudo por causa do
+  // tamanho seria pior.
+  for (let i = 0; i < linhas.length; i += LINHAS_POR_LOTE) {
+    const lote = linhas.slice(i, i + LINHAS_POR_LOTE);
+    await prisma.$transaction(
+      lote.map((l) =>
+        prisma.adsetInsightDaily.upsert({
         where: {
           adAccountId_adsetId_date: {
             adAccountId: conta.id,
@@ -119,13 +132,17 @@ export async function sincronizarInsights(
           leads: l.leads,
         },
         create: { adAccountId: conta.id, ...l },
-      })
-    ),
-    prisma.metaAdAccount.update({
-      where: { id: conta.id },
-      data: { lastSyncedAt: new Date(), lastSyncError: null },
-    }),
-  ]);
+        })
+      )
+    );
+  }
+
+  // O carimbo vai por último, fora dos lotes: ele diz "esta conta está em
+  // dia", e só é verdade depois que tudo entrou.
+  await prisma.metaAdAccount.update({
+    where: { id: conta.id },
+    data: { lastSyncedAt: new Date(), lastSyncError: null },
+  });
 
   return { ok: true, linhas: linhas.length, dias: DIAS_DE_INSIGHT };
 }

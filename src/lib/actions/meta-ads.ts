@@ -6,7 +6,10 @@ import { requireModuleAccess } from "@/lib/dal";
 import { clienteEDaCarteira, escopoDaCarteira, CARTEIRA } from "@/lib/carteira";
 import { contaValida } from "@/lib/meta/saldo";
 import { TIPOS_DE_LEAD } from "@/lib/meta/insights";
-import { sincronizarSaldo, sincronizarSaldosDoCliente } from "@/lib/meta/sincronizar-saldo";
+import {
+  sincronizarSaldo,
+  sincronizarSaldosDoCliente,
+} from "@/lib/meta/sincronizar-saldo";
 import {
   sincronizarInsights,
   sincronizarInsightsDoCliente,
@@ -23,6 +26,33 @@ import {
 // nunca sai de lá.
 
 export type MetaAdsState = { erro?: string; ok?: string };
+
+/**
+ * Nenhuma ação daqui pode EXPLODIR.
+ *
+ * Server Action que lança erro derruba a tela inteira no "This page couldn't
+ * load" — a pessoa perde a página, não sabe o que houve, e o motivo fica num
+ * log que ninguém abre. Apertar um botão que deu errado tem que devolver uma
+ * frase, não uma tela preta.
+ *
+ * O redirect e o notFound do Next TAMBÉM são lançados como erro — é assim que
+ * eles funcionam. Esses precisam passar direto, senão o "não tem permissão"
+ * viraria uma mensagem vermelha no lugar de mandar a pessoa pro dashboard.
+ */
+async function semQuebrar(
+  fazer: () => Promise<MetaAdsState>,
+): Promise<MetaAdsState> {
+  try {
+    return await fazer();
+  } catch (erro) {
+    const digest = (erro as { digest?: unknown })?.digest;
+    if (typeof digest === "string" && digest.startsWith("NEXT_")) throw erro;
+
+    console.error("[meta-ads] a ação falhou", erro);
+    const msg = erro instanceof Error ? erro.message : String(erro);
+    return { erro: `Deu erro no servidor: ${msg.slice(0, 300)}` };
+  }
+}
 
 /** Só a direção vincula conta. */
 async function quemPodeVincular(clientId: string) {
@@ -52,44 +82,46 @@ function revalidar(clientId: string) {
 export async function vincularContaAnuncios(
   clientId: string,
   metaAccountId: string,
-  isPrepay: boolean
+  isPrepay: boolean,
 ): Promise<MetaAdsState> {
-  const user = await quemPodeVincular(clientId);
-  if (!user) return { erro: "Só a direção pode vincular conta de anúncio." };
+  return semQuebrar(async () => {
+    const user = await quemPodeVincular(clientId);
+    if (!user) return { erro: "Só a direção pode vincular conta de anúncio." };
 
-  const id = metaAccountId.trim();
-  if (!contaValida(id)) {
+    const id = metaAccountId.trim();
+    if (!contaValida(id)) {
+      return {
+        erro: 'O ID da conta precisa ser "act_" seguido só de números — por exemplo act_1234567890.',
+      };
+    }
+
+    // metaAccountId é único no banco: a mesma conta não pode estar em duas
+    // lojas. A checagem aqui é pra devolver uma frase que explica, em vez de
+    // deixar o erro do banco subir.
+    const jaExiste = await prisma.metaAdAccount.findUnique({
+      where: { metaAccountId: id },
+      select: { client: { select: { id: true, companyName: true } } },
+    });
+    if (jaExiste) {
+      return {
+        erro:
+          jaExiste.client.id === clientId
+            ? "Esta conta já está vinculada a este cliente."
+            : `Esta conta já está vinculada a ${jaExiste.client.companyName}.`,
+      };
+    }
+
+    await prisma.metaAdAccount.create({
+      data: { clientId, metaAccountId: id, isPrepay },
+    });
+
+    revalidar(clientId);
     return {
-      erro: 'O ID da conta precisa ser "act_" seguido só de números — por exemplo act_1234567890.',
+      ok: isPrepay
+        ? "Conta vinculada. Aperte “Atualizar agora” pra buscar o saldo."
+        : "Conta vinculada (sem saldo pré-pago a acompanhar).",
     };
-  }
-
-  // metaAccountId é único no banco: a mesma conta não pode estar em duas
-  // lojas. A checagem aqui é pra devolver uma frase que explica, em vez de
-  // deixar o erro do banco subir.
-  const jaExiste = await prisma.metaAdAccount.findUnique({
-    where: { metaAccountId: id },
-    select: { client: { select: { id: true, companyName: true } } },
   });
-  if (jaExiste) {
-    return {
-      erro:
-        jaExiste.client.id === clientId
-          ? "Esta conta já está vinculada a este cliente."
-          : `Esta conta já está vinculada a ${jaExiste.client.companyName}.`,
-    };
-  }
-
-  await prisma.metaAdAccount.create({
-    data: { clientId, metaAccountId: id, isPrepay },
-  });
-
-  revalidar(clientId);
-  return {
-    ok: isPrepay
-      ? "Conta vinculada. Aperte “Atualizar agora” pra buscar o saldo."
-      : "Conta vinculada (sem saldo pré-pago a acompanhar).",
-  };
 }
 
 /**
@@ -102,33 +134,42 @@ export async function vincularContaAnuncios(
  * Gestor de tráfego também pode apertar — ele não escolhe a conta, mas precisa
  * do número.
  */
-export async function atualizarSaldoAgora(clientId: string): Promise<MetaAdsState> {
-  const user = await requireModuleAccess("clientes");
-  if (!(await clienteEDaCarteira(user, clientId))) {
-    return { erro: "Esta loja não está na sua lista." };
-  }
+export async function atualizarSaldoAgora(
+  clientId: string,
+): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Esta loja não está na sua lista." };
+    }
 
-  const resultados = await sincronizarSaldosDoCliente(clientId);
-  revalidar(clientId);
+    const resultados = await sincronizarSaldosDoCliente(clientId);
+    revalidar(clientId);
 
-  if (resultados.length === 0) {
-    return { erro: "Nenhuma conta de anúncio vinculada a este cliente." };
-  }
+    if (resultados.length === 0) {
+      return { erro: "Nenhuma conta de anúncio vinculada a este cliente." };
+    }
 
-  const falhas = resultados.filter((r) => !r.resultado.ok);
-  if (falhas.length === resultados.length) {
-    // Uma conta só: mostra o motivo. Várias: mostra quantas, e o motivo de
-    // cada uma fica na linha dela, na tela.
-    const unica = falhas.length === 1 && !falhas[0].resultado.ok ? falhas[0].resultado.erro : null;
-    return { erro: unica ?? `Não deu pra ler o saldo de ${falhas.length} conta(s).` };
-  }
+    const falhas = resultados.filter((r) => !r.resultado.ok);
+    if (falhas.length === resultados.length) {
+      // Uma conta só: mostra o motivo. Várias: mostra quantas, e o motivo de
+      // cada uma fica na linha dela, na tela.
+      const unica =
+        falhas.length === 1 && !falhas[0].resultado.ok
+          ? falhas[0].resultado.erro
+          : null;
+      return {
+        erro: unica ?? `Não deu pra ler o saldo de ${falhas.length} conta(s).`,
+      };
+    }
 
-  return {
-    ok:
-      falhas.length === 0
-        ? "Saldo atualizado."
-        : `Saldo atualizado, menos de ${falhas.length} conta(s).`,
-  };
+    return {
+      ok:
+        falhas.length === 0
+          ? "Saldo atualizado."
+          : `Saldo atualizado, menos de ${falhas.length} conta(s).`,
+    };
+  });
 }
 
 /**
@@ -153,48 +194,57 @@ const CONTAS_POR_VARREDURA = 25;
  * ninguém perceber.
  */
 export async function atualizarCarteira(): Promise<MetaAdsState> {
-  const user = await requireModuleAccess("clientes");
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
 
-  const contas = await prisma.metaAdAccount.findMany({
-    where: {
-      active: true,
-      client: { ...CARTEIRA, ...escopoDaCarteira(user) },
-    },
-    // Mais velha primeiro: numa carteira maior que o teto, a varredura seguinte
-    // pega quem ficou pra trás em vez de buscar sempre as mesmas.
-    orderBy: { lastSyncedAt: { sort: "asc", nulls: "first" } },
-    take: CONTAS_POR_VARREDURA,
-    select: { id: true, metaAccountId: true, isPrepay: true, leadActionType: true },
-  });
+    const contas = await prisma.metaAdAccount.findMany({
+      where: {
+        active: true,
+        client: { ...CARTEIRA, ...escopoDaCarteira(user) },
+      },
+      // Mais velha primeiro: numa carteira maior que o teto, a varredura seguinte
+      // pega quem ficou pra trás em vez de buscar sempre as mesmas.
+      orderBy: { lastSyncedAt: { sort: "asc", nulls: "first" } },
+      take: CONTAS_POR_VARREDURA,
+      select: {
+        id: true,
+        metaAccountId: true,
+        isPrepay: true,
+        leadActionType: true,
+      },
+    });
 
-  if (contas.length === 0) {
-    return { erro: "Nenhuma conta de anúncio vinculada nas suas lojas ainda." };
-  }
+    if (contas.length === 0) {
+      return {
+        erro: "Nenhuma conta de anúncio vinculada nas suas lojas ainda.",
+      };
+    }
 
-  let ok = 0;
-  let falhou = 0;
-  for (const conta of contas) {
-    // Saldo primeiro: é o número que para a campanha. Se a conta está
-    // quebrada, melhor saber disso antes de gastar a segunda chamada.
-    const s = await sincronizarSaldo(conta);
-    const i = await sincronizarInsights(conta);
-    if (s.ok && i.ok) ok++;
-    else falhou++;
-  }
+    let ok = 0;
+    let falhou = 0;
+    for (const conta of contas) {
+      // Saldo primeiro: é o número que para a campanha. Se a conta está
+      // quebrada, melhor saber disso antes de gastar a segunda chamada.
+      const s = await sincronizarSaldo(conta);
+      const i = await sincronizarInsights(conta);
+      if (s.ok && i.ok) ok++;
+      else falhou++;
+    }
 
-  revalidatePath("/meta-ads");
+    revalidatePath("/meta-ads");
 
-  if (ok === 0) {
+    if (ok === 0) {
+      return {
+        erro: `Não deu pra atualizar nenhuma das ${falhou} contas. O motivo está na linha de cada uma.`,
+      };
+    }
     return {
-      erro: `Não deu pra atualizar nenhuma das ${falhou} contas. O motivo está na linha de cada uma.`,
+      ok:
+        falhou === 0
+          ? `${ok} ${ok === 1 ? "conta atualizada" : "contas atualizadas"}.`
+          : `${ok} atualizada(s), ${falhou} com problema — o motivo está na linha de cada uma.`,
     };
-  }
-  return {
-    ok:
-      falhou === 0
-        ? `${ok} ${ok === 1 ? "conta atualizada" : "contas atualizadas"}.`
-        : `${ok} atualizada(s), ${falhou} com problema — o motivo está na linha de cada uma.`,
-  };
+  });
 }
 
 /**
@@ -203,35 +253,46 @@ export async function atualizarCarteira(): Promise<MetaAdsState> {
  * Separado do saldo porque na ficha da loja são duas perguntas diferentes:
  * "quanto tem na conta" e "o que as campanhas fizeram".
  */
-export async function atualizarCampanhasAgora(clientId: string): Promise<MetaAdsState> {
-  const user = await requireModuleAccess("clientes");
-  if (!(await clienteEDaCarteira(user, clientId))) {
-    return { erro: "Esta loja não está na sua lista." };
-  }
+export async function atualizarCampanhasAgora(
+  clientId: string,
+): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Esta loja não está na sua lista." };
+    }
 
-  const resultados = await sincronizarInsightsDoCliente(clientId);
-  revalidar(clientId);
+    const resultados = await sincronizarInsightsDoCliente(clientId);
+    revalidar(clientId);
 
-  if (resultados.length === 0) {
-    return { erro: "Nenhuma conta de anúncio vinculada a este cliente." };
-  }
+    if (resultados.length === 0) {
+      return { erro: "Nenhuma conta de anúncio vinculada a este cliente." };
+    }
 
-  const falhas = resultados.filter((r) => !r.resultado.ok);
-  if (falhas.length === resultados.length) {
-    const unica = falhas.length === 1 && !falhas[0].resultado.ok ? falhas[0].resultado.erro : null;
-    return { erro: unica ?? `Não deu pra buscar os números de ${falhas.length} conta(s).` };
-  }
+    const falhas = resultados.filter((r) => !r.resultado.ok);
+    if (falhas.length === resultados.length) {
+      const unica =
+        falhas.length === 1 && !falhas[0].resultado.ok
+          ? falhas[0].resultado.erro
+          : null;
+      return {
+        erro:
+          unica ??
+          `Não deu pra buscar os números de ${falhas.length} conta(s).`,
+      };
+    }
 
-  const linhas = resultados.reduce(
-    (t, r) => t + (r.resultado.ok ? r.resultado.linhas : 0),
-    0
-  );
-  return {
-    ok:
-      falhas.length === 0
-        ? `Números atualizados (${linhas} dias de conjunto).`
-        : `Números atualizados, menos de ${falhas.length} conta(s).`,
-  };
+    const linhas = resultados.reduce(
+      (t, r) => t + (r.resultado.ok ? r.resultado.linhas : 0),
+      0,
+    );
+    return {
+      ok:
+        falhas.length === 0
+          ? `Números atualizados (${linhas} dias de conjunto).`
+          : `Números atualizados, menos de ${falhas.length} conta(s).`,
+    };
+  });
 }
 
 /**
@@ -247,23 +308,27 @@ export async function atualizarCampanhasAgora(clientId: string): Promise<MetaAds
 export async function definirTipoDeLead(
   clientId: string,
   contaId: string,
-  tipo: string
+  tipo: string,
 ): Promise<MetaAdsState> {
-  const user = await quemPodeVincular(clientId);
-  if (!user) return { erro: "Só a direção muda o que conta como lead." };
+  return semQuebrar(async () => {
+    const user = await quemPodeVincular(clientId);
+    if (!user) return { erro: "Só a direção muda o que conta como lead." };
 
-  if (!TIPOS_DE_LEAD.some((t) => t.valor === tipo)) {
-    return { erro: "Tipo de lead desconhecido." };
-  }
+    if (!TIPOS_DE_LEAD.some((t) => t.valor === tipo)) {
+      return { erro: "Tipo de lead desconhecido." };
+    }
 
-  // updateMany com o clientId junto: o id da conta vem do navegador, e assim
-  // não dá pra mexer na conta de outra loja mandando outro id.
-  const { count } = await prisma.metaAdAccount.updateMany({
-    where: { id: contaId, clientId },
-    data: { leadActionType: tipo },
+    // updateMany com o clientId junto: o id da conta vem do navegador, e assim
+    // não dá pra mexer na conta de outra loja mandando outro id.
+    const { count } = await prisma.metaAdAccount.updateMany({
+      where: { id: contaId, clientId },
+      data: { leadActionType: tipo },
+    });
+    if (count === 0) return { erro: "Conta não encontrada nesta loja." };
+
+    revalidar(clientId);
+    return {
+      ok: "Tipo de lead trocado. Aperte “Atualizar números” pra recontar os últimos 30 dias.",
+    };
   });
-  if (count === 0) return { erro: "Conta não encontrada nesta loja." };
-
-  revalidar(clientId);
-  return { ok: "Tipo de lead trocado. Aperte “Atualizar números” pra recontar os últimos 30 dias." };
 }

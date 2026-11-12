@@ -54,62 +54,26 @@ export default async function MetaAdsPage({
     PERIODOS.find((p) => String(p) === dias) ?? DIAS_PADRAO;
   const de = desdeQuando(periodo);
 
-  const clientes = await prisma.client.findMany({
-    where: { ...CARTEIRA, ...escopoDaCarteira(user) },
-    orderBy: { companyName: "asc" },
-    select: {
-      id: true,
-      companyName: true,
-      manager: { select: { name: true } },
-      metaAdAccounts: {
-        where: { active: true },
-        orderBy: { createdAt: "asc" },
-        select: {
-          id: true,
-          metaAccountId: true,
-          isPrepay: true,
-          lastSyncedAt: true,
-          lastSyncError: true,
-          balanceSnapshots: {
-            orderBy: { capturedAt: "desc" },
-            take: 1,
-            select: { availableCents: true, capturedAt: true },
-          },
-        },
-      },
-    },
-  });
+  // Buscar os dados dentro de um try: se o banco recusar alguma coisa, a
+  // direção vê a MENSAGEM, não a tela preta do Next.
+  //
+  // Em produção o Next apaga a mensagem do erro e deixa só um código, que só
+  // se lê no painel da Vercel. Na prática isso vira "quebrou e ninguém sabe
+  // por quê". Pegando aqui, a frase do Postgres aparece na tela de quem pode
+  // fazer algo com ela.
+  let dados: Awaited<ReturnType<typeof carregar>>;
+  try {
+    dados = await carregar(user, de);
+  } catch (erro) {
+    const detalhe = erro instanceof Error ? erro.message : String(erro);
+    return (
+      <TelaDeFalha
+        detalhe={veTodaACarteira(user) ? detalhe : null}
+      />
+    );
+  }
 
-  // Os números do período, somados por conta. groupBy e não somar em
-  // JavaScript: trinta dias de conjunto de anúncio por loja é muita linha pra
-  // trazer só pra somar.
-  const idsDasContas = clientes.flatMap((c) => c.metaAdAccounts.map((a) => a.id));
-  const porConta = idsDasContas.length
-    ? await prisma.adsetInsightDaily.groupBy({
-        by: ["adAccountId"],
-        where: { adAccountId: { in: idsDasContas }, date: { gte: de } },
-        _sum: {
-          spendCents: true,
-          impressions: true,
-          clicks: true,
-          linkClicks: true,
-          leads: true,
-        },
-      })
-    : [];
-
-  const numerosDaConta = new Map<string, Numeros>(
-    porConta.map((g) => [
-      g.adAccountId,
-      {
-        spendCents: g._sum.spendCents ?? 0,
-        impressions: g._sum.impressions ?? 0,
-        clicks: g._sum.clicks ?? 0,
-        linkClicks: g._sum.linkClicks ?? 0,
-        leads: g._sum.leads ?? 0,
-      },
-    ])
-  );
+  const { clientes, numerosDaConta } = dados;
 
   const linhas = clientes.map((c) => {
     const n = somar(c.metaAdAccounts.map((a) => numerosDaConta.get(a.id) ?? ZERO));
@@ -356,6 +320,93 @@ export default async function MetaAdsPage({
         últimos {periodo} dias. Para vincular uma conta, abra a loja e use o bloco “Meta Ads” na
         ficha dela.
       </p>
+    </div>
+  );
+}
+
+/**
+ * As duas consultas da tela, num lugar só pra poderem ser protegidas por um
+ * try/catch sem embrulhar o desenho da página junto.
+ */
+async function carregar(user: Parameters<typeof escopoDaCarteira>[0], de: Date) {
+  const clientes = await prisma.client.findMany({
+    where: { ...CARTEIRA, ...escopoDaCarteira(user) },
+    orderBy: { companyName: "asc" },
+    select: {
+      id: true,
+      companyName: true,
+      manager: { select: { name: true } },
+      metaAdAccounts: {
+        where: { active: true },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          metaAccountId: true,
+          isPrepay: true,
+          lastSyncedAt: true,
+          lastSyncError: true,
+          balanceSnapshots: {
+            orderBy: { capturedAt: "desc" },
+            take: 1,
+            select: { availableCents: true, capturedAt: true },
+          },
+        },
+      },
+    },
+  });
+
+  // Os números do período, somados por conta. groupBy e não somar em
+  // JavaScript: trinta dias de conjunto de anúncio por loja é muita linha pra
+  // trazer só pra somar.
+  const idsDasContas = clientes.flatMap((c) => c.metaAdAccounts.map((a) => a.id));
+  const porConta = idsDasContas.length
+    ? await prisma.adsetInsightDaily.groupBy({
+        by: ["adAccountId"],
+        where: { adAccountId: { in: idsDasContas }, date: { gte: de } },
+        _sum: {
+          spendCents: true,
+          impressions: true,
+          clicks: true,
+          linkClicks: true,
+          leads: true,
+        },
+      })
+    : [];
+
+  const numerosDaConta = new Map<string, Numeros>(
+    porConta.map((g) => [
+      g.adAccountId,
+      {
+        spendCents: g._sum.spendCents ?? 0,
+        impressions: g._sum.impressions ?? 0,
+        clicks: g._sum.clicks ?? 0,
+        linkClicks: g._sum.linkClicks ?? 0,
+        leads: g._sum.leads ?? 0,
+      },
+    ])
+  );
+
+  return { clientes, numerosDaConta };
+}
+
+/** Quando o banco recusa alguma coisa: a frase dele, não uma tela preta. */
+function TelaDeFalha({ detalhe }: { detalhe: string | null }) {
+  return (
+    <div className="max-w-2xl rounded-2xl border border-red-500/50 bg-red-500/5 p-6 flex flex-col gap-3">
+      <h1 className="font-semibold flex items-center gap-2">
+        <AlertTriangle size={18} className="text-red-500" /> O Meta Ads não conseguiu carregar
+      </h1>
+      <p className="text-sm text-foreground-muted">
+        O resto do sistema continua funcionando — é só esta tela. Nada foi perdido.
+      </p>
+      {detalhe && (
+        <div className="border-t border-border pt-3">
+          <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium mb-1">
+            O que o servidor respondeu
+          </p>
+          <p className="text-xs font-mono text-red-500 break-words">{detalhe}</p>
+        </div>
+      )}
     </div>
   );
 }

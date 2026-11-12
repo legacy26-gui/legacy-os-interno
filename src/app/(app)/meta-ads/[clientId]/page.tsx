@@ -53,40 +53,38 @@ export default async function LojaNoMetaAdsPage({
   const periodo: Periodo = PERIODOS.find((p) => String(p) === dias) ?? DIAS_PADRAO;
   const de = desdeQuando(periodo);
 
-  const contas = await prisma.metaAdAccount.findMany({
-    where: { clientId, active: true },
-    orderBy: { createdAt: "asc" },
-    select: {
-      id: true,
-      metaAccountId: true,
-      isPrepay: true,
-      leadActionType: true,
-      lastSyncedAt: true,
-      lastSyncError: true,
-      balanceSnapshots: {
-        orderBy: { capturedAt: "desc" },
-        take: 1,
-        select: { availableCents: true, capturedAt: true },
-      },
-    },
-  });
-
-  const linhas = contas.length
-    ? await prisma.adsetInsightDaily.findMany({
-        where: { adAccountId: { in: contas.map((c) => c.id) }, date: { gte: de } },
-        select: {
-          adsetId: true,
-          adsetName: true,
-          campaignId: true,
-          campaignName: true,
-          spendCents: true,
-          impressions: true,
-          clicks: true,
-          linkClicks: true,
-          leads: true,
-        },
-      })
-    : [];
+  // Mesma proteção da lista: se o banco recusar alguma coisa, a direção vê a
+  // frase dele em vez da tela preta do Next.
+  let contas: Awaited<ReturnType<typeof carregarContas>>;
+  let linhas: Awaited<ReturnType<typeof carregarLinhas>>;
+  try {
+    contas = await carregarContas(clientId);
+    linhas = await carregarLinhas(contas.map((c) => c.id), de);
+  } catch (erro) {
+    const detalhe = erro instanceof Error ? erro.message : String(erro);
+    return (
+      <div className="max-w-2xl rounded-2xl border border-red-500/50 bg-red-500/5 p-6 flex flex-col gap-3">
+        <h1 className="font-semibold flex items-center gap-2">
+          <AlertTriangle size={18} className="text-red-500" /> Não deu pra carregar{" "}
+          {cliente.companyName}
+        </h1>
+        <p className="text-sm text-foreground-muted">
+          O resto do sistema continua funcionando — é só esta tela.
+        </p>
+        {(user.role === "ADMIN" || user.role === "GERENTE") && (
+          <div className="border-t border-border pt-3">
+            <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium mb-1">
+              O que o servidor respondeu
+            </p>
+            <p className="text-xs font-mono text-red-500 break-words">{detalhe}</p>
+          </div>
+        )}
+        <Link href="/meta-ads" className="text-sm text-accent hover:underline">
+          Voltar para todas as lojas
+        </Link>
+      </div>
+    );
+  }
 
   // Junta por campanha, e dentro dela por conjunto. Feito em memória de
   // propósito: são os conjuntos de uma loja num período curto, e agrupar em
@@ -353,6 +351,46 @@ export default async function LojaNoMetaAdsPage({
       </p>
     </div>
   );
+}
+
+/** As contas de anúncio da loja, com a última leitura de saldo. */
+async function carregarContas(clientId: string) {
+  return prisma.metaAdAccount.findMany({
+    where: { clientId, active: true },
+    orderBy: { createdAt: "asc" },
+    select: {
+      id: true,
+      metaAccountId: true,
+      isPrepay: true,
+      leadActionType: true,
+      lastSyncedAt: true,
+      lastSyncError: true,
+      balanceSnapshots: {
+        orderBy: { capturedAt: "desc" },
+        take: 1,
+        select: { availableCents: true, capturedAt: true },
+      },
+    },
+  });
+}
+
+/** Os dias de conjunto do período. */
+async function carregarLinhas(idsDasContas: string[], de: Date) {
+  if (idsDasContas.length === 0) return [];
+  return prisma.adsetInsightDaily.findMany({
+    where: { adAccountId: { in: idsDasContas }, date: { gte: de } },
+    select: {
+      adsetId: true,
+      adsetName: true,
+      campaignId: true,
+      campaignName: true,
+      spendCents: true,
+      impressions: true,
+      clicks: true,
+      linkClicks: true,
+      leads: true,
+    },
+  });
 }
 
 function Resumo({ titulo, valor, fraco }: { titulo: string; valor: string; fraco?: boolean }) {

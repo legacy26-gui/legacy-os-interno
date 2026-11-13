@@ -50,6 +50,32 @@ Três coisas, nesta ordem, em `src/lib/studio/arte.ts`:
    pela arte, pro Instagram da loja — mandar junto a coordenada do pátio (ou
    da casa de quem fotografou) é vazamento que ninguém pediu.
 
+## O campo da loja não tem padrão
+
+E isso custou a primeira arte errada do sistema.
+
+O formulário vinha com a **primeira loja da lista já selecionada**. A lista é
+alfabética, "Ademicon" vem antes de "Real Veículos", e um carro da Real saiu
+com o nome da Ademicon. Quem preencheu não errou: o campo nunca pediu uma
+escolha, só mostrou uma resposta pronta, e quem desce preenchendo um
+formulário não volta pra conferir o que já estava lá.
+
+Numa carteira de quarenta lojas isso não é um tropeço improvável — é o
+caminho normal. E o estrago não se desfaz depois de publicado: é o dado de
+um cliente entregue com a marca de outro.
+
+Três travas agora:
+
+1. O campo abre em `— escolha a loja —`, sem padrão.
+2. O botão fica **desligado** até haver escolha, e a tela diz por quê.
+3. O botão repete o nome: **"Gerar arte da Real Veículos"**. O campo fica no
+   topo e quem rola preenchendo chega no botão sem ele à vista — essa é a
+   última chance de notar.
+
+A regra que fica: **campo que identifica o CLIENTE não tem valor padrão.**
+Em qualquer tela. Varri o resto do sistema atrás do mesmo defeito e os
+outros seletores de cliente já abriam vazios; o Studio era o único.
+
 ## A esteira
 
 ```

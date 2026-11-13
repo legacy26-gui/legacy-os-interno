@@ -31,7 +31,21 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
   const [pendente, comecar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [previa, setPrevia] = useState<string | null>(null);
-  const [lojaId, setLojaId] = useState(lojas[0]?.id ?? "");
+  // Vazio, e NÃO a primeira loja da lista.
+  //
+  // Vinha pré-selecionado com `lojas[0]`, e isso gerou a primeira arte
+  // errada do sistema: a lista está em ordem alfabética, "Ademicon" vem
+  // antes de "Real Veículos", e a arte de um carro da Real saiu com o nome
+  // da Ademicon. Quem preencheu não errou — o campo nunca pediu uma
+  // escolha, só mostrou uma resposta pronta.
+  //
+  // Numa carteira de quarenta lojas isso não é um tropeço improvável: é o
+  // caminho normal de quem abre o formulário e desce preenchendo. E o
+  // estrago não se desfaz depois de publicado.
+  //
+  // Campo que identifica o CLIENTE não tem padrão. Ou a pessoa escolhe, ou
+  // não gera.
+  const [lojaId, setLojaId] = useState("");
   const campoDaFoto = useRef<HTMLInputElement>(null);
 
   const loja = lojas.find((l) => l.id === lojaId);
@@ -94,10 +108,14 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
           </span>
           <select
             name="clientId"
+            required
             value={lojaId}
             onChange={(e) => setLojaId(e.target.value)}
-            className="px-3 min-h-11 rounded-lg border border-border bg-background text-sm"
+            className={`px-3 min-h-11 rounded-lg border bg-background text-sm ${
+              lojaId ? "border-border" : "border-amber-500/60"
+            }`}
           >
+            <option value="">— escolha a loja —</option>
             {lojas.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.nome}
@@ -327,14 +345,25 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
 
       {erro && <p className="text-sm text-red-500">{erro}</p>}
 
-      <button
-        type="submit"
-        disabled={pendente}
-        className="self-start inline-flex items-center gap-2 px-5 min-h-11 bg-accent text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-60"
-      >
-        <Sparkles size={15} className={pendente ? "animate-pulse" : undefined} />
-        {pendente ? "Gerando…" : "Gerar arte"}
-      </button>
+      {/* O nome da loja repetido aqui, no instante do clique.
+          O campo fica no topo do formulário, e quem rola preenchendo chega
+          no botão sem ele na frente. Dizer "Gerar arte da Real Veículos" é
+          a última chance de notar que está errado — e custa uma linha. */}
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          disabled={pendente || !lojaId}
+          className="inline-flex items-center gap-2 px-5 min-h-11 bg-accent text-white rounded-lg text-sm font-medium hover:opacity-90 disabled:opacity-60"
+        >
+          <Sparkles size={15} className={pendente ? "animate-pulse" : undefined} />
+          {pendente ? "Gerando…" : loja ? `Gerar arte da ${loja.nome}` : "Gerar arte"}
+        </button>
+        {!lojaId && (
+          <span className="text-xs text-amber-600 dark:text-amber-400">
+            Escolha a loja primeiro.
+          </span>
+        )}
+      </div>
     </form>
   );
 }

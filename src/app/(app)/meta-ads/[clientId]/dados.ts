@@ -11,6 +11,7 @@ import {
   type Intervalo,
 } from "@/lib/meta/insights";
 import { DIAS_DO_RITMO } from "@/lib/meta/estado-da-loja";
+import { diagnosticar, DIAS_DA_JANELA, type Diagnostico } from "@/lib/meta/criativo-cansado";
 
 // De onde vêm as linhas da tela da loja.
 //
@@ -47,6 +48,8 @@ export interface LinhaDaTela extends Numeros {
   /** Só no anúncio. */
   miniatura?: string | null;
   preview?: string | null;
+  /** Só no anúncio: a arte está cansando? Ver criativo-cansado.ts. */
+  cansaco?: Diagnostico | null;
   /** Pra descer um nível. */
   filho?: string | null;
 }
@@ -133,6 +136,68 @@ export async function ritmoDaLoja(
   };
 }
 
+/**
+ * O diagnóstico de cansaço de cada anúncio da loja.
+ *
+ * Independente do período escolhido na tela, de propósito. "Essa arte está
+ * cansando?" é sempre a mesma pergunta — últimos 7 dias contra os 7
+ * anteriores — e deixá-la seguir o seletor daria respostas diferentes pro
+ * mesmo anúncio conforme o botão que a pessoa apertou por último.
+ */
+export async function cansacoDosAnuncios(
+  idsDasContas: string[],
+  agora = new Date()
+): Promise<Map<string, Diagnostico>> {
+  const mapa = new Map<string, Diagnostico>();
+  if (idsDasContas.length === 0) return mapa;
+
+  const recente = janelaDeDias(DIAS_DA_JANELA, agora);
+  const anterior = janelaDeDias(DIAS_DA_JANELA * 2, agora);
+  const fimDoAnterior = new Date(recente.de);
+  fimDoAnterior.setUTCDate(fimDoAnterior.getUTCDate() - 1);
+
+  const SOMAS = {
+    spendCents: true,
+    impressions: true,
+    reach: true,
+    clicks: true,
+    linkClicks: true,
+    leads: true,
+  } as const;
+
+  const [agoraLinhas, antesLinhas] = await Promise.all([
+    prisma.metaInsightDaily.groupBy({
+      by: ["adId"],
+      where: { adAccountId: { in: idsDasContas }, date: { gte: recente.de, lte: recente.ate } },
+      _sum: SOMAS,
+    }),
+    prisma.metaInsightDaily.groupBy({
+      by: ["adId"],
+      where: { adAccountId: { in: idsDasContas }, date: { gte: anterior.de, lte: fimDoAnterior } },
+      _sum: SOMAS,
+    }),
+  ]);
+
+  const soma = (g: { _sum: Partial<Record<keyof typeof SOMAS, number | null>> }): Numeros => ({
+    spendCents: g._sum.spendCents ?? 0,
+    impressions: g._sum.impressions ?? 0,
+    reach: g._sum.reach ?? 0,
+    clicks: g._sum.clicks ?? 0,
+    linkClicks: g._sum.linkClicks ?? 0,
+    leads: g._sum.leads ?? 0,
+  });
+
+  const antes = new Map(antesLinhas.map((g) => [g.adId, soma(g)]));
+  for (const g of agoraLinhas) {
+    const b = antes.get(g.adId);
+    // Anúncio novo não tem com o que comparar — e dizer "firme" seria afirmar
+    // o que não se sabe.
+    if (!b) continue;
+    mapa.set(g.adId, diagnosticar(soma(g), b));
+  }
+  return mapa;
+}
+
 /** O cadastro: campanhas, conjuntos e anúncios que EXISTEM na conta. */
 export async function cadastroDaLoja(idsDasContas: string[]) {
   if (idsDasContas.length === 0) {
@@ -206,7 +271,8 @@ export function montarNivel(
   nivel: Nivel,
   cadastro: Cadastro,
   numeros: LinhaCrua[],
-  filtro: { campanha?: string | null; conjunto?: string | null }
+  filtro: { campanha?: string | null; conjunto?: string | null },
+  cansaco?: Map<string, Diagnostico>
 ): LinhaDaTela[] {
   if (nivel === "campanha") {
     const porId = somarPor(numeros, (l) => l.campaignId ?? "sem-campanha");
@@ -302,6 +368,7 @@ export function montarNivel(
         ctrLink: null,
         miniatura: a?.thumbnailUrl ?? null,
         preview: a?.previewUrl ?? null,
+        cansaco: cansaco?.get(id) ?? null,
         filho: null,
       });
     })

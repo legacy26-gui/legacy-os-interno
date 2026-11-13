@@ -7,6 +7,7 @@ import { exigirClienteDaCarteira } from "@/lib/carteira";
 import { saldoEmReais, tempoDesde } from "@/lib/meta/saldo";
 import { avaliarLoja, comoDias } from "@/lib/meta/estado-da-loja";
 import { COR_DO_NUMERO, ETIQUETA_DA_LOJA } from "@/lib/meta/tons";
+import { ETIQUETA_DO_CRIATIVO, comoVariacao } from "@/lib/meta/criativo-cansado";
 import {
   somar,
   custoPorLead,
@@ -26,6 +27,7 @@ import {
   linhasDaLoja,
   cadastroDaLoja,
   ritmoDaLoja,
+  cansacoDosAnuncios,
   montarNivel,
   nomeNoCadastro,
   estaLigado,
@@ -99,6 +101,7 @@ export default async function LojaNoMetaAdsPage({
   let numeros: Awaited<ReturnType<typeof linhasDaLoja>>;
   let cadastro: Awaited<ReturnType<typeof cadastroDaLoja>>;
   let ritmo: Awaited<ReturnType<typeof ritmoDaLoja>>;
+  let cansaco: Awaited<ReturnType<typeof cansacoDosAnuncios>>;
   try {
     contas = await carregarContas(clientId);
     // A conta escolhida no seletor. Vinda da URL, então é conferida contra as
@@ -106,12 +109,15 @@ export default async function LojaNoMetaAdsPage({
     // gasto de outra.
     const escolhida = contas.find((c) => c.metaAccountId === busca.conta);
     const doFiltro = escolhida ? [escolhida.id] : contas.map((c) => c.id);
-    [numeros, cadastro, ritmo] = await Promise.all([
+    [numeros, cadastro, ritmo, cansaco] = await Promise.all([
       linhasDaLoja(doFiltro, periodo),
       cadastroDaLoja(doFiltro),
       // O ritmo é da loja inteira, não do recorte: o saldo é da conta e não
       // da campanha, então quem o consome é tudo que está rodando ali.
       ritmoDaLoja(contas.map((c) => c.id)),
+      // O cansaço é sempre 7 dias contra 7, independente do período da tela:
+      // "essa arte está cansando?" é a mesma pergunta em qualquer recorte.
+      cansacoDosAnuncios(doFiltro),
     ]);
   } catch (erro) {
     const detalhe = erro instanceof Error ? erro.message : String(erro);
@@ -121,10 +127,13 @@ export default async function LojaNoMetaAdsPage({
   const campanhaAberta = busca.campanha ?? null;
   const conjuntoAberto = busca.conjunto ?? null;
 
-  const itens = montarNivel(nivel, cadastro, numeros, {
-    campanha: campanhaAberta,
-    conjunto: conjuntoAberto,
-  });
+  const itens = montarNivel(
+    nivel,
+    cadastro,
+    numeros,
+    { campanha: campanhaAberta, conjunto: conjuntoAberto },
+    cansaco
+  );
 
   // O total é dos NÚMEROS do recorte aberto, não da soma das linhas: linha
   // zerada não muda total, mas somar as linhas depois de filtrar daria o
@@ -492,6 +501,9 @@ function Tabela({
                     ? href({ conjunto: i.id, nivel: "anuncio" })
                     : null;
               const ligado = estaLigado(i);
+              const etiquetaDoCansaco = i.cansaco
+                ? ETIQUETA_DO_CRIATIVO[i.cansaco.estado]
+                : null;
               return (
                 <tr key={i.id} className="hover:bg-surface-muted transition-colors">
                   <td className="px-3 py-3 align-top">
@@ -503,13 +515,34 @@ function Tabela({
                         <Criativo url={i.miniatura ?? null} preview={i.preview ?? null} nome={i.nome} />
                       )}
                       <div className="min-w-0">
-                        {destino ? (
-                          <Link href={destino} className="font-medium hover:text-accent">
-                            {i.nome}
-                          </Link>
-                        ) : (
-                          <span className="font-medium">{i.nome}</span>
-                        )}
+                        <span className="flex items-center gap-2 flex-wrap">
+                          {destino ? (
+                            <Link href={destino} className="font-medium hover:text-accent">
+                              {i.nome}
+                            </Link>
+                          ) : (
+                            <span className="font-medium">{i.nome}</span>
+                          )}
+                          {/* A arte gasta é o único problema desta tela que
+                              não se vê em nenhum número isolado: o custo de
+                              hoje parece normal, o de um mês atrás é que era
+                              metade. A etiqueta diz o que mudou e quanto. */}
+                          {etiquetaDoCansaco && (
+                            <span
+                              title={
+                                i.cansaco?.custoAgoraCents != null &&
+                                i.cansaco?.custoAntesCents != null
+                                  ? `Custo por lead ${comoVariacao(i.cansaco.variacaoDoCusto) ?? ""}: de ${reais(i.cansaco.custoAntesCents)} pra ${reais(i.cansaco.custoAgoraCents)} nos últimos 7 dias`
+                                  : undefined
+                              }
+                              className={`text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded-full border ${etiquetaDoCansaco.classe}`}
+                            >
+                              {etiquetaDoCansaco.texto}
+                              {i.cansaco?.variacaoDoCusto != null &&
+                                ` · custo ${comoVariacao(i.cansaco.variacaoDoCusto)}`}
+                            </span>
+                          )}
+                        </span>
                         {/* O separador só existe quando há os dois lados —
                             senão sobra um "·" solto no fim da linha. */}
                         <span className="block text-xs text-foreground-muted mt-0.5">

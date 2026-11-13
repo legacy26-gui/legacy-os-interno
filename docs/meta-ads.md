@@ -225,6 +225,81 @@ Detalhes que custaram tentativa:
   o saldo é da CONTA: perguntar antes de ler todas as contas dela daria falso
   negativo em loja com duas contas.
 
+### Arte cansada: o problema que nenhum número de hoje mostra
+
+Anúncio não morre de uma vez. Vai cansando: as mesmas pessoas veem a mesma
+arte pela quinta vez, param de clicar, e o custo por lead sobe devagar — R$ 12,
+R$ 14, R$ 17, R$ 23. Ninguém percebe de um dia pro outro. Percebe três semanas
+depois, quando a loja reclama que não chega mais ninguém.
+
+É óbvio olhando o gráfico e invisível olhando o número de hoje — por isso é
+trabalho de sistema, não de gente.
+
+A conta compara **os últimos 7 dias com os 7 anteriores**, do mesmo anúncio.
+Duas janelas do mesmo tamanho pra que o resultado não dependa de a semana ter
+sido boa ou ruim: o que se mede é a **mudança**.
+
+| | |
+|---|---|
+| **Arte cansada** | custo por lead subiu 40%+, ou o CTR caiu 30%+ sem o custo melhorar |
+| **Cansando** | subiu 20%+ |
+| nada | está igual ou melhor |
+
+Dois cuidados que seguram alarme falso:
+
+- **Volume mínimo nas duas janelas** (500 impressões, 3 leads). Um anúncio que
+  teve 1 lead e passou a ter 0 "dobrou de custo" na matemática e não quer
+  dizer nada. Sem esse piso a tela viraria um varal de avisos inúteis.
+- **CTR caindo COM o custo caindo não é arte gasta** — é campanha achando um
+  público melhor. Só conta quando o custo não melhorou junto.
+
+Anúncio novo não é diagnosticado: sem janela anterior não há comparação, e
+dizer "firme" seria afirmar o que não se sabe.
+
+A janela é sempre 7×7, **independente do período escolhido na tela**. "Essa
+arte está cansando?" é a mesma pergunta em qualquer recorte, e deixá-la seguir
+o seletor daria respostas diferentes pro mesmo anúncio conforme o botão que a
+pessoa apertou por último.
+
+### A loja está gastando o que combinou?
+
+Gastar **demais** é problema óbvio: a verba acaba no dia 20 e a loja passa dez
+dias sem anúncio, bem no fim do mês, que é quando ela mais vende.
+
+Gastar **de menos** é problema silencioso, e por isso pior. A loja pagou pelo
+mês inteiro, o dinheiro está parado e ninguém reclama — até o dia em que ela
+olha o extrato, vê que investiu metade do combinado e pergunta pelo resto. Não
+existe cobrança pior que essa.
+
+A conta é a mais simples possível: o que gastou por dia até aqui, vezes os
+dias do mês. Acima de **115%** do combinado é "acelerado", abaixo de **60%** é
+"verba sobrando". Não tenta adivinhar fim de semana nem feriado — o que se
+quer saber é se está MUITO fora, não calcular o centavo.
+
+**Projeção e não "já passou do combinado"**: comparar o gasto do mês com o
+total só acusa o problema no fim, quando não dá mais pra corrigir. No dia 10,
+ter gasto um terço da verba não diz nada sozinho; diz tudo quando se percebe
+que nesse ritmo vai dar o dobro.
+
+Antes do **dia 5** o mês é novo demais e nada é projetado: um único dia parado
+no dia 2 viraria "a loja está em 50% do combinado" e o aviso sairia errado
+todo começo de mês.
+
+### O Meu Dia fala do Meta
+
+Tudo isso aparecia só pra quem ia procurar, numa tela que o gestor abria
+quando lembrava — e "quando lembrava" é a parte que não funciona, porque conta
+zerada para a campanha no mesmo dia e arte cansada estraga o mês em silêncio.
+
+O bloco **"Nas contas de anúncio"** entra no topo do Meu Dia com: loja
+precisando de Pix, loja cobrada cujo Pix não veio, loja esperando a verba
+cair, verba fora do combinado (pros dois lados) e arte cansada.
+
+A régua pra entrar ali é **só coisa que precisa de ação hoje**. "A loja está
+bem" não é notícia: o número dela mora na tela do Meta Ads. Carteira sem
+pendência nenhuma **não mostra bloco nenhum** — o silêncio é a informação, e é
+o prêmio de estar em dia.
+
 ### Ajuste de conta se faz olhando a conta
 
 A troca Pix/cartão nasceu só na ficha do cliente, e da tela do Meta Ads não

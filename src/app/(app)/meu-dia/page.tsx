@@ -4,7 +4,9 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { estadoDaVenda, DIAS_VERMELHO, DIAS_CRITICO } from "@/lib/controle-vendas";
 import { diaDaCasaComoData, ehDiaDaFoto } from "@/lib/dia-da-casa";
+import { montarPainelDoDia } from "@/lib/meta/painel-do-dia";
 import { LinhaDoCliente, type ClienteDoDia } from "./linha-do-cliente";
+import { BlocoMetaDoDia } from "./bloco-meta";
 
 // Meu Dia: a carteira do gestor numa tela só.
 //
@@ -16,6 +18,12 @@ import { LinhaDoCliente, type ClienteDoDia } from "./linha-do-cliente";
 // Duas informações por linha, e só:
 //   a caixinha do dia  — "passei por aqui hoje"
 //   os dias sem vender — nas mesmas cores do Controle de Vendas
+//
+// Em cima da lista, o que a CONTA DE ANÚNCIO tem a dizer hoje: loja sem
+// saldo, verba fora do combinado, arte cansada. Isso vivia a dois cliques
+// daqui, numa tela que o gestor abria quando lembrava — e "quando lembrava"
+// é a parte que não funciona, porque conta zerada para a campanha no mesmo
+// dia e arte cansada estraga o mês em silêncio.
 
 export default async function MeuDiaPage() {
   // requireModuleAccess e não getCurrentUser: é ele que confere a empresa
@@ -44,6 +52,10 @@ export default async function MeuDiaPage() {
       select: { clientId: true, fotoUrl: true, quem: { select: { name: true } } },
     }),
   ]);
+
+  // O Meta entra DEPOIS da lista de clientes porque precisa dos ids dela. É
+  // uma rodada a mais de consulta, e não dá pra juntar com as de cima.
+  const painelMeta = await montarPainelDoDia(clients.map((c) => c.id), hoje);
 
   const ultimaVenda = new Map(vendas.map((v) => [v.clientId, v._max.soldAt]));
   const conferidosPorId = new Map(conferidos.map((c) => [c.clientId, c]));
@@ -108,6 +120,8 @@ export default async function MeuDiaPage() {
       </div>
 
       {/* O que não pode passar batido vem antes da lista. */}
+      <BlocoMetaDoDia painel={painelMeta} />
+
       {urgentes.length > 0 && (
         <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-4 py-3">
           <p className="text-sm font-semibold text-red-500 flex items-start gap-2">

@@ -186,7 +186,16 @@ export async function GET(
       ? Math.round(altura * (story ? 0.58 : 0.66))
       : layout === "degrade" && story
         ? Math.round(altura * 0.62)
-        : altura;
+        : // No "vitrine" do Stories a foto NÃO ocupa a arte inteira.
+          //
+          // Ocupava, e o resultado era feio em toda foto: num quadro de
+          // proporção 0,56 nenhuma foto de carro cabe, então todas viravam
+          // uma tira entre duas faixas escuras. Com 66% a área fica em
+          // 0,85 — quase quadrada, que é a proporção em que foto de carro
+          // se enquadra bem — e a informação ganha um bloco sólido embaixo.
+          layout === "vitrine" && story
+          ? Math.round(altura * 0.66)
+          : altura;
 
   /** No "faixa" não há degradê: o bloco de cor chapada faz o contraste. */
   const temDegrade = layout !== "faixa";
@@ -235,7 +244,19 @@ export async function GET(
 
   if (layout === "vitrine") {
     const png = new ImageResponse(
-      vitrine({ arte, foto: quadro.dataUri, m, cor, formato, largura, altura, story, preco, rodape }),
+      vitrine({
+        arte,
+        foto: quadro.dataUri,
+        m,
+        cor,
+        formato,
+        largura,
+        altura,
+        fimDaFoto,
+        story,
+        preco,
+        rodape,
+      }),
       { width: largura, height: altura, fonts: fontes }
     );
     return responder(await comoJpeg(png, cor.fundo, larguraPedida), arte.modelo, formato);
@@ -540,11 +561,13 @@ function vitrine(o: {
   formato: Formato;
   largura: number;
   altura: number;
+  /** Onde a foto acaba. No Stories é 66% da arte; no feed, tudo. */
+  fimDaFoto: number;
   story: boolean;
   preco: string | null;
   rodape: string;
 }) {
-  const { arte, foto, m, cor, formato, largura, altura, story, preco, rodape } = o;
+  const { arte, foto, m, cor, formato, largura, altura, fimDaFoto, story, preco, rodape } = o;
   const ficha = itensDaFicha(arte.detalhes, arte.ano, arte.kmTexto);
   const precoDe = precoDaArte(arte.precoDeCents);
   const k = story ? 1.25 : 1;
@@ -568,9 +591,26 @@ function vitrine(o: {
         src={foto}
         alt=""
         width={largura}
-        height={altura}
+        height={fimDaFoto}
         style={{ position: "absolute", top: 0, left: 0 }}
       />
+
+      {/* No Stories, o bloco sólido onde a informação mora. Ele começa
+          onde a foto acaba e vai até o fim — é o que substitui a faixa
+          preta que sobrava antes. */}
+      {fimDaFoto < altura && (
+        <div
+          style={{
+            position: "absolute",
+            top: fimDaFoto,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            backgroundColor: cor.fundo,
+          }}
+        />
+      )}
 
       {/* Escurece o topo e o pé, deixando o meio da foto limpo — é onde o
           carro está. Dois degradês curtos em vez de um que atravessa tudo:
@@ -586,17 +626,21 @@ function vitrine(o: {
           backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 100%)`,
         }}
       />
-      <div
-        style={{
-          position: "absolute",
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: px(story ? 560 : 440),
-          display: "flex",
-          backgroundImage: `linear-gradient(to top, ${cor.fundo} 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0) 100%)`,
-        }}
-      />
+      {/* O degradê do pé só existe quando a foto desce até lá. Com o bloco
+          sólido embaixo ele escureceria o bloco à toa. */}
+      {fimDaFoto >= altura && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 0,
+            left: 0,
+            right: 0,
+            height: px(story ? 560 : 440),
+            display: "flex",
+            backgroundImage: `linear-gradient(to top, ${cor.fundo} 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0) 100%)`,
+          }}
+        />
+      )}
 
       {/* ── Topo: logo à esquerda, carro à direita ── */}
       <div
@@ -720,11 +764,16 @@ function vitrine(o: {
           position: "absolute",
           left: 0,
           right: 0,
+          // Quando há bloco sólido (Stories), a coluna ocupa o bloco inteiro
+          // e centra o conteúdo nele. Grudada embaixo, deixava um vão morto
+          // entre a foto e a chamada.
+          ...(fimDaFoto < altura ? { top: fimDaFoto } : {}),
           bottom: alturaDoRodape,
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          paddingBottom: px(story ? 40 : 28),
+          justifyContent: fimDaFoto < altura ? "center" : "flex-end",
+          paddingBottom: fimDaFoto < altura ? 0 : px(28),
         }}
       >
         {arte.chamada && (

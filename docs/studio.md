@@ -176,15 +176,22 @@ Com 65% fora não existe recorte que salve.
 Agora o recorte é feito **antes** do desenho, em `enquadrar()`, e segue duas
 regras:
 
-**A régua é diferente nos dois formatos**, e isso veio de teste com foto
-real da Área 42 (Saveiro em pé, 1200×1600):
+**Uma régua só: 45%.** Houve uma tentativa de dar ao Stories um limite
+próprio de 12%, porque lá o corte decepava o carro. Era remendo no lugar
+errado.
 
-- **Feed:** até 45%. Quadrado é onde o carro preenchendo a tela funciona, e
-  é o que a casa já faz.
-- **Stories:** até 12%, o que na prática quer dizer "quase nunca corta".
-  Foto de carro é tirada de frente ou de três quartos, com o carro ocupando
-  a largura toda — e no vertical é a LARGURA que sai. Com a régua do feed,
-  25% de corte comeu a frente da caminhonete.
+O problema não era o limite: era a **foto ocupar a arte inteira** num quadro
+de proporção 0,56. Nessa proporção nenhuma foto de carro cabe — a de 4:3
+perde 58%, a em pé perde 25% — e todas acabavam viradas numa tira entre duas
+faixas escuras. Ficava feio em qualquer foto.
+
+A correção foi na geometria: no Stories a foto ganhou uma **área quase
+quadrada** (66% da altura, proporção 0,85) e a informação foi pra um bloco
+sólido embaixo. Com isso as perdas caem pra 36%, 12% e 47%, e a mesma régua
+de 45% decide bem nos três casos.
+
+Fica o padrão: **quando um limite precisa de exceção por formato, quase
+sempre o errado é o formato, não o limite.**
 
 1. **Dentro do limite, corta pelo que importa.** O `attention` do sharp acha
    a região de maior saliência — num pátio, o carro. Comparado lado a lado

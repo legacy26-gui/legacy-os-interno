@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, useRef } from "react";
 import { Upload, Sparkles, X } from "lucide-react";
@@ -104,10 +105,20 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
               </option>
             ))}
           </select>
+          {/* O aviso de loja sem identidade, com o caminho pra resolver.
+              Antes era só uma frase, e uma frase não impede ninguém de
+              seguir em frente: a primeira arte de verdade saiu sem logo e
+              com as cores padrão, e o Guilherme resumiu em três palavras —
+              "sem a identidade". O aviso agora leva pra tela que conserta,
+              porque avisar sem oferecer o conserto é só reclamar. */}
           {loja && !loja.temMarca && (
-            <span className="text-xs text-amber-600 dark:text-amber-400">
-              Esta loja não tem logo nem cores cadastradas — a arte sai com a cara neutra do
-              sistema.
+            <span className="text-xs rounded-lg border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-amber-700 dark:text-amber-400">
+              <strong>{loja.nome} ainda não tem identidade cadastrada.</strong> Sem logo e sem as
+              cores da loja, a arte sai com a cara neutra do sistema — e não parece dela.{" "}
+              <Link href="/studio/marcas" className="underline font-medium">
+                Cadastrar agora
+              </Link>{" "}
+              leva um minuto, e vale mais que gerar dez artes sem marca.
             </span>
           )}
         </label>

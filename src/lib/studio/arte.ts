@@ -185,29 +185,22 @@ export async function prepararLogo(bytes: Buffer): Promise<FotoPronta> {
  */
 const PERDA_QUE_NAO_VALE = 0.45;
 
-/**
- * O mesmo limite, mas pro vertical — e é muito menor.
- *
- * ── Por que os dois formatos não podem ter a mesma régua ─────────────────
- *
- * No FEED a casa aceita corte: o Cruze da Redline tem a traseira saindo
- * pela borda e fica ótimo. Quadrado é o formato onde o carro preenchendo a
- * tela funciona.
- *
- * No STORIES não. Testado com uma foto real da Área 42 (Saveiro em pé,
- * 1200×1600): com a régua do feed, o corte de 25% comeu a frente da
- * caminhonete e o Guilherme viu na hora — "story cortou tudo o carro".
- *
- * A razão é o enquadramento de origem: foto de carro é tirada de frente ou
- * de três quartos, e o carro ocupa a largura toda. Tirar 25% da LARGURA
- * tira sempre uma ponta do carro. Tirar 25% da altura tiraria céu e chão,
- * que não faz falta — mas no vertical é a largura que sai.
- *
- * Então 12%: o suficiente pra acertar um desencontro pequeno de proporção,
- * e não o bastante pra decepar nada. Acima disso o carro entra inteiro
- * sobre o fundo borrado.
- */
-const PERDA_QUE_NAO_VALE_NO_ALTO = 0.12;
+// Uma régua só, e não uma por formato.
+//
+// Houve uma tentativa de dar ao Stories um limite próprio (12%), porque lá
+// o corte decepava o carro. Era remendo no lugar errado: o problema não era
+// o limite, era a FOTO OCUPAR A ARTE INTEIRA num quadro de proporção 0,56.
+// Nessa proporção nenhuma foto de carro cabe — a de 4:3 perdia 58%, a em pé
+// perdia 25%, e as duas acabavam viradas numa tira entre duas faixas
+// escuras. Ficou feio em todas.
+//
+// A correção foi na geometria: no Stories a foto ganhou uma área quase
+// quadrada em cima e a informação foi pra um bloco sólido embaixo. Com a
+// área em 0,85 as perdas caem pra 36%, 12% e 47% — e a mesma régua de 45%
+// decide bem nos três casos.
+//
+// Fica o padrão: quando um limite precisa de exceção por formato, quase
+// sempre o errado é o formato, não o limite.
 
 /** O quanto a cópia de fundo é borrada. Alto o bastante pra não competir. */
 const BORRAO = 42;
@@ -232,10 +225,6 @@ export async function enquadrar(
   alvoLargura: number,
   alvoAltura: number
 ): Promise<Enquadrada> {
-  // Quadro mais alto que largo = Stories, onde cortar a largura decepa o
-  // carro. Lá a régua é outra.
-  const limite =
-    alvoAltura > alvoLargura ? PERDA_QUE_NAO_VALE_NO_ALTO : PERDA_QUE_NAO_VALE;
   const bytes = Buffer.from(dataUri.split(",")[1] ?? "", "base64");
   const base = sharp(bytes, { failOn: "none" });
   const info = await base.metadata();
@@ -245,7 +234,7 @@ export async function enquadrar(
   const sobra = origem > alvo ? alvo / origem : origem / alvo;
   const perda = 1 - sobra;
 
-  if (perda <= limite) {
+  if (perda <= PERDA_QUE_NAO_VALE) {
     const saida = await sharp(bytes, { failOn: "none" })
       .resize(alvoLargura, alvoAltura, {
         fit: "cover",

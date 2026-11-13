@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Megaphone, RefreshCw, AlertTriangle, Plus, BarChart3 } from "lucide-react";
+import { Megaphone, RefreshCw, AlertTriangle, Plus, BarChart3, Sparkles } from "lucide-react";
 import {
   vincularContaAnuncios,
   atualizarLojaAgora,
@@ -81,6 +81,15 @@ export function BlocoMetaAds({
       {contas.length === 0 ? (
         <p className="text-sm text-foreground-muted">
           Nenhuma conta de anúncio vinculada ainda.
+          {podeVincular && (
+            <>
+              {" "}
+              <Link href="/meta-ads/vincular" className="text-accent hover:underline">
+                Ver as contas disponíveis na Meta
+              </Link>
+              .
+            </>
+          )}
         </p>
       ) : (
         <div className="flex flex-col divide-y divide-border">
@@ -138,9 +147,28 @@ export function BlocoMetaAds({
       {podeVincular &&
         (abrirForm ? (
           <form action={vincular} className="flex flex-col gap-3 border-t border-border pt-4">
+            {/* O caminho bom vem PRIMEIRO.
+                Este formulário pede um número que quase ninguém sabe de cor —
+                é preciso caçar no Gerenciador. A tela de vincular pergunta à
+                Meta e traz a lista pronta. Deixar só o campo aqui, como estava,
+                era mandar a pessoa procurar o que o sistema já sabe. */}
+            <Link
+              href="/meta-ads/vincular"
+              className="flex items-start gap-2.5 rounded-xl border border-accent/40 bg-accent/5 px-3.5 py-3 hover:bg-accent/10 transition-colors"
+            >
+              <Sparkles size={15} className="text-accent shrink-0 mt-0.5" />
+              <span className="text-sm">
+                <span className="font-medium block">Não sabe o ID? Deixa comigo.</span>
+                <span className="text-xs text-foreground-muted">
+                  A tela de vincular pergunta à Meta quais contas temos acesso e já sugere a loja
+                  de cada uma.
+                </span>
+              </span>
+            </Link>
+
             <div className="flex flex-col gap-1.5">
               <label htmlFor="metaAccountId" className="text-xs text-foreground-muted">
-                ID da conta de anúncio
+                Ou digite o ID da conta, se você já tem
               </label>
               <input
                 id="metaAccountId"
@@ -151,7 +179,8 @@ export function BlocoMetaAds({
                 className="px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono"
               />
               <p className="text-xs text-foreground-muted">
-                No Gerenciador de Anúncios, começa com <span className="font-mono">act_</span> e
+                No Gerenciador de Anúncios ele está na URL (<span className="font-mono">?act=…</span>)
+                e embaixo do nome da conta. Começa com <span className="font-mono">act_</span> e
                 tem só números depois.
               </p>
             </div>

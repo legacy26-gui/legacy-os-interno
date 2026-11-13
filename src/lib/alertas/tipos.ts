@@ -14,6 +14,7 @@ export const TIPOS_DE_ALERTA = [
   "mensalidade-vencida",
   "implantacao-parada",
   "reuniao-marcada",
+  "relatorio-nao-enviado",
 ] as const;
 
 export type TipoDeAlerta = (typeof TIPOS_DE_ALERTA)[number];
@@ -85,6 +86,7 @@ export const ROTULO_DO_TIPO: Record<TipoDeAlerta, string> = {
   "mensalidade-vencida": "Mensalidade vencida",
   "implantacao-parada": "Implantação parada",
   "reuniao-marcada": "Reunião marcada",
+  "relatorio-nao-enviado": "Relatório não enviado",
 };
 
 /**

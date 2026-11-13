@@ -84,11 +84,32 @@ anterior.
 
 ### 1. Relatório automático
 
-**Quase pronto.** O PNG existe e o robô diário existe. Falta: escolher o dia e
-o canal, e o **layout padrão** que o Guilherme ia mandar.
+**Feito em 13/11/2026, menos o envio.** O que existe hoje:
 
-Decisão pendente: WhatsApp do dono, e-mail, ou o gestor recebe e repassa. Se
-for WhatsApp, puxa a API oficial pra frente na fila (ver item 5).
+- O PNG saiu do branco-e-roxo do sistema e virou a arte da Legacy: preto,
+  dourado, a águia, os quatro números em cartão. Só o geral — a lista por
+  campanha saiu a pedido do Guilherme ("quem recebe é dono de loja").
+- Fica pronto sozinho às **8h de Brasília** (o robô roda 11:00 UTC) com
+  números de no máximo quinze minutos.
+- Aparece no **Meu Dia** toda segunda, loja por loja, com um botão "Enviei".
+  O bloco fica até a última ser marcada — some na terça seria transformar o
+  esquecimento em silêncio.
+- Vira **alerta no celular** quando falta mandar: lembrete na segunda,
+  cobrança na quarta, problema na sexta. A direção só é avisada a partir da
+  quarta.
+
+**Falta só o envio**, e ele depende de uma coisa que não é código: conectar um
+número na API oficial do WhatsApp. Duas coisas a saber antes de montar tudo
+em cima de grupo:
+
+1. Tem que ser a **WhatsApp Business Platform** (API oficial), não o WhatsApp
+   comum nem o Business do celular. Atalho aqui derruba o número da agência.
+2. **Grupo é mais difícil que conversa direta.** A API oficial manda bem pra
+   número de pessoa; pra grupo é limitado e muda. Plano B: mandar pro dono.
+
+Quando o número existir, o que entra é o envio e o cadastro de qual grupo é de
+qual loja — a marcação de "enviado" passa a ser feita pelo sistema, e a tela
+não muda.
 
 ### 2. Tarefas no Meu Dia
 

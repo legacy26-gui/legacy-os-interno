@@ -28,37 +28,38 @@ enum Empresa {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  passwordHash String
-  role         Role
-  active       Boolean  @default(true)
-  mustChangePassword Boolean @default(true)
+  id                 String    @id @default(cuid())
+  name               String
+  email              String    @unique
+  passwordHash       String
+  role               Role
+  active             Boolean   @default(true)
+  mustChangePassword Boolean   @default(true)
   // Em quais empresas a pessoa trabalha. Quem tem as duas vê o grupo inteiro;
   // quem tem uma só nem sabe que a outra existe.
-  empresas     Empresa[] @default([AGENCIA])
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  empresas           Empresa[] @default([AGENCIA])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
-  employee         Employee?
-  assignedTasks    Task[]           @relation("TaskAssignee")
-  ownedLeads       Lead[]           @relation("LeadOwner")
-  clientHistories  ClientHistory[]
-  expensesLogged   Expense[]
-  assignedTickets  SupportTicket[]  @relation("TicketAssignee")
-  managedClients   Client[]         @relation("ClientManager")
-  dailyReviews     DailyReview[]    @relation("DailyReviewer")
-  weeklyReviews    WeeklyReview[]   @relation("WeeklyReviewer")
-  campaignChanges  CampaignChange[] @relation("ChangeResponsible")
-  playbooks        Playbook[]
-  agendaItems      AgendaItem[]     @relation("AgendaOwner")
-  salesRegistered  ClientSale[]     @relation("SaleCreator")
-  pushSubscriptions PushSubscription[]
-  gravacoes        Gravacao[]        @relation("GravacaoRegistrada")
-  etapasConcluidas OnboardingEtapa[] @relation("EtapaConcluida")
-  alertas          AlertaEstado[]
+  employee           Employee?
+  assignedTasks      Task[]             @relation("TaskAssignee")
+  ownedLeads         Lead[]             @relation("LeadOwner")
+  clientHistories    ClientHistory[]
+  expensesLogged     Expense[]
+  assignedTickets    SupportTicket[]    @relation("TicketAssignee")
+  managedClients     Client[]           @relation("ClientManager")
+  dailyReviews       DailyReview[]      @relation("DailyReviewer")
+  weeklyReviews      WeeklyReview[]     @relation("WeeklyReviewer")
+  campaignChanges    CampaignChange[]   @relation("ChangeResponsible")
+  playbooks          Playbook[]
+  agendaItems        AgendaItem[]       @relation("AgendaOwner")
+  salesRegistered    ClientSale[]       @relation("SaleCreator")
+  pushSubscriptions  PushSubscription[]
+  gravacoes          Gravacao[]         @relation("GravacaoRegistrada")
+  etapasConcluidas   OnboardingEtapa[]  @relation("EtapaConcluida")
+  alertas            AlertaEstado[]
   clientesConferidos ClienteConferido[] @relation("QuemConferiu")
+  relatoriosEnviados RelatorioEnviado[] @relation("QuemMandouRelatorio")
   resgatesFeitos     AcaoDeResgate[]    @relation("QuemResgatou")
   verbasPedidas      PedidoDeVerba[]    @relation("VerbaPedidaPor")
   metaAcoes          MetaAcao[]         @relation("MetaAcaoFeitaPor")
@@ -114,10 +115,41 @@ model AcaoDeResgate {
 // O que esta tabela resolve é outra coisa, e é a frase do Guilherme: não
 // perder cliente de vista. Uma linha por cliente por dia; sem linha, ninguém
 // olhou.
-model ClienteConferido {
-  id       String   @id @default(cuid())
+/**
+ * "O relatório desta semana já foi mandado pra esta loja?"
+ * Existe porque esquecer é o modo de falha real aqui. O relatório sai pronto
+ * sozinho toda segunda, mas quem aperta "enviar" é gente — e gente com
+ * quarenta lojas pula uma sem perceber. Sem este registro, a única forma de
+ * saber qual faltou seria abrir quarenta conversas do WhatsApp.
+ * A chave é a SEMANA, não o dia: o gestor que manda na terça precisa fechar
+ * a mesma semana que o que mandou na segunda, senão a mesma loja contaria
+ * duas vezes e a lista nunca zeraria.
+ */
+model RelatorioEnviado {
+  id       String @id @default(cuid())
   clientId String
-  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  /**
+   * A segunda-feira da semana, no fuso da casa. Ver src/lib/dia-da-casa.ts.
+   */
+  semana DateTime @db.Date
+
+  enviadoEm DateTime @default(now())
+
+  quemId String?
+  quem   User?   @relation("QuemMandouRelatorio", fields: [quemId], references: [id], onDelete: SetNull)
+
+  // Uma loja fecha uma vez por semana: marcar duas vezes não duplica.
+  @@unique([clientId, semana])
+  @@index([semana])
+  @@map("relatorios_enviados")
+}
+
+model ClienteConferido {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   // Só o dia, sem hora: a pergunta é "olhou hoje?", não "a que horas".
   dia DateTime @db.Date
@@ -231,27 +263,27 @@ enum ClientStatus {
 }
 
 model Client {
-  id            String       @id @default(cuid())
-  companyName   String
-  contactName   String
-  phone         String?
-  whatsapp      String?
-  email         String?
-  city          String?
-  state         String?
-  cnpj          String?
-  startDate     DateTime?
-  plan          String?
-  monthlyValue  Decimal      @default(0) @db.Decimal(12, 2)
-  dueDay        Int?
-  status        ClientStatus @default(IMPLANTACAO)
+  id                       String       @id @default(cuid())
+  companyName              String
+  contactName              String
+  phone                    String?
+  whatsapp                 String?
+  email                    String?
+  city                     String?
+  state                    String?
+  cnpj                     String?
+  startDate                DateTime?
+  plan                     String?
+  monthlyValue             Decimal      @default(0) @db.Decimal(12, 2)
+  dueDay                   Int?
+  status                   ClientStatus @default(IMPLANTACAO)
   // Permite excluir o cliente só do fluxo de cobrança mensal (Financeiro)
   // sem mudar o status dele em Clientes — ex: acordo especial, cortesia.
-  billingActive Boolean      @default(true)
+  billingActive            Boolean      @default(true)
   // Quando a arte (os criativos do anúncio) foi renovada pela última vez.
   // Vazio = nunca renovou desde que entrou. Arte gasta é um dos três motivos
   // de uma loja parar de vender, junto com falta de vídeo e comercial travado.
-  ultimaArteEm DateTime?
+  ultimaArteEm             DateTime?
   // Quanto a loja combinou de investir por mês em anúncio, em centavos.
   //
   // Serve de régua pra "o saldo está acabando?". R$ 100 é uma semana pra quem
@@ -266,40 +298,41 @@ model Client {
   // visita — que não é o mesmo que "nunca foi", é só que ninguém marcou.
   // Guarda só a data, não o histórico: o que se quer saber é há quanto tempo
   // não se aparece lá.
-  ultimaVisitaEm DateTime?
+  ultimaVisitaEm           DateTime?
   // Se esta conta entra no Controle de Vendas. Nem todo cliente é loja de
   // carro — consórcio, banco e afins não têm "carro vendido" pra cobrar, e
   // ficavam no vermelho pra sempre poluindo a tela. Tirar daqui não mexe em
   // mais nada do cliente: ele continua normal no resto do sistema.
-  controlaVendas Boolean @default(true)
-  internalNotes String?
-  managerId     String?
-  manager       User?        @relation("ClientManager", fields: [managerId], references: [id])
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  controlaVendas           Boolean      @default(true)
+  internalNotes            String?
+  managerId                String?
+  manager                  User?        @relation("ClientManager", fields: [managerId], references: [id])
+  createdAt                DateTime     @default(now())
+  updatedAt                DateTime     @updatedAt
 
-  attachments ClientAttachment[]
-  history     ClientHistory[]
-  revenues    Revenue[]
-  contracts   Contract[]
-  tasks       Task[]
-  campaigns   Campaign[]
-  reports     Report[]
-  contentItems ContentItem[]
-  supportTickets SupportTicket[]
-  dailyReviews    DailyReview[]
-  weeklyReviews   WeeklyReview[]
-  campaignChanges CampaignChange[]
-  sales           ClientSale[]
-  pinnedInfo      ClientPinnedInfo[]
-  onboardings     ClientOnboarding[]
-  cobrancasPuladas CobrancaPulada[]
-  conferencias     ClienteConferido[]
-  resgates         AcaoDeResgate[]
-  metaAdAccounts   MetaAdAccount[]
-  gravacoes        Gravacao[]
-  pedidosDeVerba   PedidoDeVerba[]
-  metaAcoes        MetaAcao[]
+  attachments        ClientAttachment[]
+  history            ClientHistory[]
+  revenues           Revenue[]
+  contracts          Contract[]
+  tasks              Task[]
+  campaigns          Campaign[]
+  reports            Report[]
+  contentItems       ContentItem[]
+  supportTickets     SupportTicket[]
+  dailyReviews       DailyReview[]
+  weeklyReviews      WeeklyReview[]
+  campaignChanges    CampaignChange[]
+  sales              ClientSale[]
+  pinnedInfo         ClientPinnedInfo[]
+  onboardings        ClientOnboarding[]
+  cobrancasPuladas   CobrancaPulada[]
+  conferencias       ClienteConferido[]
+  relatoriosEnviados RelatorioEnviado[]
+  resgates           AcaoDeResgate[]
+  metaAdAccounts     MetaAdAccount[]
+  gravacoes          Gravacao[]
+  pedidosDeVerba     PedidoDeVerba[]
+  metaAcoes          MetaAcao[]
 
   @@map("clients")
 }
@@ -380,8 +413,8 @@ model PedidoDeVerba {
   /// Preenchido quando o sistema viu o saldo subir. Guardado em vez de
   /// calculado toda vez pra que o histórico não mude de resposta quando a
   /// loja gastar o dinheiro que entrou.
-  entrouEm          DateTime?
-  entrouCents       Int?
+  entrouEm    DateTime?
+  entrouCents Int?
 
   createdAt DateTime @default(now())
 
@@ -541,19 +574,19 @@ enum ContractStatus {
 }
 
 model Contract {
-  id           String           @id @default(cuid())
-  clientId     String
-  client       Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  templateId   String
-  template     ContractTemplate @relation(fields: [templateId], references: [id])
-  content      String           @db.Text
-  value        Decimal          @db.Decimal(12, 2)
-  status       ContractStatus   @default(RASCUNHO)
-  pdfUrl       String?
-  sentAt       DateTime?
-  signedAt     DateTime?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id         String           @id @default(cuid())
+  clientId   String
+  client     Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  templateId String
+  template   ContractTemplate @relation(fields: [templateId], references: [id])
+  content    String           @db.Text
+  value      Decimal          @db.Decimal(12, 2)
+  status     ContractStatus   @default(RASCUNHO)
+  pdfUrl     String?
+  sentAt     DateTime?
+  signedAt   DateTime?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
 
   @@map("contracts")
 }
@@ -616,14 +649,14 @@ model Lead {
   // Marcos do funil. Guardamos a data de cada passo em vez de só a etapa atual:
   // um lead fechado continua tendo que contar como reunião realizada no mês em
   // que a reunião aconteceu. Voltar o cartão de coluna não apaga o que já foi.
-  qualifiedAt    DateTime?
-  meetingSetAt   DateTime?
-  meetingHeldAt  DateTime?
-  noShowAt       DateTime?
-  proposalAt     DateTime?
-  wonAt          DateTime?
-  lostAt         DateTime?
-  lostReason     String?
+  qualifiedAt   DateTime?
+  meetingSetAt  DateTime?
+  meetingHeldAt DateTime?
+  noShowAt      DateTime?
+  proposalAt    DateTime?
+  wonAt         DateTime?
+  lostAt        DateTime?
+  lostReason    String?
 
   // Fechou: quanto entra por mês, quanto entra de uma vez e por quantos meses.
   monthlyValue   Decimal @default(0) @db.Decimal(12, 2)
@@ -891,24 +924,24 @@ model ContentItem {
 // campo, e não uma conta feita na hora de mostrar: o padrão é um dia depois,
 // mas prazo combinado diferente com a loja tem que poder ser escrito.
 model Gravacao {
-  id       String   @id @default(cuid())
-  empresa  Empresa  @default(AGENCIA)
-  clientId String?
-  client   Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  id         String    @id @default(cuid())
+  empresa    Empresa   @default(AGENCIA)
+  clientId   String?
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
   // O nome da loja fica guardado aqui mesmo com cliente vinculado, igual aos
   // eventos de venda: se o cliente for renomeado ou sair da carteira, a
   // gravação continua dizendo pra quem foi. É também o campo de quem grava
   // pra loja que ainda não está cadastrada.
-  loja     String
+  loja       String
   // Quantos vídeos saíram dessa gravação.
-  quantidade Int    @default(1)
+  quantidade Int       @default(1)
   // Dia e hora da gravação — a hora importa porque num dia há mais de uma.
   gravadoEm  DateTime
   // Quando tem que estar entregue. Nasce como gravadoEm + 1 dia.
   entregaEm  DateTime
   // Preenchido quando a entrega sai de verdade. Vazio = ainda devendo.
   entregueEm DateTime?
-  observacao String?  @db.Text
+  observacao String?   @db.Text
 
   // Quem registrou. Não é "quem gravou" — é o rastro de quem lançou na tela.
   ownerId String?
@@ -968,7 +1001,7 @@ model CashSetting {
 model MonthlyGoal {
   id               String   @id @default(cuid())
   empresa          Empresa  @default(AGENCIA)
-  month            String   // YYYY-MM
+  month            String // YYYY-MM
   targetRevenue    Decimal  @db.Decimal(12, 2)
   targetSalesQty   Int?
   targetSalesValue Decimal? @db.Decimal(12, 2)
@@ -984,11 +1017,11 @@ model MonthlyGoal {
 // ─── Gestão de Contas (agências de tráfego) ─────────────────────────────────
 
 model DailyReview {
-  id         String   @id @default(cuid())
+  id         String  @id @default(cuid())
   clientId   String
-  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client     Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   reviewerId String?
-  reviewer   User?    @relation("DailyReviewer", fields: [reviewerId], references: [id])
+  reviewer   User?   @relation("DailyReviewer", fields: [reviewerId], references: [id])
 
   checkedBalance          Boolean @default(false)
   checkedDailyBudget      Boolean @default(false)
@@ -1007,11 +1040,11 @@ model DailyReview {
 }
 
 model WeeklyReview {
-  id         String   @id @default(cuid())
+  id         String  @id @default(cuid())
   clientId   String
-  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client     Client  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   reviewerId String?
-  reviewer   User?    @relation("WeeklyReviewer", fields: [reviewerId], references: [id])
+  reviewer   User?   @relation("WeeklyReviewer", fields: [reviewerId], references: [id])
 
   // Semana do mês (1 a 5) e mês de referência (AAAA-MM) a que a revisão se
   // refere. Guardados explicitamente pra que preencher com atraso — inclusive
@@ -1019,14 +1052,14 @@ model WeeklyReview {
   weekOfMonth Int?
   refMonth    String?
 
-  paymentCleared        Boolean @default(false)
-  reportGenerated       Boolean @default(false)
-  checkedBestCampaigns  Boolean @default(false)
-  checkedWeeklyCost     Boolean @default(false)
-  definedNewCreatives   Boolean @default(false)
-  definedNewCampaigns   Boolean @default(false)
+  paymentCleared       Boolean @default(false)
+  reportGenerated      Boolean @default(false)
+  checkedBestCampaigns Boolean @default(false)
+  checkedWeeklyCost    Boolean @default(false)
+  definedNewCreatives  Boolean @default(false)
+  definedNewCampaigns  Boolean @default(false)
 
-  reportPhotoUrl  String? @db.Text // foto do relatório (obrigatória no formulário)
+  reportPhotoUrl String? @db.Text // foto do relatório (obrigatória no formulário)
 
   notes     String?  @db.Text
   createdAt DateTime @default(now())
@@ -1114,7 +1147,7 @@ enum OnboardingStatus {
 // própria; o resto das respostas fica em JSON, porque as perguntas mudam com o
 // tempo e não vale uma migration a cada ajuste de pergunta.
 model ClientOnboarding {
-  id            String           @id @default(cuid())
+  id            String               @id @default(cuid())
   companyName   String
   contactName   String
   phone         String?
@@ -1125,15 +1158,15 @@ model ClientOnboarding {
   // Ver src/lib/ai/enriquecimento.ts — hoje nasce nulo, a estrutura já existe.
   enrichment    Json?
   // Resumo/transcrição da reunião de onboarding. Alimenta o plano de ação final.
-  meetingNotes  String?          @db.Text
-  status        OnboardingStatus @default(NOVO)
+  meetingNotes  String?              @db.Text
+  status        OnboardingStatus     @default(NOVO)
   internalNotes String?
   clientId      String?
-  client        Client?          @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  client        Client?              @relation(fields: [clientId], references: [id], onDelete: SetNull)
   analyses      OnboardingAnalysis[]
   etapas        OnboardingEtapa[]
-  createdAt     DateTime         @default(now())
-  updatedAt     DateTime         @updatedAt
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
 
   @@index([status, createdAt])
   @@map("client_onboardings")
@@ -1146,18 +1179,18 @@ model ClientOnboarding {
 // — tirar, acrescentar, renomear — não exige migração nem mexe em ficha
 // nenhuma, e a marcação antiga continua guardada caso a etapa volte.
 model OnboardingEtapa {
-  id           String           @id @default(cuid())
-  onboardingId String
-  onboarding   ClientOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
+  id             String           @id @default(cuid())
+  onboardingId   String
+  onboarding     ClientOnboarding @relation(fields: [onboardingId], references: [id], onDelete: Cascade)
   // A chave da etapa, como está em ETAPAS. Texto livre de propósito: se a
   // lista mudar, o banco não precisa saber.
-  chave        String
-  concluidoEm  DateTime         @default(now())
+  chave          String
+  concluidoEm    DateTime         @default(now())
   // Quem marcou. Vira nulo se a pessoa sair do sistema — a etapa continua
   // feita, só perde o nome de quem fez.
   concluidoPorId String?
-  concluidoPor   User?          @relation("EtapaConcluida", fields: [concluidoPorId], references: [id], onDelete: SetNull)
-  observacao   String?
+  concluidoPor   User?            @relation("EtapaConcluida", fields: [concluidoPorId], references: [id], onDelete: SetNull)
+  observacao     String?
 
   // Uma marcação por etapa por ficha: clicar duas vezes não duplica.
   @@unique([onboardingId, chave])
@@ -1168,7 +1201,7 @@ model OnboardingEtapa {
 
 enum AnalysisKind {
   PRE_DIAGNOSTICO // antes da reunião: formulário (+ dados digitais quando houver)
-  PLANO_FINAL     // depois da reunião: soma o que foi levantado na conversa
+  PLANO_FINAL // depois da reunião: soma o que foi levantado na conversa
 }
 
 enum AnalysisStatus {
@@ -1223,26 +1256,28 @@ model OnboardingAnalysis {
 // mão: são duas origens diferentes pro mesmo assunto, e misturá-las faria
 // ninguém saber mais qual número veio de onde.
 
-/** Uma conta de anúncio. Um cliente pode ter mais de uma. */
+/**
+ * Uma conta de anúncio. Um cliente pode ter mais de uma.
+ */
 model MetaAdAccount {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   clientId       String
-  client         Client   @relation(fields: [clientId], references: [id])
+  client         Client    @relation(fields: [clientId], references: [id])
   // O id da conta lá na Meta (act_...). Único no sistema inteiro: a mesma
   // conta pendurada em dois clientes duplicaria gasto e lead no relatório.
-  metaAccountId  String   @unique
+  metaAccountId  String    @unique
   name           String?
   // Conta pré-paga: o saldo acaba e o anúncio para sem avisar ninguém.
-  isPrepay       Boolean  @default(false)
+  isPrepay       Boolean   @default(false)
   // Qual ação da Meta conta como "lead" nesta conta. Varia por cliente —
   // conversa iniciada no WhatsApp não é o mesmo que formulário preenchido.
-  leadActionType String   @default("onsite_conversion.messaging_conversation_started_7d")
-  active         Boolean  @default(true)
+  leadActionType String    @default("onsite_conversion.messaging_conversation_started_7d")
+  active         Boolean   @default(true)
   lastSyncedAt   DateTime?
   // O erro da última tentativa, pra a falha aparecer na tela em vez de só no
   // log — sincronização que falha calada vira número velho passando por novo.
   lastSyncError  String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime  @default(now())
 
   balanceSnapshots BalanceSnapshot[]
   insights         MetaInsightDaily[]
@@ -1257,10 +1292,8 @@ model MetaAdAccount {
 
 /**
  * O saldo da conta pré-paga, fotografado a cada sincronização.
- *
  * É histórico e não campo único de propósito: o que interessa não é só
  * quanto tem agora, é a queda — dá pra prever em quantos dias acaba.
- *
  * Em centavos (Int), não em decimal: dinheiro em ponto flutuante perde
  * centavo em conta, e a Meta já devolve inteiro.
  */
@@ -1277,7 +1310,6 @@ model BalanceSnapshot {
 
 /**
  * O resultado de cada conjunto de anúncios, por dia.
- *
  * A chave única (conta + conjunto + dia) é o que deixa a sincronização ser
  * repetida à vontade: puxar o mesmo dia duas vezes atualiza a linha em vez de
  * duplicar o gasto.
@@ -1337,17 +1369,17 @@ model MetaLifetime {
   campaignId   String?
   campaignName String?
 
-  spendCents  Int
-  impressions Int
-  reach       Int @default(0)
-  clicks      Int
-  linkClicks  Int
-  leads       Int
+  spendCents   Int
+  impressions  Int
+  reach        Int       @default(0)
+  clicks       Int
+  linkClicks   Int
+  leads        Int
   // Desde quando a Meta contou. Ela devolve junto, e sem isso "vida inteira"
   // é uma palavra sem data.
-  desde       DateTime? @db.Date
-  ate         DateTime? @db.Date
-  atualizadoEm DateTime @default(now())
+  desde        DateTime? @db.Date
+  ate          DateTime? @db.Date
+  atualizadoEm DateTime  @default(now())
 
   @@unique([adAccountId, adId])
   @@index([adAccountId, campaignId])
@@ -1372,10 +1404,10 @@ model MetaCampaign {
   adAccountId String
   adAccount   MetaAdAccount @relation(fields: [adAccountId], references: [id])
 
-  campaignId String
-  name       String
+  campaignId      String
+  name            String
   // Como a Meta escreve: ACTIVE, PAUSED, ARCHIVED, DELETED.
-  status     String?
+  status          String?
   // O status DE VERDADE, já considerando o pai e os limites da conta. Uma
   // campanha ACTIVE dentro de conta sem saldo entrega nada, e é isto que
   // conta essa história.
@@ -1419,11 +1451,11 @@ model MetaAdCreative {
   adAccountId String
   adAccount   MetaAdAccount @relation(fields: [adAccountId], references: [id])
 
-  adId   String
-  adName String
+  adId            String
+  adName          String
   // ACTIVE, PAUSED, etc. — como a Meta escreve. Guardado como veio, sem
   // traduzir: traduzir aqui é inventar um vocabulário nosso em cima do dela.
-  status String?
+  status          String?
   // O status já considerando campanha e conjunto acima dele.
   effectiveStatus String?
   adsetId         String?

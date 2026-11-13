@@ -32,3 +32,22 @@ export function diaDaCasaComoData(agora: Date = new Date()): Date {
   const [ano, mes, dia] = diaDaCasa(agora).split("-").map(Number);
   return new Date(Date.UTC(ano, mes - 1, dia));
 }
+
+/**
+ * A segunda-feira da semana de hoje, como Date de meia-noite UTC.
+ *
+ * É a chave do relatório semanal: "o relatório da semana de 10/11 já foi
+ * mandado pra essa loja?". Usar a data de hoje não serviria — o gestor que
+ * manda na terça marcaria um dia diferente do que mandou na segunda, e a
+ * mesma semana contaria duas vezes.
+ *
+ * Segunda e não domingo porque é o começo da semana de trabalho daqui, e é
+ * no dia da foto que os relatórios saem.
+ */
+export function segundaDaSemana(agora: Date = new Date()): Date {
+  const hoje = diaDaCasaComoData(agora);
+  // getUTCDay: 0 = domingo. Domingo tem que voltar seis dias, não um.
+  const diaDaSemana = hoje.getUTCDay();
+  const recuo = diaDaSemana === 0 ? 6 : diaDaSemana - 1;
+  return new Date(hoje.getTime() - recuo * 24 * 60 * 60 * 1000);
+}

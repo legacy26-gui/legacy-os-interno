@@ -67,6 +67,12 @@ const QUEM_RECEBE: Record<TipoDeAlerta, (p: Pessoa, a: Alerta) => boolean> = {
   // A Andrielli é avisada DENTRO do sistema; o dono recebe no celular na
   // hora, direto pela ação que registra a reunião (ver actions/resgate.ts).
   "reuniao-marcada": (p) => ehAndrielli(p.email),
+  // O gestor da loja, sempre: é ele quem manda, desde o primeiro dia. A
+  // direção entra só quando já passou de quarta — até lá é trabalho em
+  // andamento, e avisar chefe de trabalho em andamento é ruído.
+  "relatorio-nao-enviado": (p, a) =>
+    (!!a.donoId && a.donoId === p.id) ||
+    (ehAndrielli(p.email) && a.nivel >= NIVEL_QUE_CHAMA_O_GESTOR),
 };
 
 /**

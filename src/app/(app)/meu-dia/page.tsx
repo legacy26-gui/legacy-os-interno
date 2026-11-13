@@ -3,10 +3,11 @@ import { ClipboardList, PartyPopper, ExternalLink, AlertTriangle, Car } from "lu
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { estadoDaVenda, DIAS_VERMELHO, DIAS_CRITICO } from "@/lib/controle-vendas";
-import { diaDaCasaComoData, ehDiaDaFoto } from "@/lib/dia-da-casa";
+import { diaDaCasaComoData, ehDiaDaFoto, segundaDaSemana } from "@/lib/dia-da-casa";
 import { montarPainelDoDia } from "@/lib/meta/painel-do-dia";
 import { LinhaDoCliente, type ClienteDoDia } from "./linha-do-cliente";
 import { BlocoMetaDoDia } from "./bloco-meta";
+import { BlocoRelatorios } from "./bloco-relatorios";
 
 // Meu Dia: a carteira do gestor numa tela só.
 //
@@ -56,6 +57,35 @@ export default async function MeuDiaPage() {
   // O Meta entra DEPOIS da lista de clientes porque precisa dos ids dela. É
   // uma rodada a mais de consulta, e não dá pra juntar com as de cima.
   const painelMeta = await montarPainelDoDia(clients.map((c) => c.id), hoje);
+
+  // ── Os relatórios da semana ──────────────────────────────────────────
+  //
+  // Só lojas com conta de anúncio vinculada: sem conta não há número, e sem
+  // número não há relatório pra mandar. Listá-las aqui só daria uma
+  // pendência que ninguém consegue resolver nesta tela.
+  const semana = segundaDaSemana(hoje);
+  const [lojasComConta, jaEnviados] = await Promise.all([
+    prisma.client.findMany({
+      where: {
+        managerId: user.id,
+        status: { not: "CANCELADO" },
+        metaAdAccounts: { some: { active: true } },
+      },
+      select: { id: true, companyName: true },
+      orderBy: { companyName: "asc" },
+    }),
+    prisma.relatorioEnviado.findMany({
+      where: { semana, client: { managerId: user.id } },
+      select: { clientId: true },
+    }),
+  ]);
+  const enviados = new Set(jaEnviados.map((e) => e.clientId));
+
+  // O dia da semana no fuso da casa, pra saber quando "pendente" vira
+  // "atrasado". `segundaDaSemana` já devolve meia-noite UTC do dia certo, e
+  // a diferença em dias entre hoje e ela dá 0 na segunda, 1 na terça...
+  const diaDaSemana =
+    1 + Math.round((diaDaCasaComoData(hoje).getTime() - semana.getTime()) / 86_400_000);
 
   const ultimaVenda = new Map(vendas.map((v) => [v.clientId, v._max.soldAt]));
   const conferidosPorId = new Map(conferidos.map((c) => [c.clientId, c]));
@@ -121,6 +151,18 @@ export default async function MeuDiaPage() {
 
       {/* O que não pode passar batido vem antes da lista. */}
       <BlocoMetaDoDia painel={painelMeta} />
+
+      {/* Os relatórios aparecem a partir de segunda e ficam até o último ser
+          marcado. Antes de segunda não há o que mandar: a semana ainda está
+          acontecendo. */}
+      <BlocoRelatorios
+        lojas={lojasComConta.map((l) => ({
+          id: l.id,
+          nome: l.companyName,
+          enviado: enviados.has(l.id),
+        }))}
+        diaDaSemana={diaDaSemana}
+      />
 
       {urgentes.length > 0 && (
         <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-4 py-3">

@@ -4,6 +4,7 @@ import { CARTEIRA } from "@/lib/carteira";
 import { estadoDaVenda, diasEntre, type TomDaVenda } from "@/lib/controle-vendas";
 import { TOTAL_DE_ETAPAS } from "@/lib/etapas-implantacao";
 import { formatCurrency } from "@/lib/labels";
+import { segundaDaSemana, diaDaCasaComoData } from "@/lib/dia-da-casa";
 import type { Alerta, NivelDeAlerta } from "./tipos";
 
 // De onde cada alerta nasce.
@@ -262,6 +263,84 @@ async function reunioesMarcadas(hoje: Date): Promise<Alerta[]> {
   });
 }
 
+// ─────────────────────── Relatório da semana não enviado ────────────────────
+
+/**
+ * O relatório sai pronto sozinho; mandar ainda é com gente.
+ *
+ * Enquanto o WhatsApp não estiver ligado, quem aperta "enviar" é o gestor — e
+ * gestor com quarenta lojas pula uma sem perceber. O Meu Dia mostra a lista,
+ * mas tela só ajuda quem abre a tela. Este alerta é o que chega no celular.
+ *
+ * ── Por que a semana entra na chave ───────────────────────────────────────
+ *
+ * A regra geral deste arquivo é que data NUNCA entra na chave, pra que o
+ * mesmo problema seja reconhecido amanhã como o de hoje. Aqui é diferente, e
+ * de propósito: o relatório da semana que vem é OUTRO problema, não o mesmo
+ * mais velho. Sem a semana na chave, a primeira pendência silenciaria todas
+ * as semanas seguintes pra sempre.
+ *
+ * ── Por que a gravidade sobe com o dia ───────────────────────────────────
+ *
+ * Segunda é lembrete, quarta é cobrança, sexta é problema. Como o aviso só
+ * vai pro celular quando o alerta PIORA de degrau, isso dá no máximo três
+ * toques por semana — e o último só acontece com quem de fato não mandou.
+ */
+function nivelDoRelatorio(diaDaSemana: number): NivelDeAlerta {
+  if (diaDaSemana >= 5) return 3;
+  if (diaDaSemana >= 3) return 2;
+  return 1;
+}
+
+async function relatoriosNaoEnviados(hoje: Date): Promise<Alerta[]> {
+  const semana = segundaDaSemana(hoje);
+  // 1 na segunda, 2 na terça... Calculado a partir da própria segunda pra
+  // não depender do fuso duas vezes.
+  const diaDaSemana =
+    1 + Math.round((diaDaCasaComoData(hoje).getTime() - semana.getTime()) / 86_400_000);
+
+  const lojas = await prisma.client.findMany({
+    where: {
+      ...CARTEIRA,
+      // Sem conta vinculada não há número, e sem número não há relatório.
+      metaAdAccounts: { some: { active: true } },
+      // A ausência do registro É a pendência. Nada a dar baixa, nada a
+      // limpar: na segunda seguinte a semana muda e a lista volta sozinha.
+      relatoriosEnviados: { none: { semana } },
+    },
+    select: {
+      id: true,
+      companyName: true,
+      managerId: true,
+      manager: { select: { name: true } },
+    },
+    orderBy: { companyName: "asc" },
+    // Trava de sanidade, igual às outras: se um dia isto devolver a casa
+    // inteira, é defeito de dado e não quarenta avisos num celular.
+    take: 100,
+  });
+
+  const semanaISO = semana.toISOString().slice(0, 10);
+
+  return lojas.map((l) => ({
+    chave: `relatorio-nao-enviado:${l.id}:${semanaISO}`,
+    tipo: "relatorio-nao-enviado" as const,
+    empresa: "AGENCIA" as const,
+    titulo: l.companyName,
+    detalhe:
+      diaDaSemana === 1
+        ? "Relatório da semana pronto pra enviar"
+        : `Relatório da semana ainda não enviado — ${diaDaSemana - 1} ${diaDaSemana === 2 ? "dia" : "dias"} desde segunda`,
+    nivel: nivelDoRelatorio(diaDaSemana),
+    // Leva pro Meu Dia e não pra tela de relatório: é lá que está a lista
+    // inteira com o botão de marcar, que é o que fecha a pendência.
+    link: "/meu-dia",
+    modulo: "clientes" as const,
+    dias: diaDaSemana - 1,
+    donoId: l.managerId,
+  }));
+}
+
 /**
  * Todos os alertas que o sistema tem hoje, de todas as empresas e sem dono
  * ainda. Quem recebe o quê é decidido depois, em destinatarios.ts — assim o
@@ -275,6 +354,7 @@ export async function calcularTodosOsAlertas(hoje: Date = new Date()): Promise<A
     mensalidadesVencidas(hoje),
     implantacoesParadas(hoje),
     reunioesMarcadas(hoje),
+    relatoriosNaoEnviados(hoje),
   ]);
   return listas.flat();
 }

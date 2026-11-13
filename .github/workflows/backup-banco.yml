@@ -68,6 +68,22 @@ jobs:
             exit 1
           fi
           echo "Servidor: $("$PG_BIN/psql" "$DATABASE_URL" -tAc 'select version()')"
+          # EM QUAL banco, com qual usuário, e quantas tabelas tem lá dentro.
+          #
+          # Conectar não é o mesmo que conectar no lugar certo. Um projeto do
+          # Neon costuma ter mais de um banco (o `neondb` que vem de fábrica,
+          # além do que a aplicação usa), e a string que o painel oferece nem
+          # sempre é a do banco certo. O dump sai sem erro nenhum, com 900
+          # bytes e nenhuma tabela — e sem esta linha, descobrir isso é
+          # adivinhação.
+          echo "Banco/usuário: $("$PG_BIN/psql" "$DATABASE_URL" -tAc 'select current_database() || E'"'"' / '"'"' || current_user')"
+          TABELAS=$("$PG_BIN/psql" "$DATABASE_URL" -tAc \
+            "select count(*) from information_schema.tables where table_schema = 'public'")
+          echo "Tabelas no schema public: $TABELAS"
+          if [ "$TABELAS" -lt 5 ]; then
+            echo "::error::Só $TABELAS tabela(s) aqui. A DATABASE_URL está apontando pro banco errado do projeto — confira o nome do banco no fim da string."
+            exit 1
+          fi
 
       - name: Gerar o dump
         env:

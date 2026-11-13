@@ -72,6 +72,14 @@ jobs:
             echo "::error::Falta o segredo DATABASE_URL no repositório."
             exit 1
           fi
+          # QUAL servidor, pelo endereço. Os dois projetos do Neon têm um
+          # banco chamado "neondb" — o nome padrão de fábrica — então o nome
+          # sozinho não diz em qual deles se entrou. O endereço diz.
+          #
+          # Só o host: o sed corta tudo antes do @ (usuário e senha) e tudo
+          # depois da / (banco e parâmetros). O que sobra é o endereço do
+          # servidor, que não é segredo — é como um domínio.
+          echo "Endereço: $(printf '%s' "$DATABASE_URL" | sed -E 's|^[^@]*@||; s|[/?].*$||')"
           echo "Servidor: $("$PG_BIN/psql" "$DATABASE_URL" -tAc 'select version()')"
           # EM QUAL banco, com qual usuário, e quantas tabelas tem lá dentro.
           #

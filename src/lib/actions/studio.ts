@@ -61,12 +61,38 @@ async function podeRevisar(clientId: string) {
 
 export interface DadosDaArte {
   clientId: string;
+  /** "CHEVROLET" — vai menor, acima do modelo. */
+  marca?: string;
   modelo: string;
+  /** "LTZ2 SPORT6" — vai na caixa da cor da loja. */
+  versao?: string;
   ano?: string;
   kmTexto?: string;
   /** Como a pessoa escreveu: "89900", "R$ 89.900,00". */
   preco?: string;
+  /** O preço "de", riscado. Vazio quando não há desconto anunciado. */
+  precoDe?: string;
+  /** A ficha, separada por "|": "1.4 TURBO | AUTOMÁTICO | TETO SOLAR". */
+  detalhes?: string;
   chamada?: string;
+}
+
+/** Os campos de texto, limpos e cortados no tamanho que cabe na arte. */
+function camposDaArte(d: Omit<DadosDaArte, "clientId">) {
+  const corta = (v: string | undefined, n: number) => {
+    const t = (v ?? "").trim();
+    return t === "" ? null : t.slice(0, n);
+  };
+  return {
+    marca: corta(d.marca, 30),
+    versao: corta(d.versao, 40),
+    ano: corta(d.ano, 20),
+    kmTexto: corta(d.kmTexto, 30),
+    // Mais que isso não cabe na faixa: o desenho mostra os quatro
+    // primeiros itens e corta o resto em silêncio, o que seria pior.
+    detalhes: corta(d.detalhes, 160),
+    chamada: corta(d.chamada, 40),
+  };
 }
 
 /**
@@ -88,6 +114,15 @@ export async function criarArte(dados: DadosDaArte, formData: FormData): Promise
   const preco = lerPreco(dados.preco ?? "");
   if (preco === false) {
     return { erro: "Preço inválido. Escreva só o número, por exemplo 89900." };
+  }
+  const precoDe = lerPreco(dados.precoDe ?? "");
+  if (precoDe === false) {
+    return { erro: "O preço “de” está inválido. Escreva só o número." };
+  }
+  // "De R$ 29.900 por R$ 33.900" é desconto ao contrário, e ninguém percebe
+  // numa arte pronta. Barrar aqui é mais barato do que no Instagram.
+  if (precoDe !== null && preco !== null && precoDe <= preco) {
+    return { erro: "O preço “de” tem que ser MAIOR que o preço de venda." };
   }
 
   const foto = formData.get("foto");
@@ -115,10 +150,9 @@ export async function criarArte(dados: DadosDaArte, formData: FormData): Promise
       clientId: dados.clientId,
       fotoUrl: pronta.dataUri,
       modelo,
-      ano: dados.ano?.trim() || null,
-      kmTexto: dados.kmTexto?.trim() || null,
+      ...camposDaArte(dados),
       precoCents: preco,
-      chamada: dados.chamada?.trim() || null,
+      precoDeCents: precoDe,
       criadoPorId: user.id,
     },
     select: { id: true },
@@ -147,15 +181,19 @@ export async function corrigirArte(
 
   const preco = lerPreco(dados.preco ?? "");
   if (preco === false) return { erro: "Preço inválido." };
+  const precoDe = lerPreco(dados.precoDe ?? "");
+  if (precoDe === false) return { erro: "O preço “de” está inválido." };
+  if (precoDe !== null && preco !== null && precoDe <= preco) {
+    return { erro: "O preço “de” tem que ser MAIOR que o preço de venda." };
+  }
 
   await prisma.studioArte.update({
     where: { id },
     data: {
       modelo,
-      ano: dados.ano?.trim() || null,
-      kmTexto: dados.kmTexto?.trim() || null,
+      ...camposDaArte(dados),
       precoCents: preco,
-      chamada: dados.chamada?.trim() || null,
+      precoDeCents: precoDe,
       // Mexer nos dados devolve a peça pra fila: o que foi aprovado era o
       // que estava escrito antes, e aprovação não se herda.
       status: "PRONTO",

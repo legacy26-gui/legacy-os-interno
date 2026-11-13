@@ -108,12 +108,13 @@ A trava de permissão mora **dentro** de cada função, não na tela. É isso qu
 faz o copiloto não virar um buraco: se amanhã ele chamar `aprovarArte` em
 nome de alguém, a conferência de carteira acontece igual.
 
-## Os três desenhos
+## Os quatro desenhos
 
 Cada loja escolhe o seu em `/studio/marcas`:
 
 | Desenho | O que é |
 |---|---|
+| **Vitrine** *(padrão)* | O padrão das artes que a equipe já faz à mão: marca e modelo empilhados no canto de cima, versão numa caixa de cor, ano entre dois fios, ficha com ícones e divisórias, preço numa caixa de cor no meio, rodapé com fio e endereço. |
 | **Degradê** | Foto sangrando na arte inteira, informação sobre um degradê no pé. O mais sóbrio. |
 | **Faixa** | Foto em cima, bloco de cor chapada embaixo, separados por um fio da cor da marca. O mais legível, e o mais comum em loja de carro. |
 | **Etiqueta** | Foto inteira com o preço numa placa grande à direita. O mais agressivo, pra oferta. |
@@ -131,9 +132,46 @@ migração.
 No "etiqueta" o preço **não** aparece também no bloco de informação. Repetir
 o mesmo número duas vezes na mesma peça é o erro clássico de arte gerada.
 
-Os três ainda não são os layouts da Legacy — são três bons desenhos
-genéricos. Pra reproduzir o padrão da casa eu preciso ver duas ou três artes
-reais que a equipe já faz.
+O **Vitrine** nasceu de onze artes reais que o Guilherme mandou. O que elas
+têm em comum, e que os outros três não tinham:
+
+- marca pequena **acima** do modelo grande, no canto de cima — não embaixo;
+- a versão numa caixa da cor da loja, e o ano entre dois fios;
+- a ficha em até quatro blocos com ícone redondo, duas linhas de texto e
+  divisórias finas entre eles;
+- o preço numa caixa de cor, centralizado, com o "R$" menor que o número;
+- um fio da cor da marca separando o rodapé.
+
+A ficha é texto livre separado por `|` porque cada loja destaca o que quer —
+teto solar numa, "apenas 92.000 km" noutra. Lista fixa de campos faria a
+equipe deixar metade em branco. O ícone é escolhido por palavra-chave
+(`km` → velocímetro, `automático` → câmbio, `1.4 turbo` → motor), e o que
+não casa com nada vira um visto, que é neutro e nunca erra.
+
+### O que falta pra ficar idêntico: o recorte
+
+Em **6 das 11** artes reais o carro está **recortado do fundo** e colado
+sobre um fundo gráfico. Isso não se faz com processamento de imagem comum —
+precisa de um serviço de remoção de fundo (remove.bg, Photoroom, ou um
+modelo de segmentação rodando em algum lugar). É custo por imagem, e é uma
+decisão a tomar.
+
+As outras 5 usam a foto real do pátio, e essas o Vitrine reproduz hoje.
+
+## A arte sai como JPEG, não PNG
+
+O `ImageResponse` só devolve PNG. Numa arte que é 90% fotografia isso deu
+**1,9 MB no feed e 3,1 MB no Stories** — medido, não estimado. Convertida
+pra JPEG 90 com `chromaSubsampling 4:4:4` (que preserva a borda da letra
+colorida), a mesma peça fica em **246 KB e 340 KB**.
+
+Não é detalhe de performance: a central mostra uma arte por cartão, e doze
+cartões em PNG seriam vinte e tantos megabytes só pra abrir a tela. A lista
+pede `?w=360`, que sai em 50 KB.
+
+As larguras são uma **lista fechada** (360 e 720) e não um número livre:
+`?w=` aberto deixaria qualquer um pedir mil tamanhos da mesma arte, e cada
+um custa uma renderização inteira.
 
 ## O que ainda não existe
 

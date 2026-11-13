@@ -4,12 +4,14 @@
    entende é <img>. Mesmo caso do relatório do cliente. */
 
 import { ImageResponse } from "next/og";
+import sharp from "sharp";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
 import { clienteEDaCarteira } from "@/lib/carteira";
+import { itensDaFicha, type IconeDaFicha } from "@/lib/studio/layouts";
 import {
   FORMATOS,
   formatoValido,
@@ -45,6 +47,39 @@ import {
 
 export const runtime = "nodejs";
 
+/**
+ * Larguras que a miniatura pode pedir.
+ *
+ * Lista fechada e não número livre: `?w=` aberto deixaria qualquer um pedir
+ * mil tamanhos diferentes da mesma arte, e cada um custa uma renderização
+ * inteira. Duas larguras cobrem o uso real — a lista e a tela da peça.
+ */
+const LARGURAS = [360, 720] as const;
+
+/**
+ * Entrega como JPEG, não como PNG.
+ *
+ * O `ImageResponse` só devolve PNG. Pra uma arte que é 90% fotografia isso
+ * dá 1,9 MB no feed e 3,1 MB no Stories — medido, não estimado. Em JPEG 90
+ * a mesma peça fica em torno de 300 KB, sem diferença que se veja.
+ *
+ * O peso não é detalhe: a central mostra uma arte por cartão, e doze
+ * cartões em PNG são vinte e tantos megabytes só pra abrir a tela.
+ *
+ * O `flatten` existe porque JPEG não tem transparência: sem ele, qualquer
+ * canto que tenha sobrado transparente viraria preto em vez da cor de fundo
+ * da loja.
+ */
+async function comoJpeg(
+  resposta: ImageResponse,
+  fundo: string,
+  largura: number | null
+): Promise<Buffer> {
+  let img = sharp(Buffer.from(await resposta.arrayBuffer())).flatten({ background: fundo });
+  if (largura) img = img.resize({ width: largura, withoutEnlargement: true });
+  return img.jpeg({ quality: 90, mozjpeg: true, chromaSubsampling: "4:4:4" }).toBuffer();
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -58,13 +93,20 @@ export async function GET(
   const url = new URL(req.url);
   const pedido = url.searchParams.get("formato");
   const formato: Formato = formatoValido(pedido) ? pedido : "feed";
+  const pedidoDeLargura = Number(url.searchParams.get("w"));
+  const larguraPedida =
+    (LARGURAS as readonly number[]).includes(pedidoDeLargura) ? pedidoDeLargura : null;
 
   const arte = await prisma.studioArte.findUnique({
     where: { id },
     select: {
       clientId: true,
       fotoUrl: true,
+      marca: true,
       modelo: true,
+      versao: true,
+      detalhes: true,
+      precoDeCents: true,
       ano: true,
       kmTexto: true,
       precoCents: true,
@@ -166,7 +208,30 @@ export async function GET(
     : 72;
   const respiro = story ? 60 : 44;
 
-  return new ImageResponse(
+  // ── O layout "vitrine" é outro desenho inteiro ─────────────────────────
+  //
+  // Os outros três são variações de um mesmo esqueleto (foto, informação no
+  // pé, rodapé). Este veio das artes que a equipe faz à mão, e a composição
+  // é diferente de verdade: marca e modelo empilhados no canto de cima,
+  // ficha com ícones numa faixa escura, preço numa caixa de cor no meio.
+  //
+  // Por isso ele retorna aqui em vez de virar mais um punhado de
+  // condicionais no JSX abaixo. Misturar os dois tornaria os quatro
+  // ilegíveis pra economizar um `return`.
+  const fontes = [
+    { name: "Roboto", data: roboto, style: "normal" as const, weight: 400 as const },
+    { name: "Anton", data: anton, style: "normal" as const, weight: 400 as const },
+  ];
+
+  if (layout === "vitrine") {
+    const png = new ImageResponse(
+      vitrine({ arte, m, cor, formato, largura, altura, story, preco, rodape }),
+      { width: largura, height: altura, fonts: fontes }
+    );
+    return responder(await comoJpeg(png, cor.fundo, larguraPedida), arte.modelo, formato);
+  }
+
+  const png = new ImageResponse(
     (
       <div
         style={{
@@ -404,18 +469,20 @@ export async function GET(
         )}
       </div>
     ),
-    {
-      width: largura,
-      height: altura,
-      fonts: [
-        { name: "Roboto", data: roboto, style: "normal", weight: 400 },
-        { name: "Anton", data: anton, style: "normal", weight: 400 },
-      ],
-      headers: {
-        "Content-Disposition": `inline; filename="${nomeDoArquivo(arte.modelo, formato)}"`,
-      },
-    }
+    { width: largura, height: altura, fonts: fontes }
   );
+  return responder(await comoJpeg(png, cor.fundo, larguraPedida), arte.modelo, formato);
+}
+
+/** A resposta final: JPEG, com o nome de arquivo que ajuda quem baixa. */
+function responder(bytes: Buffer, modelo: string, formato: Formato): Response {
+  return new Response(new Uint8Array(bytes), {
+    headers: {
+      "Content-Type": "image/jpeg",
+      "Content-Length": String(bytes.byteLength),
+      "Content-Disposition": `inline; filename="${nomeDoArquivo(modelo, formato)}"`,
+    },
+  });
 }
 
 function nomeDoArquivo(modelo: string, formato: Formato) {
@@ -425,5 +492,465 @@ function nomeDoArquivo(modelo: string, formato: Formato) {
     .replace(/[^a-zA-Z0-9]+/g, "-")
     .replace(/^-|-$/g, "")
     .toLowerCase();
-  return `${limpo || "arte"}-${formato}.png`;
+  return `${limpo || "arte"}-${formato}.jpg`;
+}
+
+// ─────────────────────────── O layout "vitrine" ──────────────────────────
+//
+// Reproduz o padrão das artes que a equipe já faz à mão. O que o define, e
+// que é diferente dos outros três:
+//
+//   - marca e modelo EMPILHADOS no canto de cima, não embaixo;
+//   - versão numa caixa da cor da loja, e o ano entre dois fios;
+//   - a ficha em quatro blocos com ícone, separados por divisórias, numa
+//     faixa escura translúcida POR CIMA da foto (não um bloco sólido);
+//   - o preço numa caixa de cor, centralizado;
+//   - rodapé com um fio da cor e o endereço.
+//
+// Uma coisa das artes reais que NÃO está aqui: em várias delas o carro está
+// recortado do fundo. Isso não se faz com processamento de imagem comum —
+// precisa de um serviço de remoção de fundo. Ver docs/studio.md.
+
+function vitrine(o: {
+  arte: {
+    fotoUrl: string;
+    marca: string | null;
+    modelo: string;
+    versao: string | null;
+    detalhes: string | null;
+    ano: string | null;
+    kmTexto: string | null;
+    precoDeCents: number | null;
+    chamada: string | null;
+    client: { companyName: string };
+  };
+  m: { logoUrl: string | null } | null | undefined;
+  cor: { primaria: string; fundo: string; texto: string };
+  formato: Formato;
+  largura: number;
+  altura: number;
+  story: boolean;
+  preco: string | null;
+  rodape: string;
+}) {
+  const { arte, m, cor, formato, largura, altura, story, preco, rodape } = o;
+  const ficha = itensDaFicha(arte.detalhes, arte.ano, arte.kmTexto);
+  const precoDe = precoDaArte(arte.precoDeCents);
+  const k = story ? 1.25 : 1;
+  const px = (n: number) => Math.round(n * k);
+
+  const alturaDoRodape = rodape ? px(64) : 0;
+
+  return (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        position: "relative",
+        backgroundColor: cor.fundo,
+        fontFamily: "Roboto",
+      }}
+    >
+      <img
+        src={arte.fotoUrl}
+        alt=""
+        width={largura}
+        height={altura}
+        style={{ position: "absolute", top: 0, left: 0, objectFit: "cover" }}
+      />
+
+      {/* Escurece o topo e o pé, deixando o meio da foto limpo — é onde o
+          carro está. Dois degradês curtos em vez de um que atravessa tudo:
+          o longo apaga a lataria no meio do caminho. */}
+      <div
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          right: 0,
+          height: px(story ? 420 : 330),
+          display: "flex",
+          backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0.75) 0%, rgba(0,0,0,0) 100%)`,
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: px(story ? 560 : 440),
+          display: "flex",
+          backgroundImage: `linear-gradient(to top, ${cor.fundo} 0%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0) 100%)`,
+        }}
+      />
+
+      {/* ── Topo: logo à esquerda, carro à direita ── */}
+      <div
+        style={{
+          position: "absolute",
+          top: px(40),
+          left: px(44),
+          right: px(44),
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+        }}
+      >
+        {m?.logoUrl ? (
+          <img src={m.logoUrl} alt="" height={px(76)} style={{ objectFit: "contain" }} />
+        ) : (
+          <div
+            style={{
+              display: "flex",
+              fontFamily: "Anton",
+              fontSize: px(30),
+              color: cor.texto,
+              letterSpacing: 1,
+            }}
+          >
+            {arte.client.companyName.toUpperCase()}
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+          {arte.marca && (
+            <div
+              style={{
+                display: "flex",
+                fontFamily: "Anton",
+                fontSize: px(40),
+                color: cor.texto,
+                letterSpacing: 2,
+                lineHeight: 1,
+              }}
+            >
+              {arte.marca.toUpperCase()}
+            </div>
+          )}
+          <div
+            style={{
+              display: "flex",
+              fontFamily: "Anton",
+              fontSize: px(corpoDoModelo(arte.modelo, formato) * 0.88),
+              color: cor.texto,
+              lineHeight: 1,
+              marginTop: arte.marca ? px(2) : 0,
+            }}
+          >
+            {arte.modelo.toUpperCase()}
+          </div>
+          {arte.versao && (
+            <div
+              style={{
+                display: "flex",
+                backgroundColor: cor.primaria,
+                color: cor.fundo,
+                fontFamily: "Anton",
+                fontSize: px(32),
+                letterSpacing: 1,
+                padding: `${px(6)}px ${px(18)}px`,
+                borderRadius: px(6),
+                marginTop: px(10),
+              }}
+            >
+              {arte.versao.toUpperCase()}
+            </div>
+          )}
+          {arte.ano && (
+            // O ano entre dois fios, como na arte da casa.
+            <div style={{ display: "flex", alignItems: "center", marginTop: px(10) }}>
+              <div
+                style={{
+                  display: "flex",
+                  width: px(34),
+                  height: px(4),
+                  backgroundColor: cor.primaria,
+                }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  fontFamily: "Anton",
+                  fontSize: px(30),
+                  color: cor.texto,
+                  letterSpacing: 2,
+                  padding: `0 ${px(12)}px`,
+                }}
+              >
+                {arte.ano}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  width: px(34),
+                  height: px(4),
+                  backgroundColor: cor.primaria,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── A chamada, quando existe ── */}
+      {arte.chamada && (
+        <div
+          style={{
+            position: "absolute",
+            left: px(44),
+            bottom: alturaDoRodape + px(story ? 420 : 330),
+            display: "flex",
+            backgroundColor: cor.primaria,
+            color: cor.fundo,
+            fontFamily: "Anton",
+            fontSize: px(28),
+            letterSpacing: 1,
+            padding: `${px(10)}px ${px(20)}px`,
+            borderRadius: px(8),
+          }}
+        >
+          {arte.chamada.toUpperCase()}
+        </div>
+      )}
+
+      {/* ── A ficha, com ícones e divisórias ── */}
+      {ficha.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: alturaDoRodape + px(story ? 250 : 190),
+            display: "flex",
+            alignItems: "stretch",
+            justifyContent: "center",
+            padding: `${px(10)}px ${px(30)}px`,
+          }}
+        >
+          {ficha.map((item, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center" }}>
+              {/* A divisória vem ANTES do item, menos no primeiro: assim
+                  nunca sobra um fio solto na ponta. */}
+              {i > 0 && (
+                <div
+                  style={{
+                    display: "flex",
+                    width: 2,
+                    height: px(46),
+                    backgroundColor: "rgba(255,255,255,0.25)",
+                    margin: `0 ${px(18)}px`,
+                  }}
+                />
+              )}
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    width: px(46),
+                    height: px(46),
+                    borderRadius: 999,
+                    border: `${Math.max(2, px(3))}px solid ${cor.primaria}`,
+                    marginRight: px(10),
+                  }}
+                >
+                  <IconeDaFichaSvg nome={item.icone} cor={cor.primaria} tamanho={px(24)} />
+                </div>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  {item.linhas.map((l, j) => (
+                    <div
+                      key={j}
+                      style={{
+                        display: "flex",
+                        fontFamily: "Anton",
+                        fontSize: px(24),
+                        color: cor.texto,
+                        lineHeight: 1.15,
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {l.toUpperCase()}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── O preço, na caixa de cor ── */}
+      {preco && (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: alturaDoRodape + px(story ? 90 : 56),
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          {/* O "de", riscado. Só aparece quando a loja anunciou desconto —
+              e some inteiro quando não, em vez de deixar um espaço vazio. */}
+          {precoDe && (
+            <div
+              style={{
+                display: "flex",
+                fontSize: px(26),
+                color: "rgba(255,255,255,0.75)",
+                textDecoration: "line-through",
+                marginBottom: px(6),
+              }}
+            >
+              {precoDe}
+            </div>
+          )}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              backgroundColor: cor.primaria,
+              color: cor.fundo,
+              padding: `${px(12)}px ${px(40)}px`,
+              borderRadius: px(12),
+            }}
+          >
+            {/* "R$" menor que o número, como na arte real: o que a pessoa
+                precisa ler de longe é o número, não a moeda. */}
+            <div
+              style={{
+                display: "flex",
+                fontFamily: "Anton",
+                fontSize: px(38),
+                marginRight: px(10),
+              }}
+            >
+              R$
+            </div>
+            <div
+              style={{
+                display: "flex",
+                fontFamily: "Anton",
+                fontSize: px(corpoDoPreco(preco, formato) * 0.92),
+                lineHeight: 1,
+              }}
+            >
+              {preco.replace(/^R\$\s*/, "")}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Rodapé ── */}
+      {rodape && (
+        <div
+          style={{
+            position: "absolute",
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+          }}
+        >
+          <div
+            style={{ display: "flex", width: "100%", height: px(4), backgroundColor: cor.primaria }}
+          />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "100%",
+              padding: `${px(16)}px 0`,
+              backgroundColor: cor.fundo,
+            }}
+          >
+            <svg
+              width={px(22)}
+              height={px(22)}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={cor.primaria}
+              strokeWidth="2.2"
+              style={{ marginRight: px(10) }}
+            >
+              <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11Z" />
+              <circle cx="12" cy="10" r="2.6" />
+            </svg>
+            <div style={{ display: "flex", fontSize: px(24), color: cor.texto }}>{rodape}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Os ícones da ficha. Quatro traços simples, do mesmo peso. */
+function IconeDaFichaSvg({
+  nome,
+  cor,
+  tamanho,
+}: {
+  nome: IconeDaFicha;
+  cor: string;
+  tamanho: number;
+}) {
+  const comum = {
+    width: tamanho,
+    height: tamanho,
+    viewBox: "0 0 24 24",
+    fill: "none",
+    stroke: cor,
+    strokeWidth: 2,
+    strokeLinecap: "round" as const,
+  };
+  if (nome === "km") {
+    return (
+      <svg {...comum}>
+        <path d="M4 18a8 8 0 1 1 16 0" />
+        <path d="M12 14l4-4" />
+      </svg>
+    );
+  }
+  if (nome === "cambio") {
+    return (
+      <svg {...comum}>
+        <path d="M6 5v14" />
+        <path d="M18 5v6" />
+        <path d="M6 9h12" />
+        <circle cx="6" cy="19" r="1.6" />
+      </svg>
+    );
+  }
+  if (nome === "motor") {
+    return (
+      <svg {...comum}>
+        <path d="M4 12h3l2-3h6l2 3h3" />
+        <path d="M5 12v4h14v-4" />
+        <path d="M9 5h6" />
+      </svg>
+    );
+  }
+  if (nome === "ano") {
+    return (
+      <svg {...comum}>
+        <rect x="3.5" y="5.5" width="17" height="15" rx="2.5" />
+        <path d="M3.5 10h17" />
+        <path d="M8 3v4M16 3v4" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...comum}>
+      <path d="M5 12.5l4.5 4.5L19 7.5" />
+    </svg>
+  );
 }

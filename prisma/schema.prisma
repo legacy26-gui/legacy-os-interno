@@ -320,10 +320,21 @@ model StudioArte {
   fotoUrl String @db.Text
 
   // ── O que vai escrito na arte ──
+  /// "CHEVROLET". Vai menor, acima do modelo — é como a arte da casa faz.
+  marca      String?
+  /// "CRUZE". O nome grande.
   modelo     String
+  /// "LTZ2 SPORT6". Vai numa caixa da cor da loja, abaixo do modelo.
+  versao     String?
   ano        String?
   kmTexto    String?
   precoCents Int?
+  /// O preço "de", riscado, quando a loja anuncia desconto.
+  precoDeCents Int?
+  /// A ficha, separada por "|": "1.4 TURBO | AUTOMÁTICO | TETO SOLAR".
+  /// Texto livre porque cada loja destaca o que quer, e uma lista fixa de
+  /// campos faria a equipe deixar metade em branco.
+  detalhes   String?
   /** "Entrada + 48x", "Aceita troca", o que a loja quiser destacar. */
   chamada    String?
 

@@ -137,7 +137,7 @@ export default async function ArtePage({ params }: { params: Promise<{ id: strin
           </figcaption>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/api/studio/arte/${arte.id}?formato=story`}
+            src={`/api/studio/arte/${arte.id}?formato=story&w=720`}
             alt={`Arte de Stories de ${arte.modelo}`}
             className="w-full rounded-xl border border-border bg-black"
           />

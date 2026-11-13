@@ -41,10 +41,14 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
       const r = await criarArte(
         {
           clientId: (formData.get("clientId") as string) ?? "",
+          marca: (formData.get("marca") as string) ?? "",
           modelo: (formData.get("modelo") as string) ?? "",
+          versao: (formData.get("versao") as string) ?? "",
           ano: (formData.get("ano") as string) ?? "",
           kmTexto: (formData.get("km") as string) ?? "",
           preco: (formData.get("preco") as string) ?? "",
+          precoDe: (formData.get("precoDe") as string) ?? "",
+          detalhes: (formData.get("detalhes") as string) ?? "",
           chamada: (formData.get("chamada") as string) ?? "",
         },
         formData
@@ -168,16 +172,47 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
           )}
         </div>
 
+        {/* Marca e modelo em campos separados porque na arte eles vão em
+            linhas diferentes, com pesos diferentes — "CHEVROLET" pequeno em
+            cima, "CRUZE" enorme embaixo. Num campo só não dá pra saber onde
+            quebrar. */}
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_1.4fr] gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-foreground-muted font-medium">
+              Marca
+            </span>
+            <input
+              name="marca"
+              maxLength={30}
+              autoComplete="off"
+              placeholder="Chevrolet"
+              className="px-3 min-h-11 rounded-lg border border-border bg-background text-sm"
+            />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-foreground-muted font-medium">
+              Modelo
+            </span>
+            <input
+              name="modelo"
+              required
+              maxLength={80}
+              autoComplete="off"
+              placeholder="Cruze"
+              className="px-3 min-h-11 rounded-lg border border-border bg-background text-sm"
+            />
+          </label>
+        </div>
+
         <label className="flex flex-col gap-1.5">
           <span className="text-xs uppercase tracking-wide text-foreground-muted font-medium">
-            Modelo
+            Versão <span className="normal-case tracking-normal">(opcional)</span>
           </span>
           <input
-            name="modelo"
-            required
-            maxLength={80}
+            name="versao"
+            maxLength={40}
             autoComplete="off"
-            placeholder="Onix LT 1.0 Turbo"
+            placeholder="LTZ2 Sport6"
             className="px-3 min-h-11 rounded-lg border border-border bg-background text-sm"
           />
         </label>
@@ -208,22 +243,58 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
           </label>
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-foreground-muted font-medium">
+              Preço
+            </span>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-foreground-muted">
+                R$
+              </span>
+              <input
+                name="preco"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="89.900"
+                className="w-full pl-9 pr-3 min-h-11 rounded-lg border border-border bg-background text-sm tabular-nums"
+              />
+            </div>
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs uppercase tracking-wide text-foreground-muted font-medium">
+              De <span className="normal-case tracking-normal">(riscado)</span>
+            </span>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-foreground-muted">
+                R$
+              </span>
+              <input
+                name="precoDe"
+                inputMode="decimal"
+                autoComplete="off"
+                placeholder="—"
+                className="w-full pl-9 pr-3 min-h-11 rounded-lg border border-border bg-background text-sm tabular-nums"
+              />
+            </div>
+          </label>
+        </div>
+
         <label className="flex flex-col gap-1.5">
           <span className="text-xs uppercase tracking-wide text-foreground-muted font-medium">
-            Preço
+            Ficha
           </span>
-          <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-foreground-muted">
-              R$
-            </span>
-            <input
-              name="preco"
-              inputMode="decimal"
-              autoComplete="off"
-              placeholder="89.900"
-              className="w-full pl-9 pr-3 min-h-11 rounded-lg border border-border bg-background text-sm tabular-nums"
-            />
-          </div>
+          <input
+            name="detalhes"
+            maxLength={160}
+            autoComplete="off"
+            placeholder="1.4 Turbo | Automático | Completo | Teto solar"
+            className="px-3 min-h-11 rounded-lg border border-border bg-background text-sm"
+          />
+          <span className="text-xs text-foreground-muted">
+            Separe com <strong>|</strong>. Viram os blocos com ícone na faixa. Cabem quatro ao
+            todo, contando a quilometragem e o ano.
+          </span>
         </label>
 
         <label className="flex flex-col gap-1.5">

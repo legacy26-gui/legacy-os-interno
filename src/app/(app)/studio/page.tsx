@@ -174,7 +174,9 @@ export default async function StudioPage() {
                       peça montada, e é ela que precisa ser conferida. */}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={`/api/studio/arte/${a.id}?formato=feed`}
+                    // `w=360` e não a arte inteira: doze cartões em tamanho cheio
+                    // seriam megabytes só pra abrir a lista.
+                    src={`/api/studio/arte/${a.id}?formato=feed&w=360`}
                     alt={`Arte de ${a.modelo}`}
                     className="w-full aspect-square object-cover bg-black"
                     loading="lazy"

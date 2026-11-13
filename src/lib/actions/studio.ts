@@ -10,6 +10,8 @@ import {
   lerPreco,
   FOTO_MAX_BYTES,
   FORMATO_DA_COR,
+  PRECO_MINIMO_DE_VEICULO,
+  precoQueProvavelmenteQuis,
   LAYOUTS,
   type Layout,
 } from "@/lib/studio/arte";
@@ -77,6 +79,40 @@ export interface DadosDaArte {
   chamada?: string;
 }
 
+/** R$ 169.900,00 a partir de centavos. */
+function comoReais(c: number): string {
+  return (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+/**
+ * Confere os dois preços e devolve a mensagem quando algo está errado.
+ *
+ * Uma função só, usada na criação e na correção: a regra tem que ser a
+ * mesma nas duas portas, senão o preço barrado ao criar entra pela edição.
+ */
+function conferirPrecos(
+  preco: number | null,
+  precoDe: number | null
+): string | null {
+  for (const [valor, nome] of [
+    [preco, "preço"],
+    [precoDe, "preço “de”"],
+  ] as const) {
+    if (valor !== null && valor < PRECO_MINIMO_DE_VEICULO) {
+      return (
+        `${comoReais(valor)} não é ${nome} de veículo — parece vírgula no lugar do ponto. ` +
+        `Você quis dizer ${comoReais(precoQueProvavelmenteQuis(valor))}?`
+      );
+    }
+  }
+  // "De R$ 29.900 por R$ 33.900" é desconto ao contrário, e ninguém percebe
+  // numa arte pronta. Barrar aqui é mais barato do que no Instagram.
+  if (precoDe !== null && preco !== null && precoDe <= preco) {
+    return "O preço “de” tem que ser MAIOR que o preço de venda.";
+  }
+  return null;
+}
+
 /** Os campos de texto, limpos e cortados no tamanho que cabe na arte. */
 function camposDaArte(d: Omit<DadosDaArte, "clientId">) {
   const corta = (v: string | undefined, n: number) => {
@@ -119,11 +155,8 @@ export async function criarArte(dados: DadosDaArte, formData: FormData): Promise
   if (precoDe === false) {
     return { erro: "O preço “de” está inválido. Escreva só o número." };
   }
-  // "De R$ 29.900 por R$ 33.900" é desconto ao contrário, e ninguém percebe
-  // numa arte pronta. Barrar aqui é mais barato do que no Instagram.
-  if (precoDe !== null && preco !== null && precoDe <= preco) {
-    return { erro: "O preço “de” tem que ser MAIOR que o preço de venda." };
-  }
+  const problema = conferirPrecos(preco, precoDe);
+  if (problema) return { erro: problema };
 
   const foto = formData.get("foto");
   if (!(foto instanceof File) || foto.size === 0) {
@@ -183,9 +216,8 @@ export async function corrigirArte(
   if (preco === false) return { erro: "Preço inválido." };
   const precoDe = lerPreco(dados.precoDe ?? "");
   if (precoDe === false) return { erro: "O preço “de” está inválido." };
-  if (precoDe !== null && preco !== null && precoDe <= preco) {
-    return { erro: "O preço “de” tem que ser MAIOR que o preço de venda." };
-  }
+  const problema = conferirPrecos(preco, precoDe);
+  if (problema) return { erro: problema };
 
   await prisma.studioArte.update({
     where: { id },

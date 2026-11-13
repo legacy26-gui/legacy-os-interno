@@ -46,7 +46,12 @@ export function Editar({
   const [pendente, comecar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 
-  function salvar(formData: FormData) {
+  // `onSubmit` pelo mesmo motivo dos outros dois: `action={}` limpa o
+  // formulário ao fim da ação, e aqui isso apagaria a correção inteira
+  // justamente quando o servidor recusou alguma coisa.
+  function salvar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     setErro(null);
     comecar(async () => {
       const r = await corrigirArte(id, {
@@ -81,7 +86,7 @@ export function Editar({
 
   return (
     <form
-      action={salvar}
+      onSubmit={salvar}
       className="rounded-xl border border-border bg-surface p-4 flex flex-col gap-3"
     >
       <div className="flex items-center justify-between">

@@ -296,6 +296,38 @@ export function precoDaArte(centavos: number | null | undefined): string | null 
 }
 
 /**
+ * Abaixo disto não é carro — é vírgula no lugar errado.
+ *
+ * Saiu de um caso real: a arte de uma F250 1996 foi gerada com
+ * **R$ 169,90**. Quem preencheu digitou "169,90" querendo "169.900", e o
+ * sistema obedeceu sem piscar.
+ *
+ * É o erro de digitação mais provável que existe neste campo, porque as duas
+ * formas de escrever preço no Brasil usam os mesmos dois sinais trocados de
+ * posição. E é um erro que não dá erro: a arte sai bonita, com o número
+ * errado, e vai pro Instagram antes de alguém ler.
+ *
+ * Mil reais é folgado pra qualquer veículo — até sucata de leilão passa
+ * disso. Então nada abaixo disso é preço de verdade.
+ */
+export const PRECO_MINIMO_DE_VEICULO = 1000_00;
+
+/**
+ * O que a pessoa provavelmente quis dizer.
+ *
+ * Multiplicar por mil é o conserto certo porque o erro é sempre o mesmo:
+ * escreveu a vírgula de centavos onde ia o ponto de milhar. "169,90" vira
+ * "169.900,00", "72,9" vira "72.900,00".
+ *
+ * Devolver a sugestão em vez de só recusar muda o recado de "está errado"
+ * pra "você quis dizer isto?" — que é a diferença entre a pessoa consertar
+ * na hora e a pessoa ficar presa sem saber o que o campo quer.
+ */
+export function precoQueProvavelmenteQuis(centavos: number): number {
+  return centavos * 1000;
+}
+
+/**
  * Lê o preço escrito por gente.
  *
  * Aceita "89900", "89.900", "89900,50" e "R$ 89.900,00" — é o que sai de um

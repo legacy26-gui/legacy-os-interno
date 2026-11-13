@@ -31,6 +31,17 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
   const [pendente, comecar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [previa, setPrevia] = useState<string | null>(null);
+  // O arquivo guardado em estado, e não só dentro do <input>.
+  //
+  // O React LIMPA o formulário quando a ação termina — inclusive quando ela
+  // termina em erro. O campo de arquivo esvazia, a prévia (que é estado)
+  // continua na tela, e aí a pior combinação possível: parece anexada e não
+  // está. Quem recebeu "o preço está errado", corrigiu e clicou de novo não
+  // via nada acontecer.
+  //
+  // Guardando o File aqui, a prévia e o arquivo passam a ser a mesma
+  // verdade, e o reenvio funciona quantas vezes precisar.
+  const [arquivo, setArquivo] = useState<File | null>(null);
   // Vazio, e NÃO a primeira loja da lista.
   //
   // Vinha pré-selecionado com `lojas[0]`, e isso gerou a primeira arte
@@ -50,8 +61,26 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
 
   const loja = lojas.find((l) => l.id === lojaId);
 
-  function enviar(formData: FormData) {
+  // ── Por que `onSubmit` e não `action={}` ────────────────────────────────
+  //
+  // Com `action={fn}`, o React LIMPA o formulário quando a ação termina —
+  // inclusive quando ela termina em erro. O estrago apareceu no primeiro
+  // teste do caminho de erro: a pessoa recebe "o preço está errado",
+  // corrige o preço e clica de novo, mas modelo, ano, km e a foto já foram
+  // apagados. Como "Modelo" é obrigatório, o navegador bloqueia o envio em
+  // silêncio e nada acontece. Fica parecendo que o botão quebrou.
+  //
+  // Com `onSubmit` e `preventDefault`, nada é limpo: o que foi digitado
+  // continua lá, e corrigir um campo e reenviar funciona quantas vezes
+  // precisar. Em troca, a FormData é montada à mão a partir do formulário —
+  // uma linha, e vale o preço.
+  function enviar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     setErro(null);
+    // A foto vem do estado, não do campo: é a mesma verdade que a prévia
+    // mostra, e sobrevive a qualquer recusa do servidor.
+    if (arquivo) formData.set("foto", arquivo);
     comecar(async () => {
       const r = await criarArte(
         {
@@ -80,6 +109,7 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
 
   function aoEscolherFoto(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
+    setArquivo(f ?? null);
     if (!f) {
       setPrevia(null);
       return;
@@ -100,7 +130,7 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
   }
 
   return (
-    <form action={enviar} className="flex flex-col gap-4">
+    <form onSubmit={enviar} className="flex flex-col gap-4">
       <div className="rounded-xl border border-border bg-surface p-4 flex flex-col gap-4">
         <label className="flex flex-col gap-1.5">
           <span className="text-xs uppercase tracking-wide text-foreground-muted font-medium">
@@ -179,6 +209,7 @@ export function FormularioDaArte({ lojas }: { lojas: LojaDaArte[] }) {
                 type="button"
                 onClick={() => {
                   setPrevia(null);
+                  setArquivo(null);
                   if (campoDaFoto.current) campoDaFoto.current.value = "";
                 }}
                 className="absolute top-2 right-2 inline-flex items-center justify-center w-11 h-11 rounded-lg bg-black/70 text-white hover:bg-black"

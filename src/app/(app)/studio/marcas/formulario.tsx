@@ -46,9 +46,19 @@ function LinhaDaMarca({ loja, podeEditar }: { loja: MarcaNaTela; podeEditar: boo
   const [estado, setEstado] = useState<{ erro?: string; ok?: string }>({});
   const [aberto, setAberto] = useState(false);
   const [logoNova, setLogoNova] = useState<string | null>(null);
+  // Mesmo motivo do formulário de nova arte: o React limpa o campo de
+  // arquivo quando a ação termina, inclusive em erro. Sem guardar o File,
+  // quem errasse uma cor perderia a logo que acabou de escolher.
+  const [arquivoDaLogo, setArquivoDaLogo] = useState<File | null>(null);
 
-  function salvar(formData: FormData) {
+  // `onSubmit` e não `action={}` pelo mesmo motivo do formulário de nova
+  // arte: com `action`, o React limpa tudo quando a ação termina, mesmo em
+  // erro — e quem errasse uma cor perderia a logo que acabou de escolher.
+  function salvar(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     setEstado({});
+    if (arquivoDaLogo) formData.set("logo", arquivoDaLogo);
     comecar(async () => {
       const r = await salvarMarca(
         loja.clientId,
@@ -103,7 +113,7 @@ function LinhaDaMarca({ loja, podeEditar }: { loja: MarcaNaTela; podeEditar: boo
       </button>
 
       {aberto && (
-        <form action={salvar} className="px-4 pb-4 flex flex-col gap-3 border-t border-border pt-3">
+        <form onSubmit={salvar} className="px-4 pb-4 flex flex-col gap-3 border-t border-border pt-3">
           <div className="flex flex-col gap-1.5">
             <span className="text-xs uppercase tracking-wide text-foreground-muted font-medium">
               Logo
@@ -118,6 +128,7 @@ function LinhaDaMarca({ loja, podeEditar }: { loja: MarcaNaTela; podeEditar: boo
                 disabled={!podeEditar}
                 onChange={(e) => {
                   const f = e.target.files?.[0];
+                  setArquivoDaLogo(f ?? null);
                   if (!f) return;
                   const r = new FileReader();
                   r.onload = () => setLogoNova(typeof r.result === "string" ? r.result : null);

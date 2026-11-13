@@ -141,6 +141,49 @@ export function AcoesDaLoja({
   );
 }
 
+/**
+ * "cartão" com um botão de trocar, dentro do próprio cartão de Saldo.
+ *
+ * A troca já existia em "Ajustes da conta" e na ficha do cliente, e mesmo
+ * assim o Guilherme não achou — porque quando se quer corrigir isso, o que se
+ * está olhando é a palavra "cartão" no lugar do saldo. O controle tem que
+ * estar embaixo da palavra errada, não a dois cliques dela.
+ */
+export function TrocarPraPix({ clientId, contaIds }: { clientId: string; contaIds: string[] }) {
+  const [pendente, comecar] = useTransition();
+  const [erro, setErro] = useState<string | null>(null);
+
+  function trocar() {
+    comecar(async () => {
+      setErro(null);
+      // Uma por uma: loja com duas contas no cartão troca as duas, e se uma
+      // falhar as outras já trocaram em vez de tudo voltar atrás.
+      for (const id of contaIds) {
+        const r = await definirFormaDePagamento(clientId, id, true);
+        if (r.erro) {
+          setErro(r.erro);
+          return;
+        }
+      }
+    });
+  }
+
+  return (
+    <>
+      <p className="text-sm text-foreground-muted mt-1.5">cartão</p>
+      <button
+        type="button"
+        onClick={trocar}
+        disabled={pendente}
+        className="mt-1.5 inline-flex items-center gap-1 text-xs font-medium text-accent hover:underline disabled:opacity-60"
+      >
+        <QrCode size={12} /> {pendente ? "Trocando…" : "É Pix? Trocar"}
+      </button>
+      {erro && <p className="text-xs text-red-500 mt-1">{erro}</p>}
+    </>
+  );
+}
+
 /** Um lado do par Pix/Cartão. O lado aceso é o que a conta é hoje. */
 function BotaoForma({
   ativo,

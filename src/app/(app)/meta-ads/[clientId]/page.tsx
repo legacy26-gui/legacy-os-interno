@@ -19,7 +19,7 @@ import {
 } from "@/lib/meta/insights";
 import { AbasDaSecao } from "@/components/abas-da-secao";
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
-import { AcoesDaLoja } from "./acoes";
+import { AcoesDaLoja, TrocarPraPix } from "./acoes";
 import { Criativo } from "./criativo";
 import { ChaveDeStatus } from "./chave";
 import {
@@ -291,10 +291,17 @@ export default async function LojaNoMetaAdsPage({
           <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium flex items-center gap-1.5">
             <Wallet size={12} /> Saldo
           </p>
-          {prePagas.length === 0 ? (
-            <p className="text-sm text-foreground-muted mt-1.5">
-              {contas.length === 0 ? "sem conta" : "cartão"}
-            </p>
+          {contas.length === 0 ? (
+            <p className="text-sm text-foreground-muted mt-1.5">sem conta</p>
+          ) : prePagas.length === 0 ? (
+            // "cartão" com o conserto embaixo: é aqui que alguém percebe que
+            // a conta está marcada errado, então é aqui que tem que dar pra
+            // corrigir. Quem não configura conta vê só a palavra.
+            podeConfigurar ? (
+              <TrocarPraPix clientId={cliente.id} contaIds={contas.map((c) => c.id)} />
+            ) : (
+              <p className="text-sm text-foreground-muted mt-1.5">cartão</p>
+            )
           ) : saldo === null ? (
             <p className="text-sm text-foreground-muted mt-1.5">indisponível</p>
           ) : (

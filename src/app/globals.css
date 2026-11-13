@@ -96,6 +96,43 @@ body {
  * Recolhido e NÃO escondido: menu que some inteiro faz perder o lugar onde
  * se está. A faixa de ícones continua mostrando qual aba está acesa. */
 
+/* A barra de rolagem do menu só aparece quando o mouse está nele.
+ *
+ * O padrão do sistema operacional é uma barra larga com setinha em cima e
+ * embaixo, e ela fica permanentemente colada na divisa do menu — vira um
+ * risco cinza no meio da tela, do lado da aba acesa. É o tipo de coisa que
+ * ninguém usa (quem rola um menu de quinze itens rola com a roda) e todo
+ * mundo vê.
+ *
+ * `scrollbar-color` transparente some com a barra E com as setas de uma vez,
+ * sem tirar a rolagem. As regras -webkit- embaixo são pro Chromium antigo,
+ * que ainda não entende as duas de cima; no Chromium novo elas são ignoradas
+ * de propósito pelo próprio navegador, e tudo bem. */
+.menu-lateral nav {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 0.2s;
+}
+.menu-lateral:hover nav {
+  scrollbar-color: rgb(255 255 255 / 0.18) transparent;
+}
+.menu-lateral nav::-webkit-scrollbar {
+  width: 6px;
+}
+.menu-lateral nav::-webkit-scrollbar-button {
+  display: none;
+}
+.menu-lateral nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+.menu-lateral nav::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 9999px;
+}
+.menu-lateral:hover nav::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.18);
+}
+
 @media (min-width: 768px) {
   html[data-menu="recolhido"] .menu-lateral {
     width: 4.5rem;

@@ -1,0 +1,6 @@
+# A chave da OpenAI nunca entra no git.
+.chave
+# O que a fábrica produz: imagens e registro de cada rodada.
+saida/
+node_modules
+espiar-*.png

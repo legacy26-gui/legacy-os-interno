@@ -10,7 +10,7 @@
 // cor nenhuma. Loja em paz fica cinza de propósito, pra que o vermelho da
 // vizinha salte.
 
-export type TomDaLoja = "sem-saldo" | "acabando" | "atencao" | "bom" | "neutro";
+export type TomDaLoja = "sem-saldo" | "acabando" | "aguardando" | "atencao" | "bom" | "neutro";
 
 /**
  * A faixa vertical na beirada esquerda do cartão.
@@ -21,6 +21,9 @@ export type TomDaLoja = "sem-saldo" | "acabando" | "atencao" | "bom" | "neutro";
 export const FAIXA_DA_LOJA: Record<TomDaLoja, string> = {
   "sem-saldo": "bg-red-600",
   acabando: "bg-red-400 dark:bg-red-500/80",
+  // Azul e não verde: a conta continua zerada, isso é fato. O que mudou é que
+  // alguém já tratou dela — e essa é outra informação, não "está tudo bem".
+  aguardando: "bg-sky-500",
   atencao: "bg-amber-500",
   bom: "bg-emerald-500",
   neutro: "bg-border-forte",
@@ -41,6 +44,7 @@ export const FAIXA_DA_LOJA: Record<TomDaLoja, string> = {
 export const FUNDO_DA_LOJA: Record<TomDaLoja, string> = {
   "sem-saldo": "bg-red-500/10 border-red-500",
   acabando: "bg-red-500/5 border-red-400 dark:border-red-500/70",
+  aguardando: "bg-sky-500/5 border-sky-500/50",
   atencao: "bg-surface border-amber-500/50",
   bom: "bg-surface border-border-forte",
   neutro: "bg-surface border-border-forte",
@@ -69,6 +73,10 @@ export const ETIQUETA_DA_LOJA: Record<TomDaLoja, Etiqueta | null> = {
     texto: "Saldo acabando",
     classe: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/60",
   },
+  aguardando: {
+    texto: "Link enviado",
+    classe: "bg-sky-500/10 text-sky-700 dark:text-sky-300 border-sky-500/60",
+  },
   atencao: {
     texto: "Olhar",
     classe: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/60",
@@ -81,6 +89,7 @@ export const ETIQUETA_DA_LOJA: Record<TomDaLoja, Etiqueta | null> = {
 export const COR_DO_NUMERO: Record<TomDaLoja, string> = {
   "sem-saldo": "text-red-600 dark:text-red-400",
   acabando: "text-red-600 dark:text-red-400",
+  aguardando: "text-sky-700 dark:text-sky-300",
   atencao: "text-amber-700 dark:text-amber-400",
   bom: "text-foreground",
   neutro: "text-foreground",

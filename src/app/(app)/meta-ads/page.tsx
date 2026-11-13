@@ -17,6 +17,7 @@ import {
   ZERO,
 } from "@/lib/meta/insights";
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
+import { desdeOEnvio } from "@/lib/meta/pedido-de-verba";
 import {
   avaliarLoja,
   comoDias,
@@ -33,6 +34,7 @@ import {
 } from "@/lib/meta/tons";
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
 import { AtualizarLoja } from "./atualizar-loja";
+import { PuxadorDaLoja } from "./puxador";
 import { Link2, FileBarChart, Wallet, TrendingUp, Users, Target } from "lucide-react";
 
 // Meta Ads: a carteira inteira numa tela — saldo e resultado de cada loja.
@@ -70,10 +72,14 @@ const ORDEM_DO_TOM: Record<TomDaLoja, number> = {
   "sem-saldo": 0,
   acabando: 1,
   atencao: 2,
+  // Link já enviado desce pra baixo de quem ninguém tratou — inclusive de
+  // quem só precisa de um olhar. É o ponto inteiro de marcar: tirar da fila
+  // do dia o que já tem dono.
+  aguardando: 3,
   // Cinza vem antes de verde de propósito: "não consegui ler o saldo" é uma
   // pendência de alguém, e verde é o lugar de quem não precisa de nada.
-  neutro: 3,
-  bom: 4,
+  neutro: 4,
+  bom: 5,
 };
 
 const celDe = (tom: TomDaLoja) => `border-y ${FUNDO_DA_LOJA[tom]}`;
@@ -159,6 +165,7 @@ export default async function MetaAdsPage({
         gastoMensalPrevistoCents: c.gastoMensalPrevistoCents,
         gastoDoPeriodoCents: n.spendCents,
         leads: n.leads,
+        pedido: c.pedidosDeVerba[0] ?? null,
       });
 
       // A idade do NÚMERO, não da tentativa: a leitura mais velha entre as
@@ -175,6 +182,7 @@ export default async function MetaAdsPage({
         quando: capturas.length ? new Date(Math.min(...capturas)) : null,
         erro,
         veredito,
+        pedido: c.pedidosDeVerba[0] ?? null,
       };
     })
     // ── A ordem: quem para primeiro aparece primeiro ────────────────────
@@ -192,6 +200,13 @@ export default async function MetaAdsPage({
       // Loja sem conta vai pro fim, seja qual for o resto.
       const temConta = Number(b.contas.length > 0) - Number(a.contas.length > 0);
       if (temConta !== 0) return temConta;
+
+      // Promessa quebrada vem antes de tudo. O link foi mandado, o prazo
+      // passou e o dinheiro não veio: ali não falta só saldo, falta uma
+      // cobrança que já foi feita e ignorada.
+      const quebrada =
+        Number(b.veredito.pedido === "vencido") - Number(a.veredito.pedido === "vencido");
+      if (quebrada !== 0) return quebrada;
 
       const urgencia = ORDEM_DO_TOM[a.veredito.tom] - ORDEM_DO_TOM[b.veredito.tom];
       if (urgencia !== 0) return urgencia;
@@ -442,9 +457,25 @@ export default async function MetaAdsPage({
                     <tr key={c.id} className={linhaDe(tom)}>
                       {/* A faixa colorida na beirada: diz o estado da loja
                           antes de qualquer número ser lido, e é ela que separa
-                          uma linha da outra mesmo de longe. */}
-                      <td className={`p-0 align-top ${cel} border-l rounded-l-xl overflow-hidden w-2`}>
-                        <div className={`w-2 h-full min-h-[4.5rem] ${FAIXA_DA_LOJA[tom]}`} />
+                          uma linha da outra mesmo de longe.
+
+                          Ela também PUXA as ações da loja — passando o mouse
+                          no computador, tocando no celular. A faixa já é pra
+                          onde o olho vai quando se varre a lista procurando o
+                          vermelho; é o lugar certo pra "mandei o Pix". Loja
+                          sem conta não tem o que fazer ali, então fica só a
+                          faixa. */}
+                      <td className={`p-0 align-top ${cel} border-l rounded-l-xl w-2`}>
+                        {l.contas.length > 0 ? (
+                          <PuxadorDaLoja
+                            clientId={c.id}
+                            tom={tom}
+                            temPedidoAberto={l.veredito.pedido !== null}
+                            podeAtualizar
+                          />
+                        ) : (
+                          <div className={`w-2 h-full min-h-[4.5rem] ${FAIXA_DA_LOJA[tom]}`} />
+                        )}
                       </td>
                       <td className={`px-4 py-4 align-top ${cel}`}>
                         <span className="flex items-center gap-2 flex-wrap">
@@ -462,7 +493,22 @@ export default async function MetaAdsPage({
                             <span
                               className={`text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded-full border ${etiqueta.classe}`}
                             >
+                              {/* "Link enviado há 2 h" e não só "Link
+                                  enviado": quem olha precisa saber se a
+                                  cobrança é de agora ou de ontem de manhã. */}
                               {etiqueta.texto}
+                              {tom === "aguardando" && l.pedido
+                                ? ` ${desdeOEnvio(l.pedido.enviadoEm)}`
+                                : ""}
+                            </span>
+                          )}
+                          {/* Prometeu e não veio. Fica em cima de tudo na
+                              ordem e ganha uma etiqueta própria: ali não
+                              falta só dinheiro, falta uma cobrança que já foi
+                              feita e ignorada. */}
+                          {l.veredito.pedido === "vencido" && (
+                            <span className="text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded-full border bg-red-600 text-white border-red-600">
+                              Pix não entrou · cobrado {desdeOEnvio(l.pedido!.enviadoEm)}
                             </span>
                           )}
                         </span>
@@ -577,6 +623,7 @@ export default async function MetaAdsPage({
           tom="atencao"
           texto={`Olhar — menos de ${DIAS_ATENCAO} dias, erro de leitura ou gasto sem lead`}
         />
+        <Legenda tom="aguardando" texto="Link de verba já enviado — esperando o Pix" />
         <Legenda tom="bom" texto="Em ordem" />
         <Legenda tom="neutro" texto="Sem conta, ou saldo que não deu pra ler" />
       </div>
@@ -606,6 +653,14 @@ async function carregar(user: Parameters<typeof escopoDaCarteira>[0], periodo: I
       companyName: true,
       gastoMensalPrevistoCents: true,
       manager: { select: { name: true } },
+      // O último pedido de verba, só. O histórico existe no banco e é pra
+      // outra pergunta ("essa loja atrasa sempre?"); aqui o que importa é se
+      // alguém já cobrou ESTA vez.
+      pedidosDeVerba: {
+        orderBy: { enviadoEm: "desc" },
+        take: 1,
+        select: { enviadoEm: true, entrouEm: true },
+      },
       metaAdAccounts: {
         where: { active: true },
         orderBy: { createdAt: "asc" },

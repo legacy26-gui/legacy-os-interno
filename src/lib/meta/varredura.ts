@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { sincronizarSaldo } from "./sincronizar-saldo";
+import { verbaEntrou } from "./pedido-de-verba";
 import { sincronizarCriativos } from "./sincronizar-criativos";
 import { sincronizarEstrutura } from "./sincronizar-estrutura";
 import {
@@ -55,6 +56,7 @@ export interface ResultadoDaVarredura {
 
 type ContaDaVarredura = {
   id: string;
+  clientId: string;
   metaAccountId: string;
   isPrepay: boolean;
   leadActionType: string;
@@ -62,6 +64,7 @@ type ContaDaVarredura = {
 
 const CAMPOS: Prisma.MetaAdAccountSelect = {
   id: true,
+  clientId: true,
   metaAccountId: true,
   isPrepay: true,
   leadActionType: true,
@@ -110,6 +113,69 @@ async function umaConta(conta: ContaDaVarredura, prazo: Prazo): Promise<boolean>
   }
 }
 
+/**
+ * Fecha os pedidos de verba das lojas cujo saldo subiu.
+ *
+ * É isto que faz o "marquei que mandei o link" não precisar de um segundo
+ * clique depois. Saldo de conta pré-paga só DESCE com gasto; se ele subiu
+ * desde o envio do link, é porque entrou dinheiro. Quem confirma é a Meta.
+ *
+ * Roda depois da varredura e não dentro dela: o pedido é da LOJA e o saldo é
+ * da CONTA, então só faz sentido perguntar quando todas as contas da loja já
+ * foram lidas. Fechar no meio daria falso negativo em loja com duas contas.
+ *
+ * Nada aqui lança pra cima: o pedido é conforto de tela, e falhar em fechá-lo
+ * não pode derrubar uma varredura que buscou os números certos.
+ */
+export async function fecharPedidosPagos(clientIds: string[]): Promise<void> {
+  if (clientIds.length === 0) return;
+
+  try {
+    const abertos = await prisma.pedidoDeVerba.findMany({
+      where: { clientId: { in: clientIds }, entrouEm: null, saldoNoEnvioCents: { not: null } },
+      select: { id: true, clientId: true, saldoNoEnvioCents: true },
+    });
+    if (abertos.length === 0) return;
+
+    const contas = await prisma.metaAdAccount.findMany({
+      where: { clientId: { in: abertos.map((p) => p.clientId) }, active: true, isPrepay: true },
+      select: {
+        clientId: true,
+        balanceSnapshots: {
+          orderBy: { capturedAt: "desc" },
+          take: 1,
+          select: { availableCents: true },
+        },
+      },
+    });
+
+    // Só soma quando TODAS as pré-pagas da loja foram lidas: saldo pela
+    // metade poderia parecer uma queda e segurar um pedido já pago, ou
+    // parecer uma subida e fechar um que ninguém pagou.
+    const somaDaLoja = new Map<string, number | null>();
+    for (const c of contas) {
+      const atual = somaDaLoja.get(c.clientId);
+      if (atual === null) continue;
+      const lido = c.balanceSnapshots[0]?.availableCents;
+      if (lido === undefined) somaDaLoja.set(c.clientId, null);
+      else somaDaLoja.set(c.clientId, (atual ?? 0) + lido);
+    }
+
+    const agora = new Date();
+    for (const pedido of abertos) {
+      const saldo = somaDaLoja.get(pedido.clientId);
+      if (saldo === null || saldo === undefined) continue;
+      if (!verbaEntrou(saldo, pedido.saldoNoEnvioCents)) continue;
+      await prisma.pedidoDeVerba.update({
+        where: { id: pedido.id },
+        data: { entrouEm: agora, entrouCents: saldo },
+      });
+    }
+  } catch (erro) {
+    console.error("[meta] falhou fechar pedidos de verba", erro);
+  }
+}
+
 /** Varre uma lista de contas, de quatro em quatro, dentro do prazo. */
 export async function varrerContas(
   contas: ContaDaVarredura[],
@@ -122,12 +188,19 @@ export async function varrerContas(
     // O prazo é conferido entre ondas, não no meio de uma: cortar uma onda
     // pela metade deixaria contas com saldo novo e números velhos.
     if (!aindaDaTempo(prazo)) {
+      await fecharPedidosPagos([
+        ...new Set(contas.slice(0, i).filter((c) => c.isPrepay).map((c) => c.clientId)),
+      ]);
       return { ok, falhou, naoDeuTempo: contas.length - ok - falhou, total: contas.length };
     }
     const onda = contas.slice(i, i + CONCORRENCIA);
     const resultados = await Promise.all(onda.map((c) => umaConta(c, prazo)));
     for (const deuCerto of resultados) deuCerto ? ok++ : falhou++;
   }
+
+  // No fim e não a cada onda: a conta é da loja inteira, e perguntar antes de
+  // ler todas as contas dela daria falso negativo.
+  await fecharPedidosPagos([...new Set(contas.filter((c) => c.isPrepay).map((c) => c.clientId))]);
 
   return { ok, falhou, naoDeuTempo: 0, total: contas.length };
 }

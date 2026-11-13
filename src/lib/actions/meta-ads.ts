@@ -8,6 +8,7 @@ import { contaValida } from "@/lib/meta/saldo";
 import { TIPOS_DE_LEAD } from "@/lib/meta/insights";
 import { prazoDe } from "@/lib/meta/sincronizar-insights";
 import { varrerContas, varrerCliente } from "@/lib/meta/varredura";
+import { VALIDADE_DO_PEDIDO_MS } from "@/lib/meta/pedido-de-verba";
 
 // Vincular conta de anúncio da Meta e buscar o saldo.
 //
@@ -173,6 +174,7 @@ export async function atualizarCarteira(): Promise<MetaAdsState> {
         metaAccountId: true,
         isPrepay: true,
         leadActionType: true,
+        clientId: true,
       },
     });
 
@@ -388,6 +390,94 @@ export async function definirGastoMensal(
           ? "Investimento mensal apagado. O aviso de saldo volta a usar só o gasto real."
           : "Investimento mensal guardado.",
     };
+  });
+}
+
+/**
+ * "Mandei o link do Pix pra essa loja."
+ *
+ * Tira a loja da fila do dia por 18 horas: ela vira azul e desce pra baixo de
+ * quem ninguém tratou ainda. O vermelho volta a significar "ninguém mexeu
+ * nisso", que é a única coisa que faz vermelho servir pra alguma coisa.
+ *
+ * Guarda o saldo do momento do envio porque é ele que fecha o pedido depois,
+ * sozinho: saldo de conta pré-paga só desce com gasto, então qualquer subida
+ * daí em diante é dinheiro que chegou. Não existe "marcar como pago" — quem
+ * sabe disso é a Meta, não a memória de ninguém.
+ *
+ * Gestor de tráfego PODE marcar, diferente de vincular conta. É ele quem
+ * manda o link; exigir a direção pra registrar o que ele mesmo fez só
+ * garantiria que ninguém registra.
+ */
+export async function marcarVerbaEnviada(clientId: string): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Essa loja não está na sua lista." };
+    }
+
+    // Já existe pedido aberto? Marcar duas vezes não é erro de ninguém — é
+    // dedo escorregado ou duas pessoas na mesma loja — e criar um segundo
+    // pedido só reiniciaria o relógio das 18 horas, escondendo por mais tempo
+    // uma loja que não recebeu nada.
+    const aberto = await prisma.pedidoDeVerba.findFirst({
+      where: { clientId, entrouEm: null },
+      orderBy: { enviadoEm: "desc" },
+      select: { id: true, enviadoEm: true },
+    });
+    if (aberto && Date.now() - aberto.enviadoEm.getTime() < VALIDADE_DO_PEDIDO_MS) {
+      return { ok: "Essa loja já estava marcada como cobrada." };
+    }
+
+    // O saldo de agora, somado das pré-pagas. Só conta leitura que existe:
+    // sem saldo lido não há marca d'água, e aí só o tempo resolve o pedido.
+    const contas = await prisma.metaAdAccount.findMany({
+      where: { clientId, active: true, isPrepay: true },
+      select: {
+        balanceSnapshots: {
+          orderBy: { capturedAt: "desc" },
+          take: 1,
+          select: { availableCents: true },
+        },
+      },
+    });
+    const lidas = contas.filter((c) => c.balanceSnapshots[0]);
+    const saldo =
+      contas.length > 0 && lidas.length === contas.length
+        ? lidas.reduce((s, c) => s + c.balanceSnapshots[0].availableCents, 0)
+        : null;
+
+    await prisma.pedidoDeVerba.create({
+      data: { clientId, enviadoPorId: user.id, saldoNoEnvioCents: saldo },
+    });
+
+    revalidar(clientId);
+    return {
+      ok:
+        saldo === null
+          ? "Marcado. Como o saldo não foi lido, este aviso volta em 18 horas."
+          : "Marcado. O aviso volta se a verba não entrar em 18 horas.",
+    };
+  });
+}
+
+/** Desfaz a marcação — pra quando se clica na loja errada. */
+export async function desmarcarVerbaEnviada(clientId: string): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Essa loja não está na sua lista." };
+    }
+
+    // Só apaga pedido ABERTO: pedido com verba já confirmada é histórico, e
+    // histórico não se apaga por clique.
+    const { count } = await prisma.pedidoDeVerba.deleteMany({
+      where: { clientId, entrouEm: null },
+    });
+    if (count === 0) return { erro: "Não havia marcação aberta nesta loja." };
+
+    revalidar(clientId);
+    return { ok: "Marcação desfeita. A loja volta pra fila." };
   });
 }
 

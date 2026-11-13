@@ -185,6 +185,46 @@ colunas em pedaços.
 Cinza (não deu pra ler o saldo) vem **antes** de verde: é pendência de alguém.
 Verde é o lugar de quem não precisa de nada.
 
+### "Link de verba enviado": o vermelho precisa saber o que já foi tratado
+
+A lista acende vermelho na loja sem saldo, mas não sabia a diferença entre
+**uma loja que ninguém olhou** e **uma que o gestor já cobrou às oito da
+manhã**. As duas gritavam igual — e vermelho que grita por coisa já resolvida
+é vermelho que, em duas semanas, ninguém olha mais.
+
+Passar o mouse na faixa colorida (ou tocar nela, no celular) abre as ações da
+loja. Marcar **"link de verba enviado"**:
+
+1. A linha vira **azul**, etiqueta "Link enviado há 2 h", e desce pra baixo de
+   quem ninguém tratou. Não vira verde: a conta continua zerada, isso é fato,
+   não alarme. O que mudou é que **ela já tem dono**.
+2. O sistema guarda o **saldo daquele momento** (`saldoNoEnvioCents`).
+3. Na próxima leitura de saldo, se o número subiu mais de R$ 10, o pedido
+   fecha sozinho e a loja volta ao normal — sem etiqueta nenhuma.
+4. Se passarem **18 horas** e a verba não vier, a loja volta pra fila **na
+   frente de todas**, com a etiqueta "Pix não entrou · cobrado há 19 h".
+   Promessa não cumprida é mais urgente que alerta novo.
+
+**Não existe "marcar como pago", de propósito.** Quem sabe se a verba entrou é
+a Meta, não a memória de ninguém. Saldo de conta pré-paga só desce com gasto,
+então qualquer subida depois do envio é dinheiro que chegou — e o gestor não
+ganha uma segunda tarefa pra esquecer de fazer.
+
+O `entrouEm` fica **gravado** em vez de recalculado a cada leitura: senão o
+histórico mudaria de resposta assim que a loja gastasse o dinheiro que entrou.
+
+Detalhes que custaram tentativa:
+
+- **O painel abre, não alterna.** No celular o toque dispara `mouseenter`
+  antes do `click`: o primeiro abria o painel e o segundo, encontrando-o
+  aberto, fechava na mesma batida. No telefone ele simplesmente não abria.
+- **A faixa tem 8px**, que é alvo bom pro olho e péssimo pro dedo. Um
+  `::after` estica a área de toque 12px pra direita sem pintar nada, e para
+  antes do respiro da coluna do nome pra não roubar o clique do link da loja.
+- **O fecho roda no fim da varredura, não a cada conta.** O pedido é da LOJA e
+  o saldo é da CONTA: perguntar antes de ler todas as contas dela daria falso
+  negativo em loja com duas contas.
+
 ### Ajuste de conta se faz olhando a conta
 
 A troca Pix/cartão nasceu só na ficha do cliente, e da tela do Meta Ads não

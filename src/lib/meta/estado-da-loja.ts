@@ -24,6 +24,7 @@
 // sem fingir que sabe se é pouco ou muito.
 
 import type { TomDaLoja } from "./tons";
+import { estadoDoPedido, type EstadoDoPedido, type PedidoNaTela } from "./pedido-de-verba";
 
 export type { TomDaLoja };
 
@@ -78,6 +79,10 @@ export interface SinaisDaLoja {
   /** Do período que a tela está mostrando — pro aviso de "gastou sem lead". */
   gastoDoPeriodoCents: number;
   leads: number;
+  /** O último pedido de verba da loja, se houver. Ver pedido-de-verba.ts. */
+  pedido?: PedidoNaTela | null;
+  /** Pra poder testar a regra sem depender do relógio. */
+  agora?: Date;
 }
 
 export interface Veredito {
@@ -97,6 +102,16 @@ export interface Veredito {
   gastoDiarioCents: number | null;
   /** De onde veio o ritmo — a tela diz isso, pra ninguém confiar demais. */
   origemDoRitmo: "gasto-real" | "combinado" | null;
+  /**
+   * Em que pé está a cobrança do Pix.
+   *
+   * "aguardando" quer dizer que alguém já mandou o link e a verba não chegou
+   * ainda — a loja sai da fila do dia. "vencido" quer dizer que o link foi
+   * mandado, o prazo passou e o dinheiro não veio: aí ela volta pra fila na
+   * FRENTE de todas, porque ali não falta só dinheiro, falta uma cobrança que
+   * já foi feita e ignorada.
+   */
+  pedido: EstadoDoPedido | null;
 }
 
 /**
@@ -122,6 +137,8 @@ export function gastoDiario(s: SinaisDaLoja): {
 export function avaliarLoja(s: SinaisDaLoja): Veredito {
   const { cents: gastoDiarioCents, origem } = gastoDiario(s);
 
+  const pedido = estadoDoPedido(s.pedido, s.agora);
+
   if (!s.temConta) {
     return {
       tom: "neutro",
@@ -129,6 +146,7 @@ export function avaliarLoja(s: SinaisDaLoja): Veredito {
       diasExatos: null,
       gastoDiarioCents,
       origemDoRitmo: origem,
+      pedido: null,
     };
   }
 
@@ -141,11 +159,19 @@ export function avaliarLoja(s: SinaisDaLoja): Veredito {
       : null;
 
   const pronto = (tom: TomDaLoja): Veredito => ({
-    tom,
+    // Link enviado e ainda no prazo pinta de azul QUALQUER tom de alarme.
+    // Não é maquiagem: o vermelho dessa lista quer dizer "ninguém mexeu
+    // nisso", e aqui alguém mexeu. Loja que já estava bem não muda de cor —
+    // marcar link numa loja cheia não é informação, é confusão.
+    tom:
+      pedido === "aguardando" && (tom === "sem-saldo" || tom === "acabando" || tom === "atencao")
+        ? "aguardando"
+        : tom,
     diasDeSaldo: dias === null ? null : Math.floor(dias),
     diasExatos: dias,
     gastoDiarioCents,
     origemDoRitmo: origem,
+    pedido,
   });
 
   // Conta zerada ganha de tudo: é a única coisa que PARA a campanha sozinha,

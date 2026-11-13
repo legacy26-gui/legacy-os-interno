@@ -45,7 +45,12 @@ jobs:
         run: |
           set -euo pipefail
           sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+          # Com nova tentativa: esta chamada já derrubou um backup inteiro
+          # com "SSL_read: unexpected eof" — um soluço de rede do runner, que
+          # na segunda tentativa passa. Backup que quebra por isso é backup
+          # em que não se pode confiar, e o pior é que a falha parece grave.
+          sudo curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc \
             -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
             https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \

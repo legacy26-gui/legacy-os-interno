@@ -61,6 +61,7 @@ model User {
   clientesConferidos ClienteConferido[] @relation("QuemConferiu")
   resgatesFeitos     AcaoDeResgate[]    @relation("QuemResgatou")
   verbasPedidas      PedidoDeVerba[]    @relation("VerbaPedidaPor")
+  metaAcoes          MetaAcao[]         @relation("MetaAcaoFeitaPor")
 
   @@map("users")
 }
@@ -298,8 +299,52 @@ model Client {
   metaAdAccounts   MetaAdAccount[]
   gravacoes        Gravacao[]
   pedidosDeVerba   PedidoDeVerba[]
+  metaAcoes        MetaAcao[]
 
   @@map("clients")
+}
+
+/// O que o sistema MANDOU a Meta fazer, e o que ela respondeu.
+///
+/// Toda vez que alguém liga ou desliga uma campanha por aqui, fica uma linha.
+/// Não é burocracia: pausar campanha é a primeira coisa que este sistema faz
+/// que MUDA a realidade da loja em vez de só mostrá-la. Quando uma loja ficar
+/// um dia sem entregar, a pergunta vai ser "quem desligou?" — e sem registro a
+/// resposta é um silêncio constrangedor.
+///
+/// Guarda a tentativa, não só o sucesso: chamada que falhou é justamente a que
+/// interessa depois, porque é ela que explica a campanha que "não desligou".
+model MetaAcao {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  quemId String?
+  quem   User?   @relation("MetaAcaoFeitaPor", fields: [quemId], references: [id])
+
+  /// "campanha", "conjunto" ou "anuncio".
+  nivel    String
+  /// O id na Meta do objeto mexido.
+  objetoId String
+  /// O nome que estava na tela na hora — pro registro continuar legível
+  /// depois que a campanha for renomeada ou apagada lá.
+  nome     String
+
+  /// O que foi pedido: "ACTIVE" ou "PAUSED".
+  statusPedido String
+  /// O que estava antes, pelo nosso cadastro. Vazio se não sabíamos.
+  statusAntes  String?
+
+  ok   Boolean
+  /// A frase da Meta quando deu errado. Nunca carrega token: ver
+  /// semSegredo() em cliente-graph.ts.
+  erro String?
+
+  criadoEm DateTime @default(now())
+
+  @@index([clientId, criadoEm])
+  @@index([objetoId, criadoEm])
+  @@map("meta_acoes")
 }
 
 /// "Já mandei o link do Pix pra essa loja."

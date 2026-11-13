@@ -414,6 +414,87 @@ são duas pinturas do mesmo quadro.
 
 ---
 
+## Ligar e desligar pelo sistema
+
+A chave da tela da loja liga e desliga de verdade — campanha, conjunto e
+anúncio — desde que exista a variável `META_ADS_WRITE_TOKEN`. Sem ela a chave
+continua só mostrando, e explica por quê.
+
+### Dois tokens, de propósito
+
+| | |
+|---|---|
+| `META_ADS_READ_TOKEN` | roda o tempo todo: robô da noite, cada botão de atualizar, dezenas de chamadas por dia |
+| `META_ADS_WRITE_TOKEN` | só em `escrever-na-graph.ts`, só pra ligar/desligar |
+
+Se o de leitura vazar, alguém vê números que não devia — ruim, e recuperável.
+Se o de escrita vazar, alguém apaga a entrega de quarenta lojas numa tarde.
+Por isso o caminho de leitura, que é o que roda em toda parte, **nunca chega
+perto** do token perigoso.
+
+Na escrita a regra do header vale em dobro: o corpo de um POST não aparece em
+log de servidor, mas uma query string aparece em todo lugar — proxy,
+histórico, relatório de erro.
+
+### A trava que mais importa
+
+O id do objeto vem do navegador. Se o sistema repassasse o que recebe,
+bastaria trocar o número no pedido pra pausar a campanha de outro anunciante
+da mesma BM — inclusive de cliente de outra agência.
+
+Nada é mandado pra Meta antes de o objeto ser encontrado **no nosso cadastro,
+dentro de uma conta vinculada àquela loja** (`acharObjetoDaLoja`). Quem não
+está na nossa tabela não existe pra esse caminho, por mais real que seja na
+Meta.
+
+### Quem pode
+
+O **gestor de tráfego pode**, nas lojas dele. É o trabalho dele: campanha
+queimando verba sem resultado tem que parar na hora em que se percebe. Exigir
+ADMIN garantiria só uma coisa — que todo mundo continuasse fazendo pelo
+Gerenciador, onde não fica registro nenhum.
+
+A trava não é de cargo, é de **carteira**.
+
+### Pausar pede confirmação; ligar, não
+
+Os dois erros não custam a mesma coisa. Ligar errado gasta alguns reais até
+alguém perceber. **Desligar errado tira a loja do ar** — e campanha pausada
+não avisa ninguém, não aparece em lugar nenhum, e só é descoberta quando o
+dono liga perguntando por que parou de chegar gente.
+
+A confirmação diz o estrago antes: *"Pausar a campanha para tudo que está
+dentro dela — são 2 conjuntos ativos. A loja deixa de entregar."*
+
+### Pausar é certo, ligar não é
+
+Esta foi a parte que um teste pegou: pausei a campanha, recarreguei, e a chave
+voltou ligada. O motivo é que a tela lê o `effectiveStatus` (o status de
+verdade, já considerando o pai e o saldo) e só o `status` tinha mudado.
+
+A regra certa não é simétrica:
+
+- **PAUSAR é certo.** Nada "despausa" um objeto pausado: nem pai ativo, nem
+  conta cheia. O efetivo também vira `PAUSED`, e desce pros filhos — igual a
+  Meta faz. Só o efetivo deles, note: o conjunto continua `ACTIVE` nele mesmo
+  e volta a entregar sozinho se a campanha for religada. Escrever `PAUSED` no
+  status dele seria inventar uma pausa que ninguém pediu.
+- **LIGAR não é certo.** Campanha ativa dentro de conta zerada não entrega
+  nada. Escrever `ACTIVE` no efetivo seria prometer entrega que pode não
+  existir, então ele é **apagado** e a tela cai no `status` até a Meta dizer
+  como ficou.
+
+### Fica registrado, inclusive o que falhou
+
+Toda chamada vira uma linha em `meta_acoes`: quem, quando, qual objeto, o que
+estava antes, o que foi pedido, deu certo ou não, e a frase da Meta no erro.
+
+Pausar campanha é a primeira coisa que este sistema faz que **muda a realidade
+da loja** em vez de só mostrá-la. Quando uma loja ficar um dia sem entregar, a
+pergunta vai ser "quem desligou?" — e sem registro a resposta é um silêncio
+constrangedor. A chamada que falhou é justamente a que interessa depois,
+porque é ela que explica a campanha que "não desligou".
+
 ## A chave de liga/desliga
 
 A coluna de status mostra a chave do Gerenciador, com o estado **real** de cada

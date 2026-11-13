@@ -9,6 +9,13 @@ import { TIPOS_DE_LEAD } from "@/lib/meta/insights";
 import { prazoDe } from "@/lib/meta/sincronizar-insights";
 import { varrerContas, varrerCliente } from "@/lib/meta/varredura";
 import { VALIDADE_DO_PEDIDO_MS } from "@/lib/meta/pedido-de-verba";
+import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
+import {
+  acharObjetoDaLoja,
+  mudarStatus,
+  ROTULO_DO_NIVEL,
+  type NivelDoObjeto,
+} from "@/lib/meta/mudar-status";
 
 // Vincular conta de anúncio da Meta e buscar o saldo.
 //
@@ -389,6 +396,71 @@ export async function definirGastoMensal(
         centavos === null
           ? "Investimento mensal apagado. O aviso de saldo volta a usar só o gasto real."
           : "Investimento mensal guardado.",
+    };
+  });
+}
+
+/**
+ * Liga ou desliga uma campanha, conjunto ou anúncio — de verdade, na Meta.
+ *
+ * ── Quem pode ────────────────────────────────────────────────────────────
+ *
+ * O gestor de tráfego PODE, nas lojas dele. É o trabalho dele: campanha que
+ * está queimando verba sem resultado tem que parar na hora em que se percebe,
+ * não no dia seguinte quando a direção abrir o sistema. Exigir ADMIN aqui
+ * garantiria só uma coisa — que todo mundo continuasse fazendo pelo
+ * Gerenciador, onde não fica registro nenhum.
+ *
+ * A trava que importa não é de cargo, é de CARTEIRA: cada um só mexe nas
+ * lojas que são dele, e só em objeto que está no nosso cadastro daquela loja
+ * (ver acharObjetoDaLoja). Id trocado no navegador não vira campanha de
+ * outra pessoa pausada.
+ *
+ * ── O que fica registrado ────────────────────────────────────────────────
+ *
+ * Tudo, inclusive o que falhou. Pausar campanha é a primeira coisa que este
+ * sistema faz que MUDA a realidade da loja em vez de só mostrá-la; quando uma
+ * loja ficar um dia sem entregar, a pergunta vai ser "quem desligou?".
+ */
+export async function mudarStatusDoAnuncio(
+  clientId: string,
+  nivel: NivelDoObjeto,
+  objetoId: string,
+  ligar: boolean,
+): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Essa loja não está na sua lista." };
+    }
+
+    if (!escritaLiberada()) {
+      return {
+        erro:
+          "Ligar e desligar pela tela ainda não está liberado — falta o acesso de escrita na Meta.",
+      };
+    }
+
+    const objeto = await acharObjetoDaLoja(clientId, nivel, objetoId);
+    if (!objeto) {
+      // Mensagem honesta: ou o id não é desta loja, ou o cadastro está velho.
+      // Os dois casos se resolvem do mesmo jeito, e nenhum deles deve mandar
+      // nada pra Meta.
+      return {
+        erro: `Não achei ${ROTULO_DO_NIVEL[nivel]} com esse id nas contas desta loja. Aperte “Atualizar agora” e tente de novo.`,
+      };
+    }
+
+    const r = await mudarStatus({ clientId, quemId: user.id, nivel, objeto, ligar });
+    if (!r.ok) return { erro: r.erro };
+
+    revalidar(clientId);
+    return {
+      ok: r.ligado
+        ? `${r.nome} ligado.`
+        : objeto.levaJunto > 0
+          ? `${r.nome} pausado — e com ${objeto.levaJunto} ${objeto.levaJunto === 1 ? "item" : "itens"} dentro que param junto.`
+          : `${r.nome} pausado.`,
     };
   });
 }

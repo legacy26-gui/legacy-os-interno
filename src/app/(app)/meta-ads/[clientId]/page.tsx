@@ -8,6 +8,7 @@ import { saldoEmReais, tempoDesde } from "@/lib/meta/saldo";
 import { avaliarLoja, comoDias } from "@/lib/meta/estado-da-loja";
 import { COR_DO_NUMERO, ETIQUETA_DA_LOJA } from "@/lib/meta/tons";
 import { ETIQUETA_DO_CRIATIVO, comoVariacao } from "@/lib/meta/criativo-cansado";
+import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import {
   somar,
   custoPorLead,
@@ -179,6 +180,11 @@ export default async function LojaNoMetaAdsPage({
   const diasDeSaldo = comoDias(veredito.diasDeSaldo);
   const etiquetaDoSaldo = ETIQUETA_DA_LOJA[veredito.tom];
   const podeConfigurar = user.role === "ADMIN" || user.role === "GERENTE";
+  // Mexer em campanha é trabalho do gestor nas lojas DELE — a trava aqui não
+  // é de cargo, é de carteira, e ela já foi conferida acima (a loja só chega
+  // nesta linha se for da pessoa). O que ainda pode faltar é o acesso de
+  // escrita na Meta, que é coisa do sistema, não de quem está na tela.
+  const podeMexer = escritaLiberada();
   const tiposUsados = [...new Set(contas.map((c) => c.leadActionType))];
   const tipoDeLead = rotuloDoTipoDeLead(tiposUsados[0] ?? "");
 
@@ -425,6 +431,8 @@ export default async function LojaNoMetaAdsPage({
           tipoDeLead={tipoDeLead}
           periodo={periodo.rotulo}
           href={href}
+          clientId={cliente.id}
+          podeMexer={podeMexer}
         />
       )}
 
@@ -454,12 +462,17 @@ function Tabela({
   tipoDeLead,
   periodo,
   href,
+  clientId,
+  podeMexer,
 }: {
   itens: LinhaDaTela[];
   nivel: Nivel;
   tipoDeLead: string;
   periodo: string;
   href: (m: Partial<Busca>) => string;
+  clientId: string;
+  /** Falso enquanto o acesso de escrita na Meta não estiver configurado. */
+  podeMexer: boolean;
 }) {
   const rotulo = nivel === "campanha" ? "Campanha" : nivel === "conjunto" ? "Conjunto" : "Anúncio";
   const temFilho = nivel !== "anuncio";
@@ -507,7 +520,15 @@ function Tabela({
               return (
                 <tr key={i.id} className="hover:bg-surface-muted transition-colors">
                   <td className="px-3 py-3 align-top">
-                    <ChaveDeStatus ligado={ligado} nome={i.nome} motivoDaTrava={POR_QUE_NAO_LIGA} />
+                    <ChaveDeStatus
+                      ligado={ligado}
+                      nome={i.nome}
+                      motivoDaTrava={podeMexer ? null : POR_QUE_NAO_LIGA}
+                      clientId={clientId}
+                      nivel={nivel}
+                      objetoId={i.id}
+                      levaJunto={i.dentro}
+                    />
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex items-start gap-3">

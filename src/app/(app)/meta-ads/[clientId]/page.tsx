@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { ArrowLeft, Megaphone, AlertTriangle, Wallet, ChevronRight } from "lucide-react";
+import { Megaphone, AlertTriangle, Wallet, ChevronRight } from "lucide-react";
 import { Voltar } from "@/components/voltar";
+import { Frescor } from "@/components/frescor";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { exigirClienteDaCarteira } from "@/lib/carteira";
@@ -12,7 +13,6 @@ import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import {
   somar,
   custoPorLead,
-  ctr,
   reais,
   numero,
   lerIntervalo,
@@ -146,7 +146,6 @@ export default async function LojaNoMetaAdsPage({
       : numeros;
   const total = somar(doRecorte);
   const cplTotal = custoPorLead(total);
-  const ctrTotal = ctr(total);
 
   // "É conta de Pix" e "o saldo foi lido" são duas coisas, e misturá-las
   // fazia a tela dizer "cartão" pra conta de Pix que ainda não tinha leitura —
@@ -164,6 +163,20 @@ export default async function LojaNoMetaAdsPage({
     : null;
 
   const jaBuscou = contas.some((c) => c.lastSyncedAt && !c.lastSyncError);
+
+  // Quando o sistema perguntou à Meta pela última vez sobre esta loja.
+  //
+  // Não confundir com `leituraMaisVelha` logo acima: aquela é a hora do
+  // SALDO, que só existe em conta pré-paga. Esta é a hora da conversa com a
+  // Meta, e vale pra qualquer conta — inclusive as de cartão, que não têm
+  // saldo pra ler mas têm gasto que envelhece igual.
+  //
+  // Mais velha entre as contas da loja, pela mesma razão da lista: o rótulo
+  // promete sobre o conjunto, não sobre a melhor parte dele.
+  const sincronias = contas.map((c) => c.lastSyncedAt).filter((d): d is Date => d !== null);
+  const lidaMaisVelha = sincronias.length
+    ? new Date(Math.min(...sincronias.map((d) => d.getTime())))
+    : null;
 
   // A mesma régua da lista: dias de saldo, não valor fixo.
   const veredito = avaliarLoja({
@@ -222,6 +235,12 @@ export default async function LojaNoMetaAdsPage({
             <p className="text-sm text-foreground-muted mt-0.5">
               {cliente.manager?.name ? `Gestor: ${cliente.manager.name.split(" ")[0]}` : "Sem gestor"}
             </p>
+            {/* Aqui a idade importa ainda mais que na lista: esta é a tela
+                que fica aberta enquanto o gestor está no telefone com a loja,
+                e é dela que sai a frase "o saldo seu está em tanto". */}
+            <div className="mt-1.5">
+              <Frescor quando={lidaMaisVelha ? lidaMaisVelha.toISOString() : null} />
+            </div>
           </div>
           <AcoesDaLoja
             clientId={cliente.id}

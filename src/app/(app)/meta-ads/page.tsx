@@ -17,6 +17,7 @@ import {
   ZERO,
 } from "@/lib/meta/insights";
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
+import { Frescor } from "@/components/frescor";
 import { desdeOEnvio } from "@/lib/meta/pedido-de-verba";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import {
@@ -275,6 +276,24 @@ export default async function MetaAdsPage({
     c.metaAdAccounts.some((a) => a.lastSyncedAt && !a.lastSyncError)
   );
 
+  // A idade do dado mais VELHO da lista.
+  //
+  // Mais velho e não mais novo porque o rótulo é uma promessa sobre o
+  // conjunto: "nada aqui é mais antigo do que isto". Pegar o mais novo
+  // deixaria a tela dizer "há 1 min" com quarenta lojas de ontem atrás.
+  //
+  // Conta que nunca foi lida não entra na conta: ela não tem número velho,
+  // ela não tem número — e isso a própria linha dela já diz, com "—" em vez
+  // de valor. Se entrasse aqui, uma conta recém-vinculada envelheceria o
+  // rótulo da casa inteira pra sempre.
+  const idades = clientes
+    .flatMap((c) => c.metaAdAccounts)
+    .map((a) => a.lastSyncedAt)
+    .filter((d): d is Date => d !== null);
+  const maisVelho = idades.length
+    ? new Date(Math.min(...idades.map((d) => d.getTime())))
+    : null;
+
   return (
     <div className="flex flex-col gap-5 max-w-6xl">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
@@ -286,6 +305,12 @@ export default async function MetaAdsPage({
             Saldo e resultado de cada conta de anúncio.{" "}
             {vePorGestor ? "Todas as lojas da casa." : "Suas lojas."}
           </p>
+          {/* Logo abaixo do subtítulo, não escondido num canto: é a legenda
+              de tudo que vem depois. Sem ela, os números da tela não dizem
+              de quando são. */}
+          <div className="mt-1.5">
+            <Frescor quando={maisVelho ? maisVelho.toISOString() : null} />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {/* Só pra direção, e só quando a escrita NÃO está configurada: é um

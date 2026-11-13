@@ -55,6 +55,112 @@ function semSegredo(texto: string): string {
 
 export type RespostaDaEscrita = { ok: true } | { ok: false; erro: string };
 
+export interface ConferenciaDaEscrita {
+  /** A variável existe? */
+  configurado: boolean;
+  /** A Meta aceitou o token? */
+  valido: boolean;
+  /** Quantas contas de anúncio este token alcança. */
+  contas: number | null;
+  /** As permissões que a Meta diz que ele tem, quando dá pra perguntar. */
+  permissoes: string[] | null;
+  /** Já dá pra ligar e desligar campanha? */
+  podeGerenciar: boolean | null;
+  erro: string | null;
+}
+
+/**
+ * Pergunta à Meta o que o token de ESCRITA alcança.
+ *
+ * Existe porque "configurei a variável, será que entrou?" é uma pergunta que
+ * aparece toda vez que um token é trocado — e a única resposta que o sistema
+ * dava antes era passar o mouse numa chavinha e ver se ela destravava. Isso
+ * diz se a variável existe, mas não se ela tem o escopo certo nem se alcança
+ * as contas das lojas: o erro só apareceria no primeiro clique de verdade,
+ * numa campanha de verdade.
+ *
+ * Usa só leitura, de propósito: conferir um token não pode mexer em campanha
+ * nenhuma. E NUNCA devolve o token, nem pedaço dele.
+ */
+export async function conferirEscrita(): Promise<ConferenciaDaEscrita> {
+  const chave = token();
+  const vazio: ConferenciaDaEscrita = {
+    configurado: false,
+    valido: false,
+    contas: null,
+    permissoes: null,
+    podeGerenciar: null,
+    erro: null,
+  };
+  if (!chave) return vazio;
+
+  async function perguntar<T>(caminho: string, params: Record<string, string> = {}) {
+    const url = new URL(`${base()}/${versao()}/${caminho}`);
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    const corte = new AbortController();
+    const relogio = setTimeout(() => corte.abort(), TIMEOUT_MS);
+    try {
+      const r = await fetch(url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${chave}` },
+        signal: corte.signal,
+        cache: "no-store",
+      });
+      const texto = await r.text();
+      if (!r.ok) {
+        let detalhe = `HTTP ${r.status}`;
+        try {
+          const corpo = JSON.parse(texto) as { error?: { message?: string } };
+          detalhe = corpo.error?.message ?? detalhe;
+        } catch {
+          // Não é JSON: o status já diz o suficiente.
+        }
+        return { ok: false as const, erro: semSegredo(detalhe) };
+      }
+      return { ok: true as const, dados: JSON.parse(texto) as T };
+    } catch (erro) {
+      return {
+        ok: false as const,
+        erro: semSegredo(erro instanceof Error ? erro.message : String(erro)),
+      };
+    } finally {
+      clearTimeout(relogio);
+    }
+  }
+
+  // Primeiro: a Meta reconhece este token?
+  const eu = await perguntar<{ id?: string }>("me", { fields: "id" });
+  if (!eu.ok) {
+    return { ...vazio, configurado: true, erro: eu.erro };
+  }
+
+  // Quantas contas ele alcança. Zero aqui é o problema silencioso mais
+  // comum: o token foi gerado, mas ninguém deu as contas pro usuário do
+  // sistema — e aí tudo responde "não achei esse objeto".
+  const contas = await perguntar<{ data?: unknown[] }>("me/adaccounts", {
+    fields: "id",
+    limit: "200",
+  });
+
+  // As permissões. Nem todo tipo de token responde isto, então falhar aqui
+  // não é erro: é só não dar pra confirmar o escopo por este caminho.
+  const perms = await perguntar<{ data?: { permission: string; status: string }[] }>(
+    "me/permissions"
+  );
+  const concedidas = perms.ok
+    ? (perms.dados.data ?? []).filter((p) => p.status === "granted").map((p) => p.permission)
+    : null;
+
+  return {
+    configurado: true,
+    valido: true,
+    contas: contas.ok ? (contas.dados.data?.length ?? 0) : null,
+    permissoes: concedidas,
+    podeGerenciar: concedidas ? concedidas.includes("ads_management") : null,
+    erro: contas.ok ? null : contas.erro,
+  };
+}
+
 /**
  * Um POST na Graph API.
  *

@@ -18,6 +18,7 @@ import {
 } from "@/lib/meta/insights";
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
 import { desdeOEnvio } from "@/lib/meta/pedido-de-verba";
+import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import {
   avaliarLoja,
   comoDias,
@@ -35,7 +36,7 @@ import {
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
 import { AtualizarLoja } from "./atualizar-loja";
 import { PuxadorDaLoja } from "./puxador";
-import { Link2, FileBarChart, Wallet, TrendingUp, Users, Target } from "lucide-react";
+import { Link2, FileBarChart, Wallet, TrendingUp, Users, Target, KeyRound } from "lucide-react";
 
 // Meta Ads: a carteira inteira numa tela — saldo e resultado de cada loja.
 //
@@ -287,6 +288,17 @@ export default async function MetaAdsPage({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Só pra direção, e só quando a escrita NÃO está configurada: é um
+              atalho pra resolver uma pendência, não um item de menu. Quando
+              estiver tudo certo ele some sozinho. */}
+          {podeVincular && !escritaLiberada() && (
+            <Link
+              href="/meta-ads/conferir"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-amber-500/60 rounded-lg text-sm font-medium text-amber-700 dark:text-amber-400 hover:bg-surface-muted"
+            >
+              <KeyRound size={15} /> Conferir chave da Meta
+            </Link>
+          )}
           {podeVincular && (
             <Link
               href="/meta-ads/vincular"

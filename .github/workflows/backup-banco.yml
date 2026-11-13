@@ -81,7 +81,20 @@ jobs:
             "select count(*) from information_schema.tables where table_schema = 'public'")
           echo "Tabelas no schema public: $TABELAS"
           if [ "$TABELAS" -lt 5 ]; then
-            echo "::error::Só $TABELAS tabela(s) aqui. A DATABASE_URL está apontando pro banco errado do projeto — confira o nome do banco no fim da string."
+            # Entrou no lugar errado. Em vez de só reclamar, mostra o que
+            # EXISTE ali do lado — é o que transforma "está vazio" em "o
+            # banco certo é esse aqui".
+            echo "Bancos neste servidor:"
+            "$PG_BIN/psql" "$DATABASE_URL" -tAc \
+              "select datname from pg_database where datistemplate = false order by 1" \
+              | sed 's/^/  - /'
+            echo "Schemas com tabelas neste banco:"
+            "$PG_BIN/psql" "$DATABASE_URL" -tAc \
+              "select table_schema || ': ' || count(*) from information_schema.tables
+               where table_schema not in ('pg_catalog', 'information_schema')
+               group by table_schema order by 1" \
+              | sed 's/^/  - /'
+            echo "::error::Só $TABELAS tabela(s) no schema public deste banco. A DATABASE_URL aponta pro banco errado — veja a lista acima e troque o nome do banco no fim da string (ou a branch, se os dados estiverem em outra)."
             exit 1
           fi
 

@@ -3,13 +3,7 @@ import { Megaphone, AlertTriangle, Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CARTEIRA, escopoDaCarteira, veTodaACarteira } from "@/lib/carteira";
-import {
-  saldoEmReais,
-  tempoDesde,
-  estadoDoSaldo,
-  COR_DO_SALDO,
-  SALDO_BAIXO,
-} from "@/lib/meta/saldo";
+import { saldoEmReais, tempoDesde } from "@/lib/meta/saldo";
 import {
   somar,
   custoPorLead,
@@ -17,12 +11,20 @@ import {
   numero,
   lerIntervalo,
   textoDaData,
+  janelaDeDias,
   type Numeros,
   type Intervalo,
   ZERO,
 } from "@/lib/meta/insights";
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
-import { tomDaLoja, FAIXA_DA_LOJA, ETIQUETA_DA_LOJA } from "@/lib/meta/estado-da-loja";
+import { avaliarLoja, comoDias, DIAS_DO_RITMO, DIAS_ACABANDO } from "@/lib/meta/estado-da-loja";
+import {
+  FAIXA_DA_LOJA,
+  FUNDO_DA_LOJA,
+  ETIQUETA_DA_LOJA,
+  COR_DO_NUMERO,
+  type TomDaLoja,
+} from "@/lib/meta/tons";
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
 import { AtualizarLoja } from "./atualizar-loja";
 import { Link2, FileBarChart, Wallet, TrendingUp, Users, Target } from "lucide-react";
@@ -37,8 +39,14 @@ import { Link2, FileBarChart, Wallet, TrendingUp, Users, Target } from "lucide-r
 // "Cada um só vê o seu": o recorte é o mesmo do resto do sistema
 // (escopoDaCarteira). Gestor de tráfego vê as lojas dele, direção vê a casa.
 //
-// A ordem é UMA: nome da loja, de A a Z. Lista que se reordena pelo gasto ou
-// pelo saldo embaralha a tela a cada atualização, e aí ninguém acha a loja que
+// A ordem são DOIS grupos, e dentro de cada um o nome da loja de A a Z:
+// primeiro quem tem conta vinculada, depois quem não tem. O motivo é prático —
+// loja sem conta é linha sem nenhum número, e espalhada no meio da lista ela
+// corta a leitura das colunas em pedaços. No fim, as que faltam vincular ficam
+// juntas, que é como se trabalha nelas.
+//
+// O que NÃO ordena a lista é a urgência. Lista que se reordena pelo saldo ou
+// pelo gasto embaralha a tela a cada atualização, e aí ninguém acha a loja que
 // veio procurar. A urgência vem da cor e do aviso no topo, não da posição.
 
 // A varredura tem orçamento de 45s (ver ORCAMENTO_MS em lib/actions/meta-ads).
@@ -52,8 +60,19 @@ export const maxDuration = 60;
 // A borda fica nas CÉLULAS e não na linha porque <tr> não aceita borda
 // arredondada: a primeira célula fecha o canto da esquerda, a última o da
 // direita, e as do meio só levam as bordas de cima e de baixo.
-const CEL = "bg-surface border-y border-border-forte";
-const LINHA = "transition-colors [&>td]:hover:bg-surface-muted";
+const celDe = (tom: TomDaLoja) => `border-y ${FUNDO_DA_LOJA[tom]}`;
+
+/**
+ * O realce de passar o mouse — só nas lojas que estão bem.
+ *
+ * Em cima do cartão vermelho ele apagaria justamente a cor que importa, e por
+ * um motivo bobo: o cinza do hover é opaco e cobre o vermelho translúcido.
+ * Loja em apuros não precisa de realce de mouse; ela já está gritando.
+ */
+const linhaDe = (tom: TomDaLoja) =>
+  tom === "sem-saldo" || tom === "acabando"
+    ? ""
+    : "transition-colors [&>td]:hover:bg-surface-muted";
 
 export default async function MetaAdsPage({
   searchParams,
@@ -84,28 +103,80 @@ export default async function MetaAdsPage({
     );
   }
 
-  const { clientes, numerosDaConta } = dados;
+  const { clientes, numerosDaConta, ritmoDaConta } = dados;
 
-  const linhas = clientes.map((c) => {
-    const n = somar(c.metaAdAccounts.map((a) => numerosDaConta.get(a.id) ?? ZERO));
-    return { cliente: c, numeros: n, cpl: custoPorLead(n) };
-  });
+  const linhas = clientes
+    .map((c) => {
+      const contas = c.metaAdAccounts;
+      const n = somar(contas.map((a) => numerosDaConta.get(a.id) ?? ZERO));
 
-  const comConta = clientes.filter((c) => c.metaAdAccounts.length > 0);
-  const semConta = clientes.filter((c) => c.metaAdAccounts.length === 0);
+      const prePagas = contas.filter((a) => a.isPrepay);
+      const comSaldo = prePagas.filter((a) => a.balanceSnapshots[0]);
+      // Só soma o saldo quando TODAS as pré-pagas foram lidas. Loja com duas
+      // contas e uma leitura boa daria um saldo pela metade, e um saldo pela
+      // metade é pior que nenhum: parece número e não é.
+      const saldo =
+        prePagas.length > 0 && comSaldo.length === prePagas.length
+          ? comSaldo.reduce((s, a) => s + a.balanceSnapshots[0].availableCents, 0)
+          : null;
 
-  // Quem está acabando. Só conta pré-paga com leitura boa entra: conta sem
-  // saldo lido não é conta com saldo baixo, e juntar as duas faria o aviso
-  // gritar por um erro de leitura.
-  const acabando = comConta.flatMap((c) =>
-    c.metaAdAccounts
-      .filter((a) => a.isPrepay && a.balanceSnapshots[0])
-      .filter((a) => a.balanceSnapshots[0].availableCents < SALDO_BAIXO)
-      .map((a) => ({
-        loja: c.companyName,
-        centavos: a.balanceSnapshots[0].availableCents,
-      }))
-  );
+      // O ritmo da loja é a soma das contas dela, e os dias são a UNIÃO dos
+      // dias: duas contas rodando no mesmo dia são um dia, não dois.
+      let gastoRecenteCents = 0;
+      const diasComDado = new Set<number>();
+      for (const a of contas) {
+        const r = ritmoDaConta.get(a.id);
+        if (!r) continue;
+        gastoRecenteCents += r.gastoCents;
+        for (const d of r.dias) diasComDado.add(d);
+      }
+
+      const erro = contas.find((a) => a.lastSyncError)?.lastSyncError ?? null;
+
+      const veredito = avaliarLoja({
+        temConta: contas.length > 0,
+        saldoCents: saldo,
+        temPrePaga: prePagas.length > 0,
+        comErro: !!erro,
+        gastoRecenteCents,
+        diasComDado: diasComDado.size,
+        gastoMensalPrevistoCents: c.gastoMensalPrevistoCents,
+        gastoDoPeriodoCents: n.spendCents,
+        leads: n.leads,
+      });
+
+      // A idade do NÚMERO, não da tentativa: a leitura mais velha entre as
+      // contas da loja é o que vale, porque é ela que está atrasando a linha.
+      const capturas = comSaldo.map((a) => a.balanceSnapshots[0].capturedAt.getTime());
+
+      return {
+        cliente: c,
+        contas,
+        numeros: n,
+        cpl: custoPorLead(n),
+        prePagas: prePagas.length,
+        saldo,
+        quando: capturas.length ? new Date(Math.min(...capturas)) : null,
+        erro,
+        veredito,
+      };
+    })
+    // Conta vinculada primeiro. `sort` do JavaScript é estável, então o A-Z
+    // que veio do banco se mantém dentro de cada grupo.
+    .sort((a, b) => Number(b.contas.length > 0) - Number(a.contas.length > 0));
+
+  const comConta = linhas.filter((l) => l.contas.length > 0);
+  const semConta = linhas.filter((l) => l.contas.length === 0);
+
+  // Quem está acabando, pela régua de DIAS e não de valor.
+  //
+  // Só entra loja com leitura boa: conta cujo saldo não deu pra ler não é
+  // conta com saldo baixo, e juntar as duas faria o aviso gritar por causa de
+  // um erro de leitura. E só entra quem tem ritmo conhecido — sem ritmo não
+  // existe "quantos dias ainda roda".
+  const acabando = comConta
+    .filter((l) => l.veredito.tom === "sem-saldo" || l.veredito.tom === "acabando")
+    .sort((a, b) => (a.veredito.diasDeSaldo ?? -1) - (b.veredito.diasDeSaldo ?? -1));
 
   // Gastou e não teve lead nenhum: ou a campanha está mesmo sem resultado, ou
   // o tipo de lead configurado não é o que essa conta usa. Os dois casos
@@ -174,13 +245,24 @@ export default async function MetaAdsPage({
       />
 
       {acabando.length > 0 && (
-        <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-4 py-3">
-          <p className="text-sm font-semibold text-red-500 flex items-start gap-2">
-            <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+        <div className="rounded-xl border-2 border-red-500 bg-red-500/10 px-4 py-3.5">
+          <p className="text-sm font-semibold text-red-600 dark:text-red-400 flex items-start gap-2">
+            <AlertTriangle size={16} className="shrink-0 mt-0.5" />
             <span>
-              {acabando.length} {acabando.length === 1 ? "conta" : "contas"} com saldo acabando:{" "}
+              {acabando.length} {acabando.length === 1 ? "loja precisa" : "lojas precisam"} de Pix:{" "}
               <span className="font-normal">
-                {acabando.map((a) => `${a.loja} (${saldoEmReais(a.centavos)})`).join(", ")}
+                {/* Reais E dias. O valor sozinho não diz nada ("R$ 180 é
+                    pouco?" depende da loja), e os dias sozinhos esconderiam
+                    quanto mandar. */}
+                {acabando
+                  .map((l) => {
+                    const dias = comoDias(l.veredito.diasDeSaldo);
+                    const valor = l.saldo === null ? null : saldoEmReais(l.saldo);
+                    if (valor && dias) return `${l.cliente.companyName} — ${valor}, ${dias}`;
+                    if (valor) return `${l.cliente.companyName} — ${valor}`;
+                    return l.cliente.companyName;
+                  })
+                  .join(" · ")}
               </span>
             </span>
           </p>
@@ -251,67 +333,76 @@ export default async function MetaAdsPage({
         <div className="overflow-x-auto -mx-1 px-1">
             <table className="w-full text-sm border-separate border-spacing-y-3">
               <thead>
-                <tr className="text-left text-foreground-muted text-xs uppercase tracking-wide">
-                  <th className="w-1.5 pb-1" />
-                  <th className="px-4 pb-1 font-medium">Loja</th>
+                {/* Cada coluna diz o que é em duas linhas: o nome que se usa no
+                    Gerenciador da Meta em cima, e embaixo, miúdo, de onde o
+                    número vem. "Custo/lead" sozinho não diz se é do período ou
+                    da vida inteira — e essa é justamente a dúvida que trava
+                    alguém na frente da tela. */}
+                <tr className="text-left align-bottom">
+                  <th className="w-2 pb-2" />
+                  <Cabecalho titulo="Loja" explicacao="conta de anúncio vinculada" />
                   {vePorGestor && (
-                    <th className="px-4 pb-1 font-medium hidden xl:table-cell">Gestor</th>
+                    <Cabecalho titulo="Gestor" escondida="hidden xl:table-cell" />
                   )}
-                  <th className="px-4 pb-1 font-medium text-right">Saldo</th>
-                  <th className="px-4 pb-1 font-medium text-right">Investido</th>
-                  <th className="px-4 pb-1 font-medium text-right">Leads</th>
-                  <th className="px-4 pb-1 font-medium text-right">Custo/lead</th>
-                  <th className="px-4 pb-1 font-medium text-right hidden lg:table-cell">
-                    Atualizado
-                  </th>
-                  <th className="px-2 pb-1 font-medium w-10">
+                  <Cabecalho
+                    titulo="Saldo"
+                    explicacao="disponível pra gastar"
+                    direita
+                  />
+                  <Cabecalho
+                    titulo="Valor gasto"
+                    explicacao={periodo.vidaInteira ? "vida inteira" : periodo.rotulo.toLowerCase()}
+                    direita
+                  />
+                  <Cabecalho titulo="Resultados" explicacao="leads no período" direita />
+                  <Cabecalho titulo="Custo por lead" explicacao="gasto ÷ leads" direita />
+                  <Cabecalho
+                    titulo="Lido"
+                    explicacao="idade do saldo"
+                    direita
+                    escondida="hidden lg:table-cell"
+                  />
+                  {/* `relative` aqui não é enfeite.
+                      O texto só-pra-leitor-de-tela é posicionado em absoluto,
+                      e sem um ancestral posicionado ele se ancora na PÁGINA
+                      inteira — então ia parar no x=655 da tabela rolada e
+                      esticava o documento até lá. Resultado: toda a tela do
+                      celular rolava de lado por causa de uma palavra
+                      invisível. Com `relative`, ele se ancora nesta célula e
+                      a rolagem da tabela o recorta junto. */}
+                  <th className="relative px-2 pb-2 w-10">
                     <span className="sr-only">Atualizar</span>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {linhas.map(({ cliente: c, numeros: n, cpl }) => {
-                  const contas = c.metaAdAccounts;
-                  const prePagas = contas.filter((a) => a.isPrepay);
-                  const comSaldo = prePagas.filter((a) => a.balanceSnapshots[0]);
-                  const saldo = comSaldo.length
-                    ? comSaldo.reduce((s, a) => s + a.balanceSnapshots[0].availableCents, 0)
-                    : null;
-                  // A idade do NÚMERO, não da tentativa: a leitura mais velha
-                  // entre as contas da loja é o que vale, porque é ela que
-                  // está atrasando a linha.
-                  const capturas = comSaldo.map((a) => a.balanceSnapshots[0].capturedAt.getTime());
-                  const quando = capturas.length ? new Date(Math.min(...capturas)) : null;
-                  const erro = contas.find((a) => a.lastSyncError)?.lastSyncError ?? null;
-                  const tom = tomDaLoja({
-                    temConta: contas.length > 0,
-                    saldoCents: saldo,
-                    temPrePaga: prePagas.length > 0,
-                    comErro: !!erro,
-                    gastoCents: n.spendCents,
-                    leads: n.leads,
-                  });
+                {linhas.map((l) => {
+                  const c = l.cliente;
+                  const n = l.numeros;
+                  const tom = l.veredito.tom;
                   const etiqueta = ETIQUETA_DA_LOJA[tom];
+                  const cel = celDe(tom);
+                  const dias = comoDias(l.veredito.diasDeSaldo);
 
                   return (
-                    <tr key={c.id} className={LINHA}>
+                    <tr key={c.id} className={linhaDe(tom)}>
                       {/* A faixa colorida na beirada: diz o estado da loja
                           antes de qualquer número ser lido, e é ela que separa
                           uma linha da outra mesmo de longe. */}
-                      <td className={`p-0 align-top ${CEL} border-l rounded-l-xl overflow-hidden w-1.5`}>
-                        <div className={`w-1.5 h-full min-h-[4.5rem] ${FAIXA_DA_LOJA[tom]}`} />
+                      <td className={`p-0 align-top ${cel} border-l rounded-l-xl overflow-hidden w-2`}>
+                        <div className={`w-2 h-full min-h-[4.5rem] ${FAIXA_DA_LOJA[tom]}`} />
                       </td>
-                      <td className={`px-4 py-4 align-top ${CEL}`}>
+                      <td className={`px-4 py-4 align-top ${cel}`}>
                         <span className="flex items-center gap-2 flex-wrap">
-                          {contas.length > 0 ? (
+                          {l.contas.length > 0 ? (
                             <Link
                               href={`/meta-ads/${c.id}`}
-                              className="font-semibold text-[15px] hover:text-accent"
+                              className="font-semibold text-base hover:text-accent"
                             >
                               {c.companyName}
                             </Link>
                           ) : (
-                            <span className="font-semibold text-[15px]">{c.companyName}</span>
+                            <span className="font-semibold text-base">{c.companyName}</span>
                           )}
                           {etiqueta && (
                             <span
@@ -321,8 +412,8 @@ export default async function MetaAdsPage({
                             </span>
                           )}
                         </span>
-                        <span className="block text-xs font-mono text-foreground-muted mt-0.5">
-                          {contas.map((a) => a.metaAccountId).join(" · ") || (
+                        <span className="block text-xs font-mono text-foreground-muted mt-1">
+                          {l.contas.map((a) => a.metaAccountId).join(" · ") || (
                             <Link
                               href={`/clientes/${c.id}`}
                               className="inline-flex items-center gap-1 font-sans hover:text-accent"
@@ -331,61 +422,85 @@ export default async function MetaAdsPage({
                             </Link>
                           )}
                         </span>
-                        {erro && (
+                        {l.erro && (
                           <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 flex items-start gap-1.5">
                             <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-                            <span>{erro}</span>
+                            <span>{l.erro}</span>
                           </p>
                         )}
                       </td>
                       {vePorGestor && (
-                        <td className={`px-4 py-4 text-foreground-muted hidden xl:table-cell align-top ${CEL}`}>
+                        <td className={`px-4 py-4 text-foreground-muted hidden xl:table-cell align-top ${cel}`}>
                           {c.manager?.name?.split(" ")[0] ?? "—"}
                         </td>
                       )}
-                      <td className={`px-4 py-4 text-right align-top ${CEL}`}>
-                        {prePagas.length === 0 ? (
+                      <td className={`px-4 py-4 text-right align-top ${cel}`}>
+                        {l.contas.length === 0 ? (
+                          // Loja sem conta nenhuma não é "cartão": é loja que
+                          // ainda não foi vinculada, e dizer "cartão" ali era
+                          // afirmar uma forma de pagamento que ninguém
+                          // escolheu.
+                          <span className="text-foreground-muted">—</span>
+                        ) : l.prePagas === 0 ? (
                           <span className="text-xs text-foreground-muted">cartão</span>
-                        ) : saldo === null ? (
+                        ) : l.saldo === null ? (
                           // "indisponível", nunca R$ 0,00: saldo que o sistema
                           // não conseguiu ler não é conta zerada.
                           <span className="text-xs text-foreground-muted">indisponível</span>
                         ) : (
-                          <span className={`font-semibold ${COR_DO_SALDO[estadoDoSaldo(saldo)]}`}>
-                            {saldoEmReais(saldo)}
-                          </span>
+                          <>
+                            <span
+                              className={`block text-lg font-bold tabular-nums leading-tight ${COR_DO_NUMERO[tom]}`}
+                            >
+                              {saldoEmReais(l.saldo)}
+                            </span>
+                            {/* Quantos dias ainda roda: é esta linha que
+                                transforma o saldo em decisão. "R$ 180" não diz
+                                se é pra mandar Pix hoje; "2 dias" diz. */}
+                            {dias && (
+                              <span
+                                className={`block text-[11px] mt-0.5 ${
+                                  tom === "sem-saldo" || tom === "acabando"
+                                    ? "font-semibold text-red-600 dark:text-red-400"
+                                    : "text-foreground-muted"
+                                }`}
+                              >
+                                dá pra {dias}
+                              </span>
+                            )}
+                          </>
                         )}
                       </td>
-                      <td className={`px-4 py-4 text-right align-top tabular-nums ${CEL}`}>
+                      <td className={`px-4 py-4 text-right align-top tabular-nums ${cel}`}>
                         {n.spendCents > 0 ? (
-                          reais(n.spendCents)
+                          <span className="text-base font-semibold">{reais(n.spendCents)}</span>
                         ) : (
                           <span className="text-foreground-muted">—</span>
                         )}
                       </td>
-                      <td className={`px-4 py-4 text-right align-top tabular-nums ${CEL}`}>
+                      <td className={`px-4 py-4 text-right align-top tabular-nums ${cel}`}>
                         {n.leads > 0 ? (
-                          <span className="font-semibold">{numero(n.leads)}</span>
+                          <span className="text-xl font-bold leading-none">{numero(n.leads)}</span>
                         ) : (
                           <span className="text-foreground-muted">—</span>
                         )}
                       </td>
-                      <td className={`px-4 py-4 text-right align-top tabular-nums ${CEL}`}>
+                      <td className={`px-4 py-4 text-right align-top tabular-nums ${cel}`}>
                         {/* Sem lead não existe custo por lead: "—" e não
                             R$ 0,00. Gastar sem lead é problema, e zero ali
                             pareceria o melhor resultado da lista. */}
-                        {cpl === null ? (
+                        {l.cpl === null ? (
                           <span className="text-foreground-muted">—</span>
                         ) : (
-                          reais(cpl)
+                          <span className="text-base font-semibold">{reais(l.cpl)}</span>
                         )}
                       </td>
-                      <td className={`px-4 py-4 text-right text-xs text-foreground-muted hidden lg:table-cell align-top ${CEL}`}>
-                        {quando ? tempoDesde(quando) : contas.length ? "nunca" : ""}
+                      <td className={`px-4 py-4 text-right text-xs text-foreground-muted hidden lg:table-cell align-top ${cel}`}>
+                        {l.quando ? tempoDesde(l.quando) : l.contas.length ? "nunca" : ""}
                       </td>
-                      <td className={`px-2 py-4 align-top text-right ${CEL} border-r rounded-r-xl`}>
+                      <td className={`px-2 py-4 align-top text-right ${cel} border-r rounded-r-xl`}>
                         {/* Loja sem conta não tem o que buscar. */}
-                        {contas.length > 0 && (
+                        {l.contas.length > 0 && (
                           <AtualizarLoja clientId={c.id} nome={c.companyName} />
                         )}
                       </td>
@@ -397,10 +512,25 @@ export default async function MetaAdsPage({
         </div>
       )}
 
-      <p className="text-xs text-foreground-muted">
-        Clique na loja pra ver campanha por campanha. Investido, leads e custo por lead são de{" "}
-        {periodo.vidaInteira ? "toda a vida das contas" : periodo.rotulo.toLowerCase()}. Para
-        vincular uma conta, abra a loja e use o bloco “Meta Ads” na ficha dela.
+      {/* O que cada cor quer dizer.
+          Cor sem legenda é adivinhação: quem é daltônico não distingue o
+          vermelho do âmbar, e quem é novo na casa não sabe que vermelho forte
+          quer dizer "parou". */}
+      <div className="rounded-xl border border-border bg-surface px-4 py-3 flex flex-wrap gap-x-5 gap-y-2">
+        <Legenda tom="sem-saldo" texto="Sem saldo — a campanha parou ou para hoje" />
+        <Legenda tom="acabando" texto={`Acabando — menos de ${DIAS_ACABANDO} dias de saldo`} />
+        <Legenda tom="atencao" texto="Olhar — saldo curto, erro de leitura ou gasto sem lead" />
+        <Legenda tom="bom" texto="Em ordem" />
+        <Legenda tom="neutro" texto="Sem conta, ou saldo que não deu pra ler" />
+      </div>
+
+      <p className="text-xs text-foreground-muted max-w-prose">
+        Clique na loja pra ver campanha por campanha. Valor gasto, leads e custo por lead são de{" "}
+        {periodo.vidaInteira ? "toda a vida das contas" : periodo.rotulo.toLowerCase()}.{" "}
+        <strong>“dá pra X dias”</strong> é o saldo dividido pelo gasto médio dos últimos{" "}
+        {DIAS_DO_RITMO} dias — quando a loja não rodou nesse período, usa o investimento mensal
+        combinado, que se define na ficha dela. Para vincular uma conta, abra a loja e use o bloco
+        “Meta Ads” na ficha.
       </p>
     </div>
   );
@@ -417,6 +547,7 @@ async function carregar(user: Parameters<typeof escopoDaCarteira>[0], periodo: I
     select: {
       id: true,
       companyName: true,
+      gastoMensalPrevistoCents: true,
       manager: { select: { name: true } },
       metaAdAccounts: {
         where: { active: true },
@@ -486,7 +617,37 @@ async function carregar(user: Parameters<typeof escopoDaCarteira>[0], periodo: I
     ])
   );
 
-  return { clientes, numerosDaConta };
+  // ─── O ritmo de gasto de cada conta ───────────────────────────────────────
+  //
+  // Independente do período que a tela está mostrando: a pergunta "o saldo
+  // está acabando?" é sempre sobre os últimos dias, mesmo quando a tela está
+  // mostrando o mês passado.
+  //
+  // Agrupa por DIA e não só por conta porque a média precisa saber por quantos
+  // dias dividir. Conta vinculada anteontem tem dois dias de dado: dividir por
+  // catorze faria o gasto parecer sete vezes menor, e o saldo parecer durar
+  // sete vezes mais do que dura.
+  const janela = janelaDeDias(DIAS_DO_RITMO);
+  const porDia = !idsDasContas.length
+    ? []
+    : await prisma.metaInsightDaily.groupBy({
+        by: ["adAccountId", "date"],
+        where: {
+          adAccountId: { in: idsDasContas },
+          date: { gte: janela.de, lte: janela.ate },
+        },
+        _sum: { spendCents: true },
+      });
+
+  const ritmoDaConta = new Map<string, { gastoCents: number; dias: Set<number> }>();
+  for (const g of porDia) {
+    const atual = ritmoDaConta.get(g.adAccountId) ?? { gastoCents: 0, dias: new Set<number>() };
+    atual.gastoCents += g._sum.spendCents ?? 0;
+    atual.dias.add(g.date.getTime());
+    ritmoDaConta.set(g.adAccountId, atual);
+  }
+
+  return { clientes, numerosDaConta, ritmoDaConta };
 }
 
 /** Quando o banco recusa alguma coisa: a frase dele, não uma tela preta. */
@@ -508,6 +669,48 @@ function TelaDeFalha({ detalhe }: { detalhe: string | null }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Um cabeçalho de coluna em duas linhas: o nome e, miúdo, de onde o número vem.
+ *
+ * O nome segue o vocabulário do Gerenciador da Meta ("Valor gasto",
+ * "Resultados") de propósito: quem usa as duas telas no mesmo dia não devia
+ * ter que traduzir.
+ */
+function Cabecalho({
+  titulo,
+  explicacao,
+  direita,
+  escondida,
+}: {
+  titulo: string;
+  explicacao?: string;
+  direita?: boolean;
+  escondida?: string;
+}) {
+  return (
+    <th
+      className={`px-4 pb-2 font-medium ${direita ? "text-right" : "text-left"} ${escondida ?? ""}`}
+    >
+      <span className="block text-[11px] uppercase tracking-wide text-foreground">{titulo}</span>
+      {explicacao && (
+        <span className="block text-[10px] font-normal normal-case tracking-normal text-foreground-muted mt-0.5">
+          {explicacao}
+        </span>
+      )}
+    </th>
+  );
+}
+
+/** Uma entrada da legenda de cores: a bolinha e o que ela quer dizer. */
+function Legenda({ tom, texto }: { tom: TomDaLoja; texto: string }) {
+  return (
+    <span className="inline-flex items-center gap-2 text-xs text-foreground-muted">
+      <span className={`w-3 h-3 rounded-sm shrink-0 ${FAIXA_DA_LOJA[tom]}`} />
+      {texto}
+    </span>
   );
 }
 

@@ -3,7 +3,9 @@ import { ArrowLeft, Megaphone, AlertTriangle, Wallet, ChevronRight } from "lucid
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { exigirClienteDaCarteira } from "@/lib/carteira";
-import { saldoEmReais, estadoDoSaldo, COR_DO_SALDO, tempoDesde } from "@/lib/meta/saldo";
+import { saldoEmReais, tempoDesde } from "@/lib/meta/saldo";
+import { avaliarLoja, comoDias } from "@/lib/meta/estado-da-loja";
+import { COR_DO_NUMERO, ETIQUETA_DA_LOJA } from "@/lib/meta/tons";
 import {
   somar,
   custoPorLead,
@@ -22,6 +24,7 @@ import { ChaveDeStatus } from "./chave";
 import {
   linhasDaLoja,
   cadastroDaLoja,
+  ritmoDaLoja,
   montarNivel,
   nomeNoCadastro,
   estaLigado,
@@ -84,6 +87,7 @@ export default async function LojaNoMetaAdsPage({
   const cliente = await exigirClienteDaCarteira(user, clientId, {
     id: true,
     companyName: true,
+    gastoMensalPrevistoCents: true,
     manager: { select: { name: true } },
   });
 
@@ -93,6 +97,7 @@ export default async function LojaNoMetaAdsPage({
   let contas: Awaited<ReturnType<typeof carregarContas>>;
   let numeros: Awaited<ReturnType<typeof linhasDaLoja>>;
   let cadastro: Awaited<ReturnType<typeof cadastroDaLoja>>;
+  let ritmo: Awaited<ReturnType<typeof ritmoDaLoja>>;
   try {
     contas = await carregarContas(clientId);
     // A conta escolhida no seletor. Vinda da URL, então é conferida contra as
@@ -100,9 +105,12 @@ export default async function LojaNoMetaAdsPage({
     // gasto de outra.
     const escolhida = contas.find((c) => c.metaAccountId === busca.conta);
     const doFiltro = escolhida ? [escolhida.id] : contas.map((c) => c.id);
-    [numeros, cadastro] = await Promise.all([
+    [numeros, cadastro, ritmo] = await Promise.all([
       linhasDaLoja(doFiltro, periodo),
       cadastroDaLoja(doFiltro),
+      // O ritmo é da loja inteira, não do recorte: o saldo é da conta e não
+      // da campanha, então quem o consome é tudo que está rodando ali.
+      ritmoDaLoja(contas.map((c) => c.id)),
     ]);
   } catch (erro) {
     const detalhe = erro instanceof Error ? erro.message : String(erro);
@@ -129,15 +137,37 @@ export default async function LojaNoMetaAdsPage({
   const cplTotal = custoPorLead(total);
   const ctrTotal = ctr(total);
 
-  const prePagas = contas.filter((c) => c.isPrepay && c.balanceSnapshots[0]);
-  const saldo = prePagas.length
-    ? prePagas.reduce((s, c) => s + c.balanceSnapshots[0].availableCents, 0)
-    : null;
-  const leituraMaisVelha = prePagas.length
-    ? new Date(Math.min(...prePagas.map((c) => c.balanceSnapshots[0].capturedAt.getTime())))
+  // "É conta de Pix" e "o saldo foi lido" são duas coisas, e misturá-las
+  // fazia a tela dizer "cartão" pra conta de Pix que ainda não tinha leitura —
+  // ou seja, escondia justamente a conta que ninguém está vigiando.
+  const prePagas = contas.filter((c) => c.isPrepay);
+  const lidas = prePagas.filter((c) => c.balanceSnapshots[0]);
+  // Só soma quando TODAS as pré-pagas foram lidas: saldo pela metade parece
+  // número e não é.
+  const saldo =
+    prePagas.length > 0 && lidas.length === prePagas.length
+      ? lidas.reduce((s, c) => s + c.balanceSnapshots[0].availableCents, 0)
+      : null;
+  const leituraMaisVelha = lidas.length
+    ? new Date(Math.min(...lidas.map((c) => c.balanceSnapshots[0].capturedAt.getTime())))
     : null;
 
   const jaBuscou = contas.some((c) => c.lastSyncedAt && !c.lastSyncError);
+
+  // A mesma régua da lista: dias de saldo, não valor fixo.
+  const veredito = avaliarLoja({
+    temConta: contas.length > 0,
+    saldoCents: saldo,
+    temPrePaga: prePagas.length > 0,
+    comErro: contas.some((c) => c.lastSyncError),
+    gastoRecenteCents: ritmo.gastoRecenteCents,
+    diasComDado: ritmo.diasComDado,
+    gastoMensalPrevistoCents: cliente.gastoMensalPrevistoCents,
+    gastoDoPeriodoCents: total.spendCents,
+    leads: total.leads,
+  });
+  const diasDeSaldo = comoDias(veredito.diasDeSaldo);
+  const etiquetaDoSaldo = ETIQUETA_DA_LOJA[veredito.tom];
   const podeConfigurar = user.role === "ADMIN" || user.role === "GERENTE";
   const tiposUsados = [...new Set(contas.map((c) => c.leadActionType))];
   const tipoDeLead = rotuloDoTipoDeLead(tiposUsados[0] ?? "");
@@ -252,7 +282,15 @@ export default async function LojaNoMetaAdsPage({
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-        <div className="rounded-xl border border-border bg-surface px-4 py-3">
+        <div
+          className={`rounded-xl border px-4 py-3 ${
+            veredito.tom === "sem-saldo"
+              ? "border-red-500 bg-red-500/10"
+              : veredito.tom === "acabando"
+                ? "border-red-400 dark:border-red-500/70 bg-red-500/5"
+                : "border-border bg-surface"
+          }`}
+        >
           <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium flex items-center gap-1.5">
             <Wallet size={12} /> Saldo
           </p>
@@ -264,11 +302,26 @@ export default async function LojaNoMetaAdsPage({
             <p className="text-sm text-foreground-muted mt-1.5">indisponível</p>
           ) : (
             <>
-              <p className={`text-xl font-semibold mt-1 ${COR_DO_SALDO[estadoDoSaldo(saldo)]}`}>
+              <p className={`text-xl font-semibold mt-1 ${COR_DO_NUMERO[veredito.tom]}`}>
                 {saldoEmReais(saldo)}
               </p>
+              {/* Quantos dias ainda roda: é o que transforma o saldo em
+                  decisão. "R$ 180" não diz se é pra mandar Pix hoje. */}
+              {diasDeSaldo && (
+                <p
+                  className={`text-xs ${
+                    etiquetaDoSaldo && veredito.tom !== "atencao"
+                      ? "font-semibold text-red-600 dark:text-red-400"
+                      : "text-foreground-muted"
+                  }`}
+                >
+                  dá pra {diasDeSaldo}
+                </p>
+              )}
               {leituraMaisVelha && (
-                <p className="text-xs text-foreground-muted">{tempoDesde(leituraMaisVelha)}</p>
+                <p className="text-xs text-foreground-muted">
+                  lido {tempoDesde(leituraMaisVelha)}
+                </p>
               )}
             </>
           )}

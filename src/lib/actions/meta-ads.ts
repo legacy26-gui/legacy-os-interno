@@ -284,6 +284,114 @@ export async function definirTipoDeLead(
 }
 
 /**
+ * Troca a forma de pagamento de uma conta já vinculada.
+ *
+ * Isto existe porque errar na hora de vincular é fácil e o estrago é grande:
+ * conta de Pix marcada como cartão desaparece de toda a vigilância de saldo —
+ * a tela mostra "cartão", nenhum aviso de saldo acabando sai, e um dia a
+ * campanha simplesmente para. Era obrigar a desvincular e vincular de novo,
+ * perdendo o histórico, por causa de um clique.
+ *
+ * Marcar como cartão apaga os saldos guardados, de propósito. Em conta no
+ * cartão o número que a Meta devolve é limite de crédito, não dinheiro
+ * disponível, e deixar a leitura antiga na tabela faria a tela mostrar como
+ * saldo um valor que não é saldo.
+ */
+export async function definirFormaDePagamento(
+  clientId: string,
+  contaId: string,
+  prePago: boolean,
+): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await quemPodeVincular(clientId);
+    if (!user) {
+      return { erro: "Só a direção muda a forma de pagamento da conta." };
+    }
+
+    // O clientId entra no where: o id da conta vem do navegador, e assim não
+    // dá pra mexer na conta de outra loja mandando outro id.
+    const { count } = await prisma.metaAdAccount.updateMany({
+      where: { id: contaId, clientId },
+      data: {
+        isPrepay: prePago,
+        // A leitura velha não vale mais: ou ela é de outra natureza (virou
+        // cartão), ou ainda não existe (virou Pix agora). Zerar o erro junto
+        // porque "não consegui ler o saldo" de uma conta que era cartão não
+        // diz nada sobre a conta de agora.
+        lastSyncError: null,
+      },
+    });
+    if (count === 0) return { erro: "Conta não encontrada nesta loja." };
+
+    if (!prePago) {
+      await prisma.balanceSnapshot.deleteMany({ where: { adAccountId: contaId } });
+    }
+
+    revalidar(clientId);
+    return {
+      ok: prePago
+        ? "Marcada como pré-paga (Pix). Aperte “Atualizar agora” pra buscar o saldo."
+        : "Marcada como cartão. O saldo deixa de ser acompanhado.",
+    };
+  });
+}
+
+/**
+ * Guarda quanto a loja combinou de investir por mês.
+ *
+ * É a régua do "o saldo está acabando?" quando ainda não há gasto de verdade
+ * pra olhar. R$ 100 é uma semana pra quem gasta R$ 300 no mês e é meio dia pra
+ * quem gasta R$ 6.000 — sem referência, nenhum aviso de saldo faz sentido.
+ *
+ * Aceita vazio pra limpar: loja que não tem combinado volta a não ter, em vez
+ * de ficar com um número errado que ninguém lembra de onde veio.
+ */
+export async function definirGastoMensal(
+  clientId: string,
+  reais: string,
+): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await quemPodeVincular(clientId);
+    if (!user) {
+      return { erro: "Só a direção define o investimento mensal da loja." };
+    }
+
+    const texto = reais.trim();
+    let centavos: number | null = null;
+
+    if (texto !== "") {
+      // Aceita "3000", "3.000", "3000,50" e "R$ 3.000,00" — é o que sai de um
+      // teclado de celular e de um copiar-e-colar da proposta. O ponto é
+      // milhar e a vírgula é decimal, como se escreve aqui.
+      const limpo = texto.replace(/[R$\s.]/g, "").replace(",", ".");
+      const valor = Number(limpo);
+      if (!Number.isFinite(valor) || valor < 0) {
+        return { erro: "Valor inválido. Escreva só o número, por exemplo 3000." };
+      }
+      // Um teto que não atrapalha ninguém e barra o dedo escorregado: dez
+      // milhões de reais por mês em anúncio não é loja de carro, é erro.
+      if (valor > 10_000_000) {
+        return { erro: "Valor alto demais — confira se não sobrou um zero." };
+      }
+      centavos = Math.round(valor * 100);
+    }
+
+    await prisma.client.update({
+      where: { id: clientId },
+      data: { gastoMensalPrevistoCents: centavos },
+    });
+
+    revalidar(clientId);
+    return {
+      ok:
+        centavos === null
+          ? "Investimento mensal apagado. O aviso de saldo volta a usar só o gasto real."
+          : "Investimento mensal guardado.",
+    };
+  });
+}
+
+/**
  * Vincula várias contas de uma vez, a partir da tela de descoberta.
  *
  * Cada par vem conferido por gente na tela — a sugestão por nome é palpite, e

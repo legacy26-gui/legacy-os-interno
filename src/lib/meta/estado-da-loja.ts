@@ -1,24 +1,50 @@
-// A cor de cada loja na lista.
+// Quando o saldo de uma loja preocupa — e quanto.
 //
-// ── Cor que informa, não cor que enfeita ──────────────────────────────────
+// ── Por que valor fixo não serve ──────────────────────────────────────────
 //
-// A tentação, quando alguém pede "mais visual", é pintar. Mas num sistema que
-// alguém abre quarenta vezes por dia, cor sem significado é ruído: depois de
-// uma semana o olho ignora tudo, inclusive o que importava.
+// A primeira versão disto dizia "abaixo de R$ 50 é crítico". Está errado, e
+// foi o Guilherme quem apontou: algumas lojas gastam R$ 300 no mês, outras
+// gastam R$ 3.000. R$ 100 é uma semana pra primeira e meio dia pra segunda.
+// Com régua fixa, ou a lista vive vermelha pra quem gasta muito, ou nunca
+// avisa quem gasta pouco.
 //
-// Então aqui cada cor quer dizer uma coisa, e sempre a mesma:
+// A régua certa é DIAS DE SALDO: quanto tempo o dinheiro ainda dura no ritmo
+// daquela loja. Isso se calibra sozinho, e é a pergunta que alguém de fato
+// faz quando olha a tela — "quando essa conta para?".
 //
-//   vermelho — está acabando o dinheiro, a campanha vai parar
-//   âmbar    — tem algo pra olhar: gastou sem lead, ou a leitura falhou
-//   verde    — está rodando e entregando
-//   cinza    — não tem conta vinculada; não é bom nem ruim, é vazio
+// ── De onde sai o ritmo ──────────────────────────────────────────────────
 //
-// Quem abre a tela e vê uma faixa vermelha já sabe o que fazer antes de ler
-// qualquer número. É esse o trabalho da cor.
+// Do gasto REAL dos últimos dias, que o sistema já guarda. É melhor que
+// qualquer número combinado, porque acompanha a realidade: loja que
+// acelerou na Black Friday passa a ser medida pelo ritmo da Black Friday.
+//
+// Quando não há gasto nenhum pra olhar — loja nova, ou que ficou parada —
+// usa o gasto mensal previsto, que é combinado com o cliente. E quando não
+// há nem um nem outro, não dá pra falar em dias: aí a tela diz só o valor,
+// sem fingir que sabe se é pouco ou muito.
 
-import { SALDO_CRITICO, SALDO_BAIXO } from "./saldo";
+import type { TomDaLoja } from "./tons";
 
-export type TomDaLoja = "critico" | "atencao" | "bom" | "neutro";
+export type { TomDaLoja };
+
+/** Quantos dias de gasto o sistema olha pra calcular o ritmo. */
+export const DIAS_DO_RITMO = 14;
+
+/** Abaixo disto a conta para hoje ou amanhã. */
+export const DIAS_SEM_SALDO = 1;
+/** Abaixo disto é pra resolver esta semana. */
+export const DIAS_ACABANDO = 3;
+/** Abaixo disto é pra deixar anotado. */
+export const DIAS_ATENCAO = 7;
+
+/**
+ * Saldo tão baixo que não vale calcular dias.
+ *
+ * Cinco reais é menos que um dia de qualquer conta que roda de verdade, e
+ * evita o caso bobo de uma loja parada com R$ 3 aparecer como "30 dias de
+ * saldo" porque o gasto diário também é quase zero.
+ */
+export const SALDO_RESIDUAL_CENTS = 500;
 
 export interface SinaisDaLoja {
   temConta: boolean;
@@ -28,48 +54,96 @@ export interface SinaisDaLoja {
   temPrePaga: boolean;
   /** Alguma conta com erro na última leitura. */
   comErro: boolean;
-  gastoCents: number;
+  /** Gasto somado nos últimos DIAS_DO_RITMO dias. */
+  gastoRecenteCents: number;
+  /** Quantos dias desse período têm dado. Menos que isso distorce a média. */
+  diasComDado: number;
+  /** O combinado com o cliente, quando houver. */
+  gastoMensalPrevistoCents: number | null;
+  /** Do período que a tela está mostrando — pro aviso de "gastou sem lead". */
+  gastoDoPeriodoCents: number;
   leads: number;
 }
 
-export function tomDaLoja(s: SinaisDaLoja): TomDaLoja {
-  if (!s.temConta) return "neutro";
-
-  // Dinheiro acabando ganha de tudo: é o único que PARA a campanha sozinho.
-  if (s.temPrePaga && s.saldoCents !== null && s.saldoCents < SALDO_CRITICO) return "critico";
-
-  // Erro é âmbar e não vermelho de propósito: vermelho quer dizer "a loja
-  // está em apuros". Erro quer dizer "o sistema não sabe" — é problema
-  // nosso, não dela, e confundir os dois faria o vermelho perder o sentido.
-  if (s.comErro) return "atencao";
-  if (s.temPrePaga && s.saldoCents !== null && s.saldoCents < SALDO_BAIXO) return "atencao";
-  // Gastou e não entregou nada.
-  if (s.gastoCents > 0 && s.leads === 0) return "atencao";
-
-  return "bom";
+export interface Veredito {
+  tom: TomDaLoja;
+  /** Quantos dias o saldo ainda dura. Null quando não dá pra saber. */
+  diasDeSaldo: number | null;
+  /** O ritmo usado, em centavos por dia. Null quando não há de onde tirar. */
+  gastoDiarioCents: number | null;
+  /** De onde veio o ritmo — a tela diz isso, pra ninguém confiar demais. */
+  origemDoRitmo: "gasto-real" | "combinado" | null;
 }
 
-/** A faixa colorida na beirada esquerda do cartão da loja. */
-export const FAIXA_DA_LOJA: Record<TomDaLoja, string> = {
-  critico: "bg-red-500",
-  atencao: "bg-amber-500",
-  bom: "bg-emerald-500",
-  neutro: "bg-border-forte",
-};
+/**
+ * Quanto a loja gasta por dia.
+ *
+ * Divide pelos dias QUE TÊM DADO, não pelos 14: loja vinculada há três dias
+ * teria o ritmo dividido por 14 e pareceria gastar cinco vezes menos do que
+ * gasta — e aí o saldo pareceria durar cinco vezes mais.
+ */
+export function gastoDiario(s: SinaisDaLoja): {
+  cents: number | null;
+  origem: Veredito["origemDoRitmo"];
+} {
+  if (s.gastoRecenteCents > 0 && s.diasComDado > 0) {
+    return { cents: Math.round(s.gastoRecenteCents / s.diasComDado), origem: "gasto-real" };
+  }
+  if (s.gastoMensalPrevistoCents && s.gastoMensalPrevistoCents > 0) {
+    return { cents: Math.round(s.gastoMensalPrevistoCents / 30), origem: "combinado" };
+  }
+  return { cents: null, origem: null };
+}
 
-/** Etiqueta de estado, pra quem não distingue bem as cores. */
-export const ETIQUETA_DA_LOJA: Record<TomDaLoja, { texto: string; classe: string } | null> = {
-  critico: {
-    texto: "Saldo acabando",
-    classe: "bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/30",
-  },
-  atencao: {
-    texto: "Olhar",
-    classe: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30",
-  },
-  // Sem etiqueta: o normal não precisa de selo. Etiqueta em tudo é etiqueta
-  // em nada — e a lista inteira verde vira ruído igual à lista inteira sem
-  // cor.
-  bom: null,
-  neutro: null,
-};
+export function avaliarLoja(s: SinaisDaLoja): Veredito {
+  const { cents: gastoDiarioCents, origem } = gastoDiario(s);
+
+  if (!s.temConta) {
+    return { tom: "neutro", diasDeSaldo: null, gastoDiarioCents, origemDoRitmo: origem };
+  }
+
+  const semSaldoNenhum =
+    s.temPrePaga && s.saldoCents !== null && s.saldoCents < SALDO_RESIDUAL_CENTS;
+
+  const dias =
+    s.temPrePaga && s.saldoCents !== null && gastoDiarioCents && gastoDiarioCents > 0
+      ? s.saldoCents / gastoDiarioCents
+      : null;
+
+  const pronto = (tom: TomDaLoja): Veredito => ({
+    tom,
+    diasDeSaldo: dias === null ? null : Math.floor(dias),
+    gastoDiarioCents,
+    origemDoRitmo: origem,
+  });
+
+  // Conta zerada ganha de tudo: é a única coisa que PARA a campanha sozinha,
+  // hoje, sem aviso.
+  if (semSaldoNenhum) return pronto("sem-saldo");
+  if (dias !== null && dias < DIAS_SEM_SALDO) return pronto("sem-saldo");
+  if (dias !== null && dias < DIAS_ACABANDO) return pronto("acabando");
+
+  // Erro é âmbar e não vermelho de propósito: vermelho quer dizer "a loja
+  // está em apuros", erro quer dizer "o sistema não sabe". É problema nosso,
+  // não dela, e confundir os dois faz o vermelho perder o sentido.
+  if (s.comErro) return pronto("atencao");
+  if (dias !== null && dias < DIAS_ATENCAO) return pronto("atencao");
+  if (s.gastoDoPeriodoCents > 0 && s.leads === 0) return pronto("atencao");
+
+  // Conta de Pix cujo saldo ninguém conseguiu ler ainda fica CINZA, não verde.
+  // Verde é uma afirmação — "olhei e está tudo bem" — e aqui o sistema não
+  // olhou. Pintar de verde o que não se sabe é a mesma mentira de escrever
+  // R$ 0,00 no lugar de "indisponível", só que mais difícil de perceber.
+  if (s.temPrePaga && s.saldoCents === null) return pronto("neutro");
+
+  return pronto("bom");
+}
+
+/** "2 dias", "menos de 1 dia", "18 dias" — do jeito que se fala. */
+export function comoDias(dias: number | null): string | null {
+  if (dias === null) return null;
+  if (dias < 1) return "menos de 1 dia";
+  if (dias === 1) return "1 dia";
+  if (dias > 60) return "mais de 60 dias";
+  return `${dias} dias`;
+}

@@ -49,7 +49,13 @@ export function SeletorEmpresa({
         aria-expanded={aberto}
       >
         <IconeAtual size={15} className="text-accent shrink-0" />
-        <span className="text-sm font-medium max-w-[9rem] truncate">{rotulos[atual]}</span>
+        {/* Mais curto no celular. Com 9rem o cabeçalho inteiro passava uns
+            nove pixels da largura da tela, e a PÁGINA toda ganhava rolagem
+            lateral — em toda tela do sistema, não só aqui. Truncado ainda se
+            lê, e o ícone já diz qual empresa é. */}
+        <span className="text-sm font-medium max-w-[5.5rem] sm:max-w-[9rem] truncate">
+          {rotulos[atual]}
+        </span>
         <ChevronDown size={14} className="text-foreground-muted shrink-0" />
       </button>
 

@@ -250,6 +250,16 @@ model Client {
   // Vazio = nunca renovou desde que entrou. Arte gasta é um dos três motivos
   // de uma loja parar de vender, junto com falta de vídeo e comercial travado.
   ultimaArteEm DateTime?
+  // Quanto a loja combinou de investir por mês em anúncio, em centavos.
+  //
+  // Serve de régua pra "o saldo está acabando?". R$ 100 é uma semana pra quem
+  // gasta R$ 300 no mês e é meio dia pra quem gasta R$ 6.000 — sem referência
+  // não dá pra dizer se está acabando.
+  //
+  // É o plano B: quando há gasto de verdade nos últimos dias, a conta usa o
+  // gasto REAL, que é melhor porque acompanha a realidade sozinho. Este campo
+  // entra quando a loja é nova ou ficou parada e não há de onde calcular.
+  gastoMensalPrevistoCents Int?
   // Último dia em que alguém da casa foi na loja. Vazio = nunca registrou
   // visita — que não é o mesmo que "nunca foi", é só que ninguém marcou.
   // Guarda só a data, não o histórico: o que se quer saber é há quanto tempo

@@ -1,7 +1,16 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { somar, custoPorLead, ctr, ZERO, type Numeros, type Intervalo } from "@/lib/meta/insights";
+import {
+  somar,
+  custoPorLead,
+  ctr,
+  ZERO,
+  janelaDeDias,
+  type Numeros,
+  type Intervalo,
+} from "@/lib/meta/insights";
+import { DIAS_DO_RITMO } from "@/lib/meta/estado-da-loja";
 
 // De onde vêm as linhas da tela da loja.
 //
@@ -88,6 +97,40 @@ export async function linhasDaLoja(
     },
     select: CAMPOS,
   });
+}
+
+/**
+ * O ritmo de gasto da loja: quanto saiu nos últimos dias e em quantos dias.
+ *
+ * É a régua do "o saldo está acabando?". Vem dos últimos dias COMPLETOS e não
+ * do período que a tela está mostrando: a pergunta é sempre sobre agora, mesmo
+ * quando se está olhando o mês passado.
+ *
+ * Agrupa por dia pra saber por quantos dias dividir. Conta vinculada anteontem
+ * tem dois dias de dado; dividir por catorze faria o gasto parecer sete vezes
+ * menor e o saldo parecer durar sete vezes mais do que dura.
+ */
+export async function ritmoDaLoja(
+  idsDasContas: string[]
+): Promise<{ gastoRecenteCents: number; diasComDado: number }> {
+  if (idsDasContas.length === 0) return { gastoRecenteCents: 0, diasComDado: 0 };
+
+  const janela = janelaDeDias(DIAS_DO_RITMO);
+  const porDia = await prisma.metaInsightDaily.groupBy({
+    by: ["date"],
+    where: {
+      adAccountId: { in: idsDasContas },
+      date: { gte: janela.de, lte: janela.ate },
+    },
+    _sum: { spendCents: true },
+  });
+
+  return {
+    gastoRecenteCents: porDia.reduce((s, g) => s + (g._sum.spendCents ?? 0), 0),
+    // groupBy por data já junta as contas: duas contas rodando no mesmo dia
+    // são um dia, não dois.
+    diasComDado: porDia.length,
+  };
 }
 
 /** O cadastro: campanhas, conjuntos e anúncios que EXISTEM na conta. */

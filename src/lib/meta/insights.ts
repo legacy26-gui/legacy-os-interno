@@ -146,6 +146,19 @@ function doAtalho(a: Atalho, agora: Date): Intervalo {
 }
 
 /**
+ * Os últimos `n` dias COMPLETOS: de anteontem-e-tanto até ontem.
+ *
+ * Hoje fica fora de propósito. Serve pra calcular ritmo de gasto, e um dia que
+ * ainda está acontecendo tem sempre menos gasto do que vai ter — incluí-lo
+ * puxaria a média pra baixo e faria o saldo parecer durar mais do que dura.
+ * Para a conta que importa aqui, errar pra baixo é o lado perigoso.
+ */
+export function janelaDeDias(n: number, agora = new Date()): { de: Date; ate: Date } {
+  const ontem = somarDias(hojeUTC(agora), -1);
+  return { de: somarDias(ontem, -(n - 1)), ate: ontem };
+}
+
+/**
  * Lê o período da URL.
  *
  * Datas soltas (`de`/`ate`) ganham do atalho: se a pessoa escolheu um

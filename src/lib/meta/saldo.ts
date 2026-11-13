@@ -77,34 +77,15 @@ export function tempoDesde(quando: Date, agora = new Date()): string {
 
 // ───────────────────────── Quando o saldo preocupa ─────────────────────────
 //
-// ATENÇÃO: estes dois números são um PALPITE meu, não a regra da casa. Ponho
-// um valor pra tela ter cor — lista de saldo sem sinal de urgência é só uma
-// lista, e ninguém olha. Guilherme: me diga quanto é "acabando" pra uma loja
-// de vocês e eu troco aqui, num lugar só.
+// Isto morava aqui como dois valores fixos — "abaixo de R$ 50 é crítico,
+// abaixo de R$ 150 é baixo" — e eu tinha deixado escrito que era um palpite
+// meu à espera da regra da casa. A regra chegou, e ela não é um valor: é
+// QUANTOS DIAS o saldo ainda dura, porque uma loja gasta R$ 300 no mês e a
+// outra gasta R$ 3.000, e R$ 100 é uma semana pra primeira e meio dia pra
+// segunda.
 //
-// Pensado em cima do gasto diário: conta que gasta R$ 50/dia e tem R$ 50
-// morre amanhã; com R$ 150 dá o fim de semana. É isso que a cor tenta dizer —
-// não "é pouco dinheiro", e sim "quantos dias ainda roda".
-
-/** Abaixo disso a campanha para em pouco tempo. */
-export const SALDO_CRITICO = 5_000; // R$ 50,00
-
-/** Abaixo disso já é hora de pedir Pix. */
-export const SALDO_BAIXO = 15_000; // R$ 150,00
-
-export type TomDoSaldo = "critico" | "baixo" | "ok";
-
-export function estadoDoSaldo(centavos: number): TomDoSaldo {
-  if (centavos < SALDO_CRITICO) return "critico";
-  if (centavos < SALDO_BAIXO) return "baixo";
-  return "ok";
-}
-
-export const COR_DO_SALDO: Record<TomDoSaldo, string> = {
-  critico: "text-red-500",
-  baixo: "text-amber-600 dark:text-amber-400",
-  ok: "text-foreground",
-};
+// Está em src/lib/meta/estado-da-loja.ts, que é onde ela pode usar o gasto
+// real da loja. Aqui ficou só a leitura do número.
 
 /** Formato de ID de conta de anúncio da Meta: "act_" e só números depois. */
 export const FORMATO_DA_CONTA = /^act_\d+$/;

@@ -200,7 +200,21 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
 
       {/* Meta Ads: saldo pré-pago (Pix). Conta que zera para a campanha, e
           campanha parada é loja sem lead no dia seguinte. */}
-      <BlocoMetaAds clientId={client.id} contas={contasMeta} podeVincular={podeVincularConta} />
+      <BlocoMetaAds
+        clientId={client.id}
+        contas={contasMeta}
+        podeVincular={podeVincularConta}
+        // Formatado aqui, do lado do servidor: o campo do formulário já abre
+        // com "3.000,00" escrito como se escreve, e não com 300000.
+        gastoMensalTexto={
+          client.gastoMensalPrevistoCents === null
+            ? ""
+            : (client.gastoMensalPrevistoCents / 100).toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })
+        }
+      />
 
       {client.onboardings[0] && (
         <DiagnosticoSection

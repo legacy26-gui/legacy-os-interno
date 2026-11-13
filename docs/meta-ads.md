@@ -114,6 +114,49 @@ confere depois**.
 "Buscado" quer dizer buscado **com sucesso**: tentativa que terminou em erro
 não ensina nada sobre o gasto.
 
+### "Saldo acabando" se mede em DIAS, não em reais
+
+A primeira versão dizia "abaixo de R$ 50 é crítico, abaixo de R$ 150 é baixo".
+Está errado, e foi o Guilherme quem apontou: **algumas lojas gastam R$ 300 no
+mês e outras gastam R$ 3.000**. R$ 100 é uma semana pra primeira e meio dia
+pra segunda. Com régua fixa, ou a lista vive vermelha pra quem gasta muito, ou
+nunca avisa quem gasta pouco.
+
+A régua é **dias de saldo** = saldo ÷ gasto médio por dia. Isso se calibra
+sozinho, e é a pergunta que de fato se faz na frente da tela: *quando essa
+conta para?*
+
+De onde sai o gasto por dia, nesta ordem:
+
+1. **O gasto real dos últimos 14 dias completos**, que o sistema já guarda. É
+   melhor que qualquer número combinado porque acompanha a realidade: loja que
+   acelerou na Black Friday passa a ser medida pelo ritmo da Black Friday.
+2. **O investimento mensal combinado** (`Client.gastoMensalPrevistoCents`,
+   definido na ficha da loja), ÷ 30. Entra quando a loja é nova ou ficou
+   parada e não há de onde calcular.
+3. **Nada.** Aí a tela mostra só o valor e não fala em dias — em vez de chutar.
+
+Os cortes estão em `src/lib/meta/estado-da-loja.ts`:
+
+| Tom | Quando | Como aparece |
+|---|---|---|
+| `sem-saldo` | menos de 1 dia, ou saldo < R$ 5 | cartão vermelho, etiqueta **SEM SALDO** |
+| `acabando` | menos de 3 dias | cartão rosa, etiqueta **SALDO ACABANDO** |
+| `atencao` | menos de 7 dias, erro de leitura, ou gastou sem lead | borda âmbar, etiqueta **OLHAR** |
+| `bom` | o resto | faixa verde, sem etiqueta |
+| `neutro` | sem conta, ou saldo que não deu pra ler | faixa cinza |
+
+Duas decisões que parecem detalhe e não são:
+
+- **A média divide pelos dias QUE TÊM DADO, não por 14.** Conta vinculada
+  anteontem tem dois dias de histórico; dividir por catorze faria o gasto
+  parecer sete vezes menor e o saldo parecer durar sete vezes mais.
+- **Erro de leitura é âmbar, não vermelho.** Vermelho quer dizer "a loja está
+  em apuros"; erro quer dizer "o sistema não sabe". É problema nosso, não
+  dela, e confundir os dois faz o vermelho perder o sentido. Pela mesma razão,
+  conta de Pix sem leitura fica **cinza** e não verde: verde é a afirmação
+  "olhei e está tudo bem".
+
 ### O que conta como lead é configuração DA CONTA
 
 Uma loja roda WhatsApp, outra roda formulário. Somar as duas como se fossem a
@@ -295,3 +338,9 @@ Ficam escritas porque custaram tempo:
   servidor compartilham mora em `insights.ts`, que é puro.
 - **Testar só num tema esconde metade.** Uma faixa de `#f1f1f3` a 30% sobre
   branco é branco. Mudança visual passa pelos dois temas.
+- **Uma palavra invisível fazia o celular rolar de lado.** O texto só-pra-
+  leitor-de-tela (`sr-only`) é posicionado em absoluto; sem um ancestral
+  posicionado ele se ancora na página inteira. Dentro de uma tabela que rola,
+  ele ia parar no x=655 e esticava o documento até lá — a tela toda rolava de
+  lado por causa da palavra "Atualizar", que ninguém vê. A célula leva
+  `relative` pra prender o texto nela.

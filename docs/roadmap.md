@@ -10,14 +10,38 @@ Quando um item sair, ele some daqui e vira seção em `docs/`.
 
 ## Antes de tudo: duas coisas que não são funcionalidade
 
-**O backup não roda.** `DATABASE_URL` e `BACKUP_PASSPHRASE` nunca foram
-postos nos secrets do GitHub. O sistema hoje guarda a carteira inteira, o
-histórico de vendas e todo o Meta; um acidente no banco apaga isso. É o item
-mais urgente da lista e não é código.
+**~~O backup não roda.~~ Resolvido em 13/11/2026.** Sai todo dia às 3h da
+manhã, criptografado, guardado fora do Neon e fora da Vercel. A primeira
+cópia tem 244 MB e 60 tabelas.
 
-**O token de escrita da Meta.** `META_ADS_WRITE_TOKEN`, com `ads_management`.
-Sem ele, ligar/desligar campanha (que já está pronto) fica travado, e tudo que
-mexe em anúncio depende dele.
+Falta um teste que ninguém fez ainda: **restaurar**. Backup que nunca foi
+aberto é esperança, não backup. Baixar o arquivo e conferir que a senha o
+decifra é tarefa de um dia tranquilo — melhor descobrir ali que num dia ruim.
+
+**~~O token de escrita da Meta.~~ Resolvido em 13/11/2026**, com uma ressalva
+que vira pendência: é um token do Graph Explorer, de **60 dias**. Quando
+vencer, o Meta Ads inteiro para de atualizar sem avisar, e o sintoma vai
+parecer defeito do sistema.
+
+Duas saídas, e a segunda é a boa:
+
+1. Anotar na agenda pra renovar a cada dois meses.
+2. **Trocar por um token de usuário do sistema**, que não expira. Hoje a BM
+   não libera — vale descobrir por quê (costuma ser verificação da BM ou
+   papel de administrador).
+
+E vale fazer o sistema avisar sozinho quando o token estiver perto de vencer:
+o aviso tem que chegar antes da parada, não depois.
+
+**Dois projetos na Vercel apontando pro mesmo repositório.** O endereço que a
+equipe usa (`legacy-os-interno.vercel.app`) está servindo código de
+13/11 de manhã e não recebe mais implantação; o do time `legacy9` está em dia,
+mas protegido por senha. Enquanto isso não for resolvido, **nada do que for
+desenvolvido chega em quem usa**.
+
+**A fatura da Vercel em atraso.** O time aparece como `Overdue` com aviso de
+suspensão. Suspensão derruba o site e o banco junto, porque o Neon é cobrado
+por ali.
 
 ---
 

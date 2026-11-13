@@ -60,6 +60,8 @@ model User {
   alertas            AlertaEstado[]
   clientesConferidos ClienteConferido[] @relation("QuemConferiu")
   relatoriosEnviados RelatorioEnviado[] @relation("QuemMandouRelatorio")
+  studioArtesCriadas   StudioArte[] @relation("StudioCriou")
+  studioArtesRevisadas StudioArte[] @relation("StudioRevisou")
   resgatesFeitos     AcaoDeResgate[]    @relation("QuemResgatou")
   verbasPedidas      PedidoDeVerba[]    @relation("VerbaPedidaPor")
   metaAcoes          MetaAcao[]         @relation("MetaAcaoFeitaPor")
@@ -231,6 +233,110 @@ model RoboExecucao {
   @@map("robo_execucoes")
 }
 
+// ─────────────────────────── Legacy Studio ──────────────────────────────
+//
+// A produção de arte e vídeo das lojas, feita pelo sistema com revisão de
+// gente no fim. Hoje cada arte é montada à mão num editor de imagem a partir
+// da foto que a loja mandou — mesma moldura, mesmo preço, mesma logo, trinta
+// vezes por semana.
+//
+// ── A decisão que manda neste pedaço: a arte NÃO é guardada ──────────────
+//
+// Guarda-se a foto do carro e os dados do veículo. O PNG de feed e o de
+// Stories são desenhados na hora em que alguém abre ou baixa.
+//
+// É a mesma escolha do relatório do cliente, e pelos mesmos motivos. Guardar
+// as duas artes triplicaria o espaço por anúncio — e, pior, congelaria o
+// desenho: no dia em que a loja trocar de logo ou a gente melhorar o layout,
+// as artes antigas continuariam com a cara velha, e alguém teria que achar e
+// refazer uma a uma. Desenhando na hora, trocar a logo conserta tudo.
+
+/**
+ * A identidade visual de uma loja.
+ *
+ * Uma por cliente. Sem ela a arte ainda sai, com a cara neutra do sistema —
+ * mas é ela que faz a peça parecer da loja e não de um gerador qualquer.
+ */
+model StudioMarca {
+  id       String @id @default(cuid())
+  clientId String @unique
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  /** A logo da loja, como data URI. Reduzida na hora de subir. */
+  logoUrl String? @db.Text
+
+  /** As cores da loja, em #rrggbb. O padrão é um preto-e-dourado neutro. */
+  corPrimaria   String @default("#FFC20E")
+  corFundo      String @default("#0A0A0A")
+  corTexto      String @default("#FFFFFF")
+
+  /** Vão no rodapé da arte, quando existem. */
+  telefone String?
+  endereco String?
+
+  atualizadoEm DateTime @updatedAt
+  criadoEm     DateTime @default(now())
+
+  @@map("studio_marcas")
+}
+
+/**
+ * O estado de uma peça na esteira.
+ *
+ * Quatro e não dois porque "pronto" e "aprovado" são coisas diferentes: a
+ * máquina termina, mas quem responde pelo que vai ao ar é gente. E
+ * "corrigir" precisa existir separado de "rascunho" pra que o pedido de
+ * correção não se perca junto com o que nunca foi olhado.
+ */
+enum StudioStatus {
+  PRONTO
+  APROVADO
+  CORRIGIR
+}
+
+/**
+ * Uma arte de veículo.
+ *
+ * Um registro gera DUAS peças — feed (quadrado) e Stories (vertical) — porque
+ * são a mesma informação em dois recortes. Separar em dois registros faria a
+ * equipe aprovar duas vezes a mesma coisa e deixaria aparecer no mundo um
+ * feed aprovado com um Stories reprovado do mesmo carro.
+ */
+model StudioArte {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  /** A foto do carro, já reduzida, como data URI. */
+  fotoUrl String @db.Text
+
+  // ── O que vai escrito na arte ──
+  modelo     String
+  ano        String?
+  kmTexto    String?
+  precoCents Int?
+  /** "Entrada + 48x", "Aceita troca", o que a loja quiser destacar. */
+  chamada    String?
+
+  status   StudioStatus @default(PRONTO)
+  /** O que o revisor pediu pra mudar. Só existe quando status = CORRIGIR. */
+  correcao String?      @db.Text
+
+  criadoPorId String?
+  criadoPor   User?   @relation("StudioCriou", fields: [criadoPorId], references: [id], onDelete: SetNull)
+
+  revisadoPorId String?
+  revisadoPor   User?   @relation("StudioRevisou", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  revisadoEm    DateTime?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+
+  @@index([clientId, criadoEm])
+  @@index([status, criadoEm])
+  @@map("studio_artes")
+}
+
 enum AgendaItemType {
   AGENDAMENTO
   REUNIAO
@@ -341,6 +447,8 @@ model Client {
   cobrancasPuladas   CobrancaPulada[]
   conferencias       ClienteConferido[]
   relatoriosEnviados RelatorioEnviado[]
+  studioMarca        StudioMarca?
+  studioArtes        StudioArte[]
   resgates           AcaoDeResgate[]
   metaAdAccounts     MetaAdAccount[]
   gravacoes          Gravacao[]

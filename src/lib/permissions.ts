@@ -18,6 +18,7 @@ export const MODULES = [
   "playbooks",
   "configuracoes",
   "gravacoes",
+  "studio",
 ] as const;
 
 export type ModuleKey = (typeof MODULES)[number];
@@ -52,6 +53,10 @@ const MODULE_ACCESS: Record<ModuleKey, Role[]> = {
   // Quem lança gravação é a Andrielli, que é Gerente — não o gestor de
   // tráfego. Eu tinha assumido errado quando a tela nasceu.
   gravacoes: ["ADMIN", "GERENTE"],
+  // O gestor de tráfego entra: é ele que está com a loja no telefone quando
+  // o carro chega, e fazer a arte depender de outra pessoa é o que faz o
+  // anúncio sair dois dias depois. A revisão continua sendo da direção.
+  studio: ["ADMIN", "GERENTE", "GESTOR_TRAFEGO"],
 };
 
 // Quais telas existem em cada empresa.
@@ -103,6 +108,7 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   // geral mostra tarefa, contrato e férias da agência: ele não pode abrir pro
   // Treinamentos, mas a gravação pode.
   { prefix: "/gravacoes", module: "gravacoes" },
+  { prefix: "/studio", module: "studio" },
   { prefix: "/suporte", module: "suporte" },
   { prefix: "/gestao-contas", module: "gestao-contas" },
   // O ranking das lojas vive fora de /gestao-contas pra ser uma aba própria no

@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
-  Trophy, Video, Car, BellRing, TrendingUp, Megaphone,
+  Trophy, Video, Car, BellRing, TrendingUp, Megaphone, Sparkles,
   PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import type { Empresa, Role } from "@/generated/prisma/enums";
@@ -54,6 +54,9 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/meta-ads", label: "Meta Ads", icon: Megaphone, module: "clientes" },
       { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
       { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
+      // O Studio fica no Operacional e não num grupo próprio: quem usa é a
+      // mesma pessoa que já está aqui quando o carro chega na loja.
+      { href: "/studio", label: "Legacy Studio", icon: Sparkles, module: "studio" },
     ],
   },
   {

@@ -8,6 +8,7 @@ import {
   Check,
   Store,
 } from "lucide-react";
+import { Voltar } from "@/components/voltar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { exigirClienteDaCarteira } from "@/lib/carteira";
@@ -107,12 +108,7 @@ export default async function ResolverPage({
 
   return (
     <div className="flex flex-col gap-4 max-w-3xl">
-      <Link
-        href="/controle-vendas"
-        className="self-start inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground"
-      >
-        <ArrowLeft size={14} /> Voltar ao controle
-      </Link>
+      <Voltar href="/controle-vendas">Controle de Vendas</Voltar>
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0">

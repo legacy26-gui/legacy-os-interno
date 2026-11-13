@@ -30,12 +30,27 @@ export type { TomDaLoja };
 /** Quantos dias de gasto o sistema olha pra calcular o ritmo. */
 export const DIAS_DO_RITMO = 14;
 
-/** Abaixo disto a conta para hoje ou amanhã. */
+// ── Onde ficam os cortes, e por que aqui ─────────────────────────────────
+//
+// A loja abastece POR SEMANA. Isso muda tudo: sete dias de saldo não é
+// alerta, é o tanque cheio. A primeira versão disto avisava abaixo de sete
+// dias, e o Guilherme viu na hora o que ia acontecer — a lista ficaria
+// amarela quase a semana inteira, todo mundo se acostumaria com o amarelo, e
+// aí ele não avisaria mais nada.
+//
+// Então o corte não é "pouco saldo". É "não chega no próximo abastecimento".
+// Num ciclo de sete dias, isso são os dois últimos: um dia de amarelo pra
+// cobrar o Pix, um de vermelho se ele não veio.
+//
+// Se um dia alguma loja passar a abastecer por mês, estes números continuam
+// valendo — ela só ficaria verde por muito mais tempo, que é o certo.
+
+/** Abaixo disto a conta para hoje. */
 export const DIAS_SEM_SALDO = 1;
-/** Abaixo disto é pra resolver esta semana. */
-export const DIAS_ACABANDO = 3;
-/** Abaixo disto é pra deixar anotado. */
-export const DIAS_ATENCAO = 7;
+/** Abaixo disto o Pix já está atrasado. */
+export const DIAS_ACABANDO = 2;
+/** Abaixo disto é hora de cobrar o Pix da semana. */
+export const DIAS_ATENCAO = 3;
 
 /**
  * Saldo tão baixo que não vale calcular dias.

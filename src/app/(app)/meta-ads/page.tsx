@@ -17,7 +17,13 @@ import {
   ZERO,
 } from "@/lib/meta/insights";
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
-import { avaliarLoja, comoDias, DIAS_DO_RITMO, DIAS_ACABANDO } from "@/lib/meta/estado-da-loja";
+import {
+  avaliarLoja,
+  comoDias,
+  DIAS_DO_RITMO,
+  DIAS_ACABANDO,
+  DIAS_ATENCAO,
+} from "@/lib/meta/estado-da-loja";
 import {
   FAIXA_DA_LOJA,
   FUNDO_DA_LOJA,
@@ -39,15 +45,14 @@ import { Link2, FileBarChart, Wallet, TrendingUp, Users, Target } from "lucide-r
 // "Cada um só vê o seu": o recorte é o mesmo do resto do sistema
 // (escopoDaCarteira). Gestor de tráfego vê as lojas dele, direção vê a casa.
 //
-// A ordem são DOIS grupos, e dentro de cada um o nome da loja de A a Z:
-// primeiro quem tem conta vinculada, depois quem não tem. O motivo é prático —
-// loja sem conta é linha sem nenhum número, e espalhada no meio da lista ela
-// corta a leitura das colunas em pedaços. No fim, as que faltam vincular ficam
-// juntas, que é como se trabalha nelas.
+// A ordem é a URGÊNCIA: a loja que para primeiro aparece primeiro. Vermelho
+// no topo, depois âmbar, e dentro de cada cor a que tem menos dias de saldo.
+// Loja sem conta vinculada vai pro fim — é linha sem número nenhum, e
+// espalhada no meio ela corta a leitura das colunas em pedaços.
 //
-// O que NÃO ordena a lista é a urgência. Lista que se reordena pelo saldo ou
-// pelo gasto embaralha a tela a cada atualização, e aí ninguém acha a loja que
-// veio procurar. A urgência vem da cor e do aviso no topo, não da posição.
+// Esta tela não é onde se PROCURA uma loja pelo nome; pra isso existe a ficha
+// do cliente. É a tela de onde se trabalha a fila do dia, e fila se ordena por
+// urgência.
 
 // A varredura tem orçamento de 45s (ver ORCAMENTO_MS em lib/actions/meta-ads).
 // 60 aqui dá a folga pra ela terminar e responder, e é um valor que vale em
@@ -60,6 +65,17 @@ export const maxDuration = 60;
 // A borda fica nas CÉLULAS e não na linha porque <tr> não aceita borda
 // arredondada: a primeira célula fecha o canto da esquerda, a última o da
 // direita, e as do meio só levam as bordas de cima e de baixo.
+/** Do mais urgente pro menos. É isto que põe uma loja acima da outra. */
+const ORDEM_DO_TOM: Record<TomDaLoja, number> = {
+  "sem-saldo": 0,
+  acabando: 1,
+  atencao: 2,
+  // Cinza vem antes de verde de propósito: "não consegui ler o saldo" é uma
+  // pendência de alguém, e verde é o lugar de quem não precisa de nada.
+  neutro: 3,
+  bom: 4,
+};
+
 const celDe = (tom: TomDaLoja) => `border-y ${FUNDO_DA_LOJA[tom]}`;
 
 /**
@@ -161,9 +177,34 @@ export default async function MetaAdsPage({
         veredito,
       };
     })
-    // Conta vinculada primeiro. `sort` do JavaScript é estável, então o A-Z
-    // que veio do banco se mantém dentro de cada grupo.
-    .sort((a, b) => Number(b.contas.length > 0) - Number(a.contas.length > 0));
+    // ── A ordem: quem para primeiro aparece primeiro ────────────────────
+    //
+    // Eu tinha deixado em A-Z de propósito, com o argumento de que lista que
+    // se reordena embaralha a tela e ninguém acha a loja que veio procurar.
+    // O argumento está certo e a conclusão estava errada: esta tela não é
+    // onde se PROCURA uma loja — pra isso existe a ficha do cliente. Esta é
+    // a tela de onde se trabalha a fila do dia, e fila se ordena por
+    // urgência, não por alfabeto.
+    //
+    // Então: primeiro o vermelho, depois o âmbar, e dentro de cada cor a loja
+    // com MENOS dias de saldo em cima — a que está mais perto de parar.
+    .sort((a, b) => {
+      // Loja sem conta vai pro fim, seja qual for o resto.
+      const temConta = Number(b.contas.length > 0) - Number(a.contas.length > 0);
+      if (temConta !== 0) return temConta;
+
+      const urgencia = ORDEM_DO_TOM[a.veredito.tom] - ORDEM_DO_TOM[b.veredito.tom];
+      if (urgencia !== 0) return urgencia;
+
+      // Menos dias em cima. Quem não tem conta de dias (sem ritmo, ou no
+      // cartão) fica depois de quem tem: "não sei quantos dias" não disputa
+      // o topo com "dois dias".
+      const da = a.veredito.diasDeSaldo ?? Number.POSITIVE_INFINITY;
+      const db = b.veredito.diasDeSaldo ?? Number.POSITIVE_INFINITY;
+      if (da !== db) return da - db;
+
+      return a.cliente.companyName.localeCompare(b.cliente.companyName, "pt-BR");
+    });
 
   const comConta = linhas.filter((l) => l.contas.length > 0);
   const semConta = linhas.filter((l) => l.contas.length === 0);
@@ -518,8 +559,11 @@ export default async function MetaAdsPage({
           quer dizer "parou". */}
       <div className="rounded-xl border border-border bg-surface px-4 py-3 flex flex-wrap gap-x-5 gap-y-2">
         <Legenda tom="sem-saldo" texto="Sem saldo — a campanha parou ou para hoje" />
-        <Legenda tom="acabando" texto={`Acabando — menos de ${DIAS_ACABANDO} dias de saldo`} />
-        <Legenda tom="atencao" texto="Olhar — saldo curto, erro de leitura ou gasto sem lead" />
+        <Legenda tom="acabando" texto={`Acabando — menos de ${DIAS_ACABANDO} dias, o Pix está atrasado`} />
+        <Legenda
+          tom="atencao"
+          texto={`Olhar — menos de ${DIAS_ATENCAO} dias, erro de leitura ou gasto sem lead`}
+        />
         <Legenda tom="bom" texto="Em ordem" />
         <Legenda tom="neutro" texto="Sem conta, ou saldo que não deu pra ler" />
       </div>

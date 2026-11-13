@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, ClipboardCheck, CheckCircle2, AlertCircle } from "lucide-react";
+import { Voltar } from "@/components/voltar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { veTodaACarteira } from "@/lib/carteira";
@@ -50,9 +51,7 @@ export default async function ChecklistHojePage() {
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link href="/gestao-contas" className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground mb-2">
-          <ArrowLeft size={15} /> Voltar para Gestão de Contas
-        </Link>
+        <Voltar href="/gestao-contas">Gestão de Contas</Voltar>
         <h1 className="text-xl font-semibold flex items-center gap-2">
           <ClipboardCheck size={20} className="text-accent" /> Checklist de hoje
         </h1>

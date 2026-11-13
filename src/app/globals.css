@@ -79,3 +79,54 @@ body {
     border-color: var(--border);
   }
 }
+
+/* ───────────────────────── O menu recolhido ─────────────────────────
+ *
+ * Quem decide a largura do menu é o CSS, lendo um atributo que um script
+ * põe no <html> antes da primeira pintura (ver theme-script.tsx). O React
+ * não participa disso de propósito: se ele aplicasse a largura depois de
+ * montar, o menu abriria largo e encolheria na frente da pessoa a cada
+ * navegação — e o HTML do servidor divergiria do navegador, que é o erro de
+ * hidratação que já pegamos aqui uma vez.
+ *
+ * TUDO aqui dentro vale só no computador (min-width: 768px). No celular o
+ * menu é gaveta: ou está aberto por inteiro ou não está na tela, e recolher
+ * pra ícones ali não resolveria nada.
+ *
+ * Recolhido e NÃO escondido: menu que some inteiro faz perder o lugar onde
+ * se está. A faixa de ícones continua mostrando qual aba está acesa. */
+
+@media (min-width: 768px) {
+  html[data-menu="recolhido"] .menu-lateral {
+    width: 4.5rem;
+  }
+
+  /* O texto sai; o ícone fica, centralizado. */
+  html[data-menu="recolhido"] .menu-lateral [data-menu-rotulo] {
+    display: none;
+  }
+  html[data-menu="recolhido"] .menu-lateral [data-menu-link] {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  /* Sem espaço pra "COMERCIAL", "OPERACIONAL": o cabeçalho da pasta sai e os
+     itens dela aparecem sempre. Pasta fechada e sem rótulo seria uma fileira
+     de ícones que some sem explicação. */
+  html[data-menu="recolhido"] .menu-lateral [data-menu-pasta] {
+    display: none;
+  }
+  html[data-menu="recolhido"] .menu-lateral [data-menu-itens] {
+    display: flex;
+  }
+
+  /* O par de setas do botão de puxar: só uma aparece por vez. */
+  html:not([data-menu="recolhido"]) .menu-lateral [data-menu-abrir] {
+    display: none;
+  }
+  html[data-menu="recolhido"] .menu-lateral [data-menu-fechar] {
+    display: none;
+  }
+}
+

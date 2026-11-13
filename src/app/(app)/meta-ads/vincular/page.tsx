@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, Link2, AlertTriangle } from "lucide-react";
+import { Voltar } from "@/components/voltar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CARTEIRA, escopoDaCarteira } from "@/lib/carteira";
@@ -60,7 +61,7 @@ export default async function VincularPage() {
   if (!resposta.ok) {
     return (
       <div className="flex flex-col gap-4 max-w-2xl">
-        <Voltar />
+        <Voltar href="/meta-ads">Meta Ads</Voltar>
         <div className="rounded-2xl border border-red-500/50 bg-red-500/5 p-6 flex flex-col gap-3">
           <h1 className="font-semibold flex items-center gap-2">
             <AlertTriangle size={18} className="text-red-500" /> Não deu pra perguntar à Meta
@@ -92,7 +93,7 @@ export default async function VincularPage() {
   return (
     <div className="flex flex-col gap-5 max-w-5xl">
       <div>
-        <Voltar />
+        <Voltar href="/meta-ads">Meta Ads</Voltar>
         <h1 className="text-xl font-semibold flex items-center gap-2 mt-2">
           <Link2 size={20} className="text-accent" /> Vincular contas de anúncio
         </h1>
@@ -135,16 +136,6 @@ export default async function VincularPage() {
   );
 }
 
-function Voltar() {
-  return (
-    <Link
-      href="/meta-ads"
-      className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground"
-    >
-      <ArrowLeft size={14} /> Meta Ads
-    </Link>
-  );
-}
 
 function Cartao({ titulo, valor, fraco }: { titulo: string; valor: string; fraco?: boolean }) {
   return (

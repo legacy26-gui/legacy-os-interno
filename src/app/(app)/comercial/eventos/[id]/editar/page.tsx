@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
+import { Voltar } from "@/components/voltar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { empresaAtual } from "@/lib/empresa-atual";
@@ -20,9 +21,7 @@ export default async function EditarEventoComercialPage({ params }: { params: Pr
 
   return (
     <div className="max-w-2xl">
-      <Link href="/comercial" className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground mb-4">
-        <ArrowLeft size={15} /> Voltar para Comercial
-      </Link>
+      <Voltar href="/comercial">Comercial</Voltar>
       <h1 className="text-xl font-semibold mb-6">Editar evento comercial</h1>
       <div className="rounded-2xl border border-border bg-surface p-6">
         <EventoForm event={event} action={boundUpdate} />

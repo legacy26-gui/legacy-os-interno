@@ -21,6 +21,7 @@ import {
   Trash2,
   Pin,
 } from "lucide-react";
+import { Voltar } from "@/components/voltar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { escopoDaCarteira } from "@/lib/carteira";
@@ -223,9 +224,7 @@ export default async function ContaDetailPage({
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <Link href={voltarPara} className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground mb-2">
-          <ArrowLeft size={15} /> {voltarLabel}
-        </Link>
+        <Voltar href={voltarPara}>{voltarLabel}</Voltar>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold">{client.companyName}</h1>

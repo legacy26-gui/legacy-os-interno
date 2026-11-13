@@ -141,10 +141,20 @@ Os cortes estão em `src/lib/meta/estado-da-loja.ts`:
 | Tom | Quando | Como aparece |
 |---|---|---|
 | `sem-saldo` | menos de 1 dia, ou saldo < R$ 5 | cartão vermelho, etiqueta **SEM SALDO** |
-| `acabando` | menos de 3 dias | cartão rosa, etiqueta **SALDO ACABANDO** |
-| `atencao` | menos de 7 dias, erro de leitura, ou gastou sem lead | borda âmbar, etiqueta **OLHAR** |
+| `acabando` | menos de 2 dias | cartão rosa, etiqueta **SALDO ACABANDO** |
+| `atencao` | menos de 3 dias, erro de leitura, ou gastou sem lead | borda âmbar, etiqueta **OLHAR** |
 | `bom` | o resto | faixa verde, sem etiqueta |
 | `neutro` | sem conta, ou saldo que não deu pra ler | faixa cinza |
+
+**Por que os cortes são tão apertados:** as lojas abastecem **por semana**. Sete
+dias de saldo não é alerta, é o tanque cheio. A primeira versão avisava abaixo
+de sete dias, e o Guilherme viu na hora o que ia dar: a lista ficaria amarela
+quase a semana inteira, todo mundo se acostumaria com o amarelo e ele deixaria
+de avisar qualquer coisa. O corte não é "pouco saldo", é **"não chega no
+próximo abastecimento"** — num ciclo de sete dias, os dois últimos: um dia de
+amarelo pra cobrar o Pix, um de vermelho se ele não veio. Se alguma loja passar
+a abastecer por mês, estes números seguem valendo; ela só fica verde por muito
+mais tempo.
 
 Duas decisões que parecem detalhe e não são:
 
@@ -156,6 +166,37 @@ Duas decisões que parecem detalhe e não são:
   dela, e confundir os dois faz o vermelho perder o sentido. Pela mesma razão,
   conta de Pix sem leitura fica **cinza** e não verde: verde é a afirmação
   "olhei e está tudo bem".
+
+### A lista se ordena por urgência, não por alfabeto
+
+Esta regra já foi a contrária, e vale registrar por quê mudou.
+
+O argumento do A-Z era bom: lista que se reordena sozinha embaralha a tela a
+cada atualização, e aí ninguém acha a loja que veio procurar. O argumento está
+certo; a conclusão é que estava errada. **Esta tela não é onde se procura uma
+loja** — pra isso existe a ficha do cliente. É a tela de onde se trabalha a
+fila do dia, e fila se ordena por urgência.
+
+Então: vermelho, âmbar, cinza, verde; e dentro de cada cor a loja com **menos
+dias de saldo** em cima. Loja sem conta vinculada vai pro fim, seja qual for o
+resto — é linha sem número nenhum, e espalhada no meio ela corta a leitura das
+colunas em pedaços.
+
+Cinza (não deu pra ler o saldo) vem **antes** de verde: é pendência de alguém.
+Verde é o lugar de quem não precisa de nada.
+
+### Ajuste de conta se faz olhando a conta
+
+A troca Pix/cartão nasceu só na ficha do cliente, e da tela do Meta Ads não
+havia caminho até lá. Ou seja: o controle existia onde ninguém ia procurar, e
+o Guilherme avisou que não conseguia trocar. Hoje ele está nos dois lugares —
+na ficha e no botão **"Ajustes da conta"** da tela da loja, junto do "o que é
+lead", que é o outro ajuste da mesma natureza.
+
+Marcar uma conta como cartão **apaga os saldos guardados**, de propósito: no
+cartão o número que a Meta devolve é limite de crédito, não dinheiro
+disponível, e deixar a leitura antiga faria a tela mostrar como saldo um valor
+que não é saldo.
 
 ### O que conta como lead é configuração DA CONTA
 

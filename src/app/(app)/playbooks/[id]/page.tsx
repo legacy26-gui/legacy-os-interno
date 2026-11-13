@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, Pencil, BookOpen } from "lucide-react";
+import { Voltar } from "@/components/voltar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { formatDateTime } from "@/lib/labels";
@@ -23,9 +24,7 @@ export default async function PlaybookDetailPage({ params }: { params: Promise<{
   return (
     <div className="flex flex-col gap-6 max-w-3xl">
       <div>
-        <Link href="/playbooks" className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground mb-2">
-          <ArrowLeft size={15} /> Voltar para Playbooks
-        </Link>
+        <Voltar href="/playbooks">Playbooks</Voltar>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-accent/15 text-accent flex items-center justify-center flex-shrink-0">

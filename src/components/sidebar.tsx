@@ -8,6 +8,7 @@ import {
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
   Trophy, Video, Car, BellRing, TrendingUp, Megaphone,
+  PanelLeftClose, PanelLeftOpen,
 } from "lucide-react";
 import type { Empresa, Role } from "@/generated/prisma/enums";
 import { canAccessModule, moduleServesEmpresa, type ModuleKey } from "@/lib/permissions";
@@ -100,12 +101,59 @@ function NavLink({ href, label, icon: Icon, active, onClick }: NavLeaf & { activ
     <Link
       href={href}
       onClick={onClick}
+      data-menu-link
+      // O title só serve quando o menu está recolhido, mas fica sempre: posto
+      // por JavaScript "só quando precisa", ele seria mais uma coisa a
+      // divergir entre servidor e navegador.
+      title={label}
       className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all font-medium text-sm
         ${active ? "bg-accent text-white" : "text-zinc-400 hover:text-white hover:bg-white/5"}`}
     >
-      <Icon size={17} />
-      {label}
+      <Icon size={17} className="shrink-0" />
+      <span data-menu-rotulo>{label}</span>
     </Link>
+  );
+}
+
+/**
+ * O botão de puxar e recolher o menu.
+ *
+ * Mexe no atributo do <html> e guarda a escolha — a largura em si é do CSS
+ * (ver globals.css). Não guarda estado em React de propósito: estado aqui
+ * voltaria ao padrão a cada navegação, e o menu abriria sozinho.
+ *
+ * Só no computador. No celular o menu é gaveta e já tem o botão de abrir.
+ */
+function PuxarMenu() {
+  function alternar() {
+    const raiz = document.documentElement;
+    const recolhido = raiz.getAttribute("data-menu") === "recolhido";
+    if (recolhido) raiz.removeAttribute("data-menu");
+    else raiz.setAttribute("data-menu", "recolhido");
+    try {
+      localStorage.setItem("legacyos-menu", recolhido ? "aberto" : "recolhido");
+    } catch {
+      // Navegador com armazenamento bloqueado: a escolha vale só nesta visita.
+      // Melhor isso do que o botão não funcionar.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={alternar}
+      data-menu-link
+      className="hidden md:flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+      aria-label="Abrir ou recolher o menu"
+    >
+      <span data-menu-fechar className="flex items-center gap-3">
+        <PanelLeftClose size={17} className="shrink-0" />
+        <span data-menu-rotulo>Recolher menu</span>
+      </span>
+      <span data-menu-abrir className="flex items-center gap-3">
+        <PanelLeftOpen size={17} className="shrink-0" />
+      </span>
+    </button>
   );
 }
 
@@ -163,16 +211,21 @@ export function Sidebar({
       {open && <div className="fixed inset-0 bg-black/60 z-30 md:hidden" onClick={() => setOpen(false)} />}
 
       <aside
-        className={`fixed top-0 left-0 h-dvh w-64 bg-sidebar text-sidebar-foreground z-40 flex flex-col border-r border-black/40
+        className={`menu-lateral fixed top-0 left-0 h-dvh w-64 bg-sidebar text-sidebar-foreground z-40 flex flex-col border-r border-black/40
           pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]
-          transform transition-transform duration-300
+          transform transition-transform duration-300 md:transition-[width] md:duration-200
           ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0 md:sticky md:top-0 md:h-dvh md:flex`}
       >
-        <div className="px-6 py-5 border-b border-white/10 flex flex-col min-h-[76px] justify-center">
-          <span className="text-white font-black text-lg tracking-tight leading-none">
-            LEGACY<span className="text-accent">OS</span>
+        <div className="px-6 py-5 border-b border-white/10 flex flex-col min-h-[76px] justify-center overflow-hidden">
+          {/* Recolhido, sobra o "L". A marca inteira em 4,5rem viraria
+              "LEGAC…" cortado, que fica pior que uma letra só. */}
+          <span className="text-white font-black text-lg tracking-tight leading-none whitespace-nowrap">
+            L<span data-menu-rotulo>EGACY<span className="text-accent">OS</span></span>
           </span>
-          <span className="text-zinc-500 text-[10px] font-medium tracking-[0.25em] mt-1">
+          <span
+            data-menu-rotulo
+            className="text-zinc-500 text-[10px] font-medium tracking-[0.25em] mt-1 whitespace-nowrap"
+          >
             {EMPRESA_CURTA[empresa].toUpperCase()}
           </span>
         </div>
@@ -196,8 +249,11 @@ export function Sidebar({
             )}
         </nav>
 
-        <div className="p-4 border-t border-white/10">
-          <p className="text-zinc-600 text-[10px] text-center">Legacy Digital © 2026</p>
+        <div className="border-t border-white/10 p-3 flex flex-col gap-2">
+          <PuxarMenu />
+          <p data-menu-rotulo className="text-zinc-600 text-[10px] text-center">
+            Legacy Digital © 2026
+          </p>
         </div>
       </aside>
     </>
@@ -221,18 +277,25 @@ function NavFolder({
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
+        data-menu-pasta
         className="w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-semibold uppercase tracking-wide text-zinc-500 hover:text-zinc-300 transition-colors"
       >
         {group.label}
         <ChevronDown size={14} className={`transition-transform ${expanded ? "rotate-180" : ""}`} />
       </button>
-      {expanded && (
-        <div className="flex flex-col gap-0.5 mb-1">
-          {group.items.map((item) => (
-            <NavLink key={item.href} {...item} active={isActive(item.href)} onClick={onNavigate} />
-          ))}
-        </div>
-      )}
+      {/* Escondido por CSS e não removido do HTML.
+          Com o menu recolhido não há cabeçalho de pasta pra clicar, então os
+          itens têm que aparecer de qualquer jeito — e quem manda nisso é a
+          regra de CSS do menu recolhido (globals.css), que não consegue
+          mostrar o que o React não desenhou. */}
+      <div
+        data-menu-itens
+        className={`flex-col gap-0.5 mb-1 ${expanded ? "flex" : "hidden"}`}
+      >
+        {group.items.map((item) => (
+          <NavLink key={item.href} {...item} active={isActive(item.href)} onClick={onNavigate} />
+        ))}
+      </div>
     </div>
   );
 }

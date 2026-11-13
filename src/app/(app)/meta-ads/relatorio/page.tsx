@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, FileBarChart, AlertTriangle } from "lucide-react";
+import { Voltar } from "@/components/voltar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CARTEIRA, escopoDaCarteira, clienteEDaCarteira, veTodaACarteira } from "@/lib/carteira";
@@ -161,12 +162,7 @@ export default async function RelatorioPage({
 function Cabecalho() {
   return (
     <div>
-      <Link
-        href="/meta-ads"
-        className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground"
-      >
-        <ArrowLeft size={14} /> Meta Ads
-      </Link>
+      <Voltar href="/meta-ads">Meta Ads</Voltar>
       <h1 className="text-xl font-semibold flex items-center gap-2 mt-2">
         <FileBarChart size={20} className="text-accent" /> Relatório para o cliente
       </h1>

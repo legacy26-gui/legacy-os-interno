@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ArrowLeft, Megaphone, AlertTriangle, Wallet, ChevronRight } from "lucide-react";
+import { Voltar } from "@/components/voltar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { exigirClienteDaCarteira } from "@/lib/carteira";
@@ -197,12 +198,7 @@ export default async function LojaNoMetaAdsPage({
   return (
     <div className="flex flex-col gap-5 max-w-6xl">
       <div>
-        <Link
-          href="/meta-ads"
-          className="inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground mb-2"
-        >
-          <ArrowLeft size={14} /> Todas as lojas
-        </Link>
+        <Voltar href="/meta-ads">Todas as lojas</Voltar>
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold flex items-center gap-2">
@@ -218,6 +214,7 @@ export default async function LojaNoMetaAdsPage({
               id: c.id,
               metaAccountId: c.metaAccountId,
               leadActionType: c.leadActionType,
+              isPrepay: c.isPrepay,
             }))}
             podeConfigurar={podeConfigurar}
           />

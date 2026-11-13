@@ -2,6 +2,11 @@ import "server-only";
 
 import sharp from "sharp";
 
+// Os layouts moram em ./layouts porque a TELA precisa deles pra montar o
+// seletor — e este arquivo é `server-only` (usa sharp). Reexportados aqui
+// pra quem já importava daqui não precisar saber da divisão.
+export { LAYOUTS, layoutDaLoja, type Layout } from "./layouts";
+
 // As regras da arte de veículo — sem JSX, pra poderem ser testadas sozinhas.
 //
 // O desenho em si mora em src/app/api/studio/arte/[id]/route.tsx, porque é lá
@@ -110,7 +115,14 @@ export async function prepararLogo(bytes: Buffer): Promise<FotoPronta> {
   const saida = await sharp(bytes, { failOn: "none" })
     .rotate()
     .resize({ height: ALTURA_DA_LOGO, fit: "inside", withoutEnlargement: true })
-    .png({ compressionLevel: 9, palette: true })
+    // Sem `palette: true`.
+    //
+    // Paleta reduz o PNG a 256 cores, e numa logo chapada (branco e dourado)
+    // isso é invisível e economiza bytes. Mas logo com degradê — e muita
+    // concessionária tem — sairia com faixas, do tipo que se vê de longe
+    // numa arte. É uma imagem POR LOJA: economizar aqui não paga o risco de
+    // entregar a marca de alguém esfarelada.
+    .png({ compressionLevel: 9 })
     .toBuffer({ resolveWithObject: true });
 
   return {

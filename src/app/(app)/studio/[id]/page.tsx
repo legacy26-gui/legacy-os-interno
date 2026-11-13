@@ -6,6 +6,7 @@ import { clienteEDaCarteira } from "@/lib/carteira";
 import { Voltar } from "@/components/voltar";
 import { precoDaArte, fichaDoVeiculo } from "@/lib/studio/arte";
 import { Revisao } from "./revisao";
+import { Editar } from "./editar";
 
 // Uma arte, nos dois formatos, com os botões de revisão.
 //
@@ -96,6 +97,26 @@ export default async function ArtePage({ params }: { params: Promise<{ id: strin
       )}
 
       <Revisao id={arte.id} status={arte.status} podeRevisar={podeRevisar} />
+
+      {/* Arrumar os dados fecha a esteira: sem isto dava pra PEDIR correção
+          e não dava pra FAZER — a única saída seria apagar e criar de novo,
+          reanexando a foto. Na prática ninguém faria, e o pedido viraria um
+          recado parado na tela. */}
+      <Editar
+        id={arte.id}
+        modelo={arte.modelo}
+        ano={arte.ano ?? ""}
+        km={arte.kmTexto ?? ""}
+        precoTexto={
+          arte.precoCents === null
+            ? ""
+            : (arte.precoCents / 100).toLocaleString("pt-BR", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })
+        }
+        chamada={arte.chamada ?? ""}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-5 items-start">
         <figure className="flex flex-col gap-2">

@@ -10,6 +10,8 @@ import {
   lerPreco,
   FOTO_MAX_BYTES,
   FORMATO_DA_COR,
+  LAYOUTS,
+  type Layout,
 } from "@/lib/studio/arte";
 
 // As operações do Legacy Studio.
@@ -250,6 +252,7 @@ export async function apagarArte(id: string): Promise<StudioState> {
 // ───────────────────────── A identidade da loja ──────────────────────────
 
 export interface DadosDaMarca {
+  layout: string;
   corPrimaria: string;
   corFundo: string;
   corTexto: string;
@@ -301,7 +304,17 @@ export async function salvarMarca(
     }
   }
 
+  // Layout desconhecido vira o padrão em vez de erro: a lista de desenhos
+  // muda com o tempo, e uma tela velha mandando um nome que saiu de cena
+  // não pode impedir a pessoa de salvar o telefone da loja.
+  const layout: Layout = (Object.keys(LAYOUTS) as Layout[]).includes(
+    dados.layout as Layout
+  )
+    ? (dados.layout as Layout)
+    : "degrade";
+
   const dadosComuns = {
+    layout,
     corPrimaria: dados.corPrimaria.trim(),
     corFundo: dados.corFundo.trim(),
     corTexto: dados.corTexto.trim(),

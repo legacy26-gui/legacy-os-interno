@@ -13,6 +13,7 @@ import { clienteEDaCarteira } from "@/lib/carteira";
 import {
   FORMATOS,
   formatoValido,
+  layoutDaLoja,
   precoDaArte,
   fichaDoVeiculo,
   corpoDoModelo,
@@ -74,6 +75,7 @@ export async function GET(
           studioMarca: {
             select: {
               logoUrl: true,
+              layout: true,
               corPrimaria: true,
               corFundo: true,
               corTexto: true,
@@ -124,22 +126,42 @@ export async function GET(
   // quem olha de perto percebe.
   const alturaDoRodape = rodape ? (story ? 82 : 68) : 0;
 
-  // ── Onde a foto termina, e onde o degradê precisa já estar opaco ───────
+  // ── A geometria, que é o que muda entre os três layouts ───────────────
   //
-  // No feed a foto cobre a tela inteira, então o degradê só escurece o pé e
-  // não há emenda possível.
+  // O resto do desenho (logo, chamada, bloco de informação, rodapé) é o
+  // mesmo nos três. O que os distingue é onde a foto acaba e o que vem
+  // depois dela: um degradê, um bloco de cor chapada, ou nada.
   //
-  // No Stories a foto ocupa os 62% de cima e o resto é fundo chapado. Se o
-  // degradê não chegar OPACO exatamente onde a foto acaba, aparece uma linha
-  // horizontal atravessando a arte — e foi o que apareceu na primeira peça
-  // gerada: um corte seco no meio do Stories.
+  // Está tudo aqui em cima, em números, em vez de espalhado em condicionais
+  // no meio do JSX — assim dá pra conferir um layout inteiro lendo cinco
+  // linhas, e ajustar um sem tocar nos outros.
+  const layout = layoutDaLoja(m?.layout);
+
+  /** Onde a foto termina, em pontos a partir do topo. */
+  const fimDaFoto =
+    layout === "faixa"
+      ? Math.round(altura * (story ? 0.58 : 0.66))
+      : layout === "degrade" && story
+        ? Math.round(altura * 0.62)
+        : altura;
+
+  /** No "faixa" não há degradê: o bloco de cor chapada faz o contraste. */
+  const temDegrade = layout !== "faixa";
+
+  // Onde o degradê começa e onde ele precisa estar OPACO.
   //
-  // Então a conta é feita, não chutada: o degradê começa acima do fim da
-  // foto e atinge a cor de fundo na altura exata em que ela termina.
-  const fimDaFoto = story ? Math.round(altura * 0.62) : altura;
-  const degradeComeca = story ? fimDaFoto - 420 : Math.round(altura * 0.42);
+  // No Stories do layout degradê a foto acaba no meio da arte. Se o degradê
+  // não chegar opaco exatamente ali, aparece uma linha horizontal
+  // atravessando a peça — e foi o que apareceu na primeira gerada.
+  //
+  // No feed e no "etiqueta" a foto cobre tudo, então o degradê só escurece
+  // o pé e não há emenda possível.
+  const fotoAcabaAntes = fimDaFoto < altura;
+  const degradeComeca = fotoAcabaAntes
+    ? fimDaFoto - 420
+    : Math.round(altura * (layout === "etiqueta" ? 0.55 : 0.42));
   const alturaDoDegrade = altura - degradeComeca;
-  const opacoEm = story
+  const opacoEm = fotoAcabaAntes
     ? Math.round(((fimDaFoto - degradeComeca) / alturaDoDegrade) * 100)
     : 72;
   const respiro = story ? 60 : 44;
@@ -173,19 +195,38 @@ export async function GET(
           }}
         />
 
-        {/* O degradê. Só o pé escurece: em cima a foto fica limpa.
-            No Stories ele começa mais alto porque há mais texto embaixo. */}
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: alturaDoDegrade,
-            display: "flex",
-            backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0) 0%, ${cor.fundo}CC ${Math.round(opacoEm * 0.6)}%, ${cor.fundo} ${opacoEm}%)`,
-          }}
-        />
+        {/* O degradê, nos layouts que o usam. Só o pé escurece: em cima a
+            foto fica limpa. */}
+        {temDegrade && (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: alturaDoDegrade,
+              display: "flex",
+              backgroundImage: `linear-gradient(to bottom, rgba(0,0,0,0) 0%, ${cor.fundo}CC ${Math.round(opacoEm * 0.6)}%, ${cor.fundo} ${opacoEm}%)`,
+            }}
+          />
+        )}
+
+        {/* O layout "faixa": um fio da cor da marca separando a foto do
+            bloco. Sem ele a emenda entre foto e cor chapada fica mole —
+            com ele, parece decisão. */}
+        {layout === "faixa" && (
+          <div
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              top: fimDaFoto - 6,
+              height: 6,
+              display: "flex",
+              backgroundColor: cor.primaria,
+            }}
+          />
+        )}
 
         {/* A logo da loja, no alto. Quando não há marca cadastrada, o nome da
             loja em letra — nunca uma logo inventada. */}
@@ -283,7 +324,11 @@ export async function GET(
             </div>
           )}
 
-          {preco && (
+          {/* No layout "etiqueta" o preço não fica aqui: ele vira a
+              etiqueta grande logo abaixo. Repetir nos dois lugares é o erro
+              clássico de arte gerada — o mesmo número duas vezes na mesma
+              peça. */}
+          {preco && layout !== "etiqueta" && (
             <div
               style={{
                 display: "flex",
@@ -298,6 +343,42 @@ export async function GET(
             </div>
           )}
         </div>
+
+        {/* O layout "etiqueta": o preço numa placa, encostado na direita.
+            É o desenho de oferta — quem está rolando o feed vê o número
+            antes de ler o nome do carro.
+
+            `alignItems: flex-end` em vez de `right: 0`: assim a etiqueta
+            tem a largura do preço, e "R$ 1.890.000" não estoura a arte nem
+            "R$ 19.900" fica numa placa com vão vazio. */}
+        {layout === "etiqueta" && preco && (
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              bottom: alturaDoRodape + (story ? 300 : 210),
+              display: "flex",
+              alignItems: "flex-end",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                backgroundColor: cor.primaria,
+                color: cor.fundo,
+                fontFamily: "Anton",
+                fontSize: corpoDoPreco(preco, formato),
+                lineHeight: 1,
+                padding: story ? "22px 54px 22px 34px" : "18px 46px 18px 30px",
+                borderTopLeftRadius: 18,
+                borderBottomLeftRadius: 18,
+              }}
+            >
+              {preco}
+            </div>
+          </div>
+        )}
 
         {/* Telefone e endereço, quando a loja cadastrou. Barra na cor da
             marca, encostada no fim — é onde o olho vai depois do preço. */}

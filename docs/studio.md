@@ -69,6 +69,11 @@ diferentes: a máquina termina, mas quem responde pelo que vai ao ar é gente.
   peça sem dizer o que mudar, e o resultado é a mesma peça voltando igual.
 - **Mexer nos dados devolve a peça pra fila.** Aprovação não se herda: o que
   foi aprovado era o que estava escrito antes.
+- **Arrumar os dados fecha a esteira.** Antes dava pra PEDIR correção e não
+  dava pra FAZER: a única saída seria apagar e criar de novo, reanexando a
+  foto. Na prática ninguém faria, e o pedido viraria um recado parado na
+  tela. A foto não se troca ali de propósito — foto errada é outra arte, não
+  uma correção.
 - Quem aprovou e quando ficam guardados. Quando uma arte errada for ao ar —
   e uma vai —, a pergunta vai ser "quem olhou isso".
 
@@ -103,11 +108,34 @@ A trava de permissão mora **dentro** de cada função, não na tela. É isso qu
 faz o copiloto não virar um buraco: se amanhã ele chamar `aprovarArte` em
 nome de alguém, a conferência de carteira acontece igual.
 
-## O que ainda não existe
+## Os três desenhos
 
-**Layout por loja.** Hoje todas usam o mesmo desenho, mudando logo, cores e
-rodapé. Layouts diferentes por loja são o passo seguinte, e dependem de ver
-as artes reais que a equipe já faz.
+Cada loja escolhe o seu em `/studio/marcas`:
+
+| Desenho | O que é |
+|---|---|
+| **Degradê** | Foto sangrando na arte inteira, informação sobre um degradê no pé. O mais sóbrio. |
+| **Faixa** | Foto em cima, bloco de cor chapada embaixo, separados por um fio da cor da marca. O mais legível, e o mais comum em loja de carro. |
+| **Etiqueta** | Foto inteira com o preço numa placa grande à direita. O mais agressivo, pra oferta. |
+
+**Três desenhos inteiros, e não um com muitas opções.** A diferença importa:
+opção solta ("logo à esquerda?", "preço grande?") multiplica combinações que
+ninguém testou, e metade sai feia. Três desenhos pensados até o fim é o que
+uma loja escolhe em dez segundos.
+
+A coluna é texto e não enum pelo mesmo motivo dos tipos de alerta: desenho
+novo entra sem migração, e desenho que sair de cena faz as lojas caírem no
+padrão sozinhas, em vez de ficarem com a arte quebrada até alguém rodar uma
+migração.
+
+No "etiqueta" o preço **não** aparece também no bloco de informação. Repetir
+o mesmo número duas vezes na mesma peça é o erro clássico de arte gerada.
+
+Os três ainda não são os layouts da Legacy — são três bons desenhos
+genéricos. Pra reproduzir o padrão da casa eu preciso ver duas ou três artes
+reais que a equipe já faz.
+
+## O que ainda não existe
 
 **Vídeo.** Não cabe onde o sistema mora. Ver a seção abaixo.
 

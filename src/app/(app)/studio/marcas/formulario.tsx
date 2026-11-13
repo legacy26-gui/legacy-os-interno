@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Palette, Upload, Check } from "lucide-react";
 import { salvarMarca } from "@/lib/actions/studio";
+import { LAYOUTS, type Layout } from "@/lib/studio/layouts";
 
 // A identidade visual de uma loja.
 //
@@ -15,6 +16,7 @@ export interface MarcaNaTela {
   clientId: string;
   nome: string;
   logoUrl: string | null;
+  layout: Layout;
   corPrimaria: string;
   corFundo: string;
   corTexto: string;
@@ -51,6 +53,7 @@ function LinhaDaMarca({ loja, podeEditar }: { loja: MarcaNaTela; podeEditar: boo
       const r = await salvarMarca(
         loja.clientId,
         {
+          layout: (formData.get("layout") as string) ?? "degrade",
           corPrimaria: (formData.get("corPrimaria") as string) ?? "",
           corFundo: (formData.get("corFundo") as string) ?? "",
           corTexto: (formData.get("corTexto") as string) ?? "",
@@ -127,6 +130,40 @@ function LinhaDaMarca({ loja, podeEditar }: { loja: MarcaNaTela; podeEditar: boo
               PNG com fundo transparente é o ideal — a logo vai em cima da foto do carro.
             </span>
           </div>
+
+          {/* O desenho da loja.
+              Três inteiros e não um com opções soltas: opção multiplica
+              combinações que ninguém testou, e metade sai feia. Três
+              desenhos pensados até o fim é o que se escolhe em dez
+              segundos. */}
+          <fieldset className="flex flex-col gap-1.5">
+            <legend className="text-xs uppercase tracking-wide text-foreground-muted font-medium mb-1.5">
+              Desenho da arte
+            </legend>
+            <div className="flex flex-col gap-1.5">
+              {(Object.keys(LAYOUTS) as Layout[]).map((k) => (
+                <label
+                  key={k}
+                  className="flex items-start gap-2.5 rounded-lg border border-border bg-background px-3 py-2.5 cursor-pointer hover:border-border-forte has-[:checked]:border-accent"
+                >
+                  <input
+                    type="radio"
+                    name="layout"
+                    value={k}
+                    defaultChecked={loja.layout === k}
+                    disabled={!podeEditar}
+                    className="mt-1"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">{LAYOUTS[k].nome}</span>
+                    <span className="block text-xs text-foreground-muted">
+                      {LAYOUTS[k].descricao}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
 
           <div className="grid grid-cols-3 gap-3">
             <Cor nome="corPrimaria" rotulo="Principal" valor={loja.corPrimaria} ativo={podeEditar} />

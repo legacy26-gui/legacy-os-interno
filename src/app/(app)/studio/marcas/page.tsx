@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CARTEIRA, escopoDaCarteira } from "@/lib/carteira";
 import { Voltar } from "@/components/voltar";
+import { layoutDaLoja } from "@/lib/studio/layouts";
 import { Marcas } from "./formulario";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,7 @@ export default async function MarcasPage() {
           clientId: l.id,
           nome: l.companyName,
           logoUrl: l.studioMarca?.logoUrl ?? null,
+          layout: layoutDaLoja(l.studioMarca?.layout),
           corPrimaria: l.studioMarca?.corPrimaria ?? "#FFC20E",
           corFundo: l.studioMarca?.corFundo ?? "#0A0A0A",
           corTexto: l.studioMarca?.corTexto ?? "#FFFFFF",

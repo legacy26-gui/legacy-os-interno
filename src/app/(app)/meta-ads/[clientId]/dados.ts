@@ -50,6 +50,9 @@ export interface LinhaDaTela extends Numeros {
   preview?: string | null;
   /** Só no anúncio: o que está escrito nele, como a Meta devolve. */
   legenda?: string | null;
+  /** Só no anúncio: os outros dois campos de texto, pra edição na linha. */
+  titulo?: string | null;
+  descricao?: string | null;
   /** Só no anúncio: a arte está cansando? Ver criativo-cansado.ts. */
   cansaco?: Diagnostico | null;
   /** Pra descer um nível. */
@@ -241,6 +244,8 @@ export async function cadastroDaLoja(idsDasContas: string[]) {
         thumbnailUrl: true,
         previewUrl: true,
         legenda: true,
+        titulo: true,
+        descricao: true,
       },
     }),
   ]);
@@ -372,6 +377,8 @@ export function montarNivel(
         miniatura: a?.thumbnailUrl ?? null,
         preview: a?.previewUrl ?? null,
         legenda: a?.legenda ?? null,
+        titulo: a?.titulo ?? null,
+        descricao: a?.descricao ?? null,
         cansaco: cansaco?.get(id) ?? null,
         filho: null,
       });

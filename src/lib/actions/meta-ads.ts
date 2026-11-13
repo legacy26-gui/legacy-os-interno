@@ -19,6 +19,15 @@ import {
   type NivelComVerba,
 } from "@/lib/meta/mudar-verba";
 import { FORMATO_DO_GRUPO } from "@/lib/whatsapp/zapi";
+import { mudarTexto, type Mudancas } from "@/lib/meta/mudar-texto";
+import {
+  textoDoAnuncio,
+  provaSocialDoPost,
+  avisoDaProvaSocial,
+  CAMPOS_DE_TEXTO,
+  NOME_DO_CAMPO,
+  type CampoDeTexto,
+} from "@/lib/meta/texto-do-anuncio";
 import {
   acharObjetoDaLoja,
   mudarStatus,
@@ -825,4 +834,92 @@ export async function definirVerba(
 /** R$ 1.200,00 a partir de centavos. */
 function reaisDeCentavos(c: number): string {
   return (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+/**
+ * O aviso que a tela mostra ANTES de deixar trocar o texto.
+ *
+ * É uma ação separada e não parte da página porque custa uma chamada à Meta
+ * (contar curtida e comentário do post), e ninguém vai pagar isso em toda
+ * listagem de anúncio — só quando alguém abre a edição de um.
+ */
+export async function conferirAntesDeEditar(
+  clientId: string,
+  adId: string,
+): Promise<{ erro?: string; aviso?: string }> {
+  try {
+    const user = await requireModuleAccess("clientes");
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Esta loja não está na sua carteira." };
+    }
+    const atual = await textoDoAnuncio(clientId, adId);
+    if (!atual) return { erro: "Este anúncio não está no cadastro desta loja." };
+
+    return { aviso: avisoDaProvaSocial(await provaSocialDoPost(atual.postId)) };
+  } catch (erro) {
+    const digest = (erro as { digest?: unknown })?.digest;
+    if (typeof digest === "string" && digest.startsWith("NEXT_")) throw erro;
+    console.error("[meta-ads] não deu pra conferir o post antes de editar", erro);
+    // Falhar aqui não pode travar a edição: devolve o aviso genérico.
+    return { aviso: avisoDaProvaSocial({ curtidas: null, comentarios: null, conferido: false }) };
+  }
+}
+
+/**
+ * Troca a legenda, o título ou a descrição de um anúncio.
+ *
+ * `confirmado` vem true quando a pessoa já leu o aviso e mandou seguir. Sem
+ * ele, se a Meta recusar a troca barata a ação para e devolve o motivo —
+ * nunca cria criativo novo (e perde o post) por conta própria.
+ */
+export async function definirTexto(
+  clientId: string,
+  adId: string,
+  campos: Record<string, string>,
+  confirmado: boolean,
+): Promise<MetaAdsState & { precisaConfirmar?: string }> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Esta loja não está na sua carteira." };
+    }
+    // Só o que a gente sabe escrever. Campo estranho vindo do navegador é
+    // ignorado em silêncio, e não vira chave solta no POST pra Meta.
+    const mudancas: Mudancas = {};
+    for (const campo of CAMPOS_DE_TEXTO) {
+      if (typeof campos[campo] === "string") mudancas[campo] = campos[campo];
+    }
+    if (Object.keys(mudancas).length === 0) return { erro: "Não veio texto nenhum pra mudar." };
+
+    const r = await mudarTexto({
+      clientId,
+      quemId: user.id,
+      adId,
+      mudancas,
+      confirmadoCriarNovo: confirmado,
+    });
+
+    if (!r.ok) {
+      if ("precisaCriarNovo" in r) {
+        return {
+          precisaConfirmar:
+            "A Meta não deixou trocar o texto neste anúncio sem refazer o criativo " +
+            `(resposta dela: ${r.motivo}). Dá pra fazer criando um anúncio novo com o ` +
+            "texto novo — e aí as curtidas e comentários do post de agora ficam para trás. Seguir assim?",
+        };
+      }
+      return { erro: r.erro };
+    }
+
+    const quais = r.campos.map((c: CampoDeTexto) => NOME_DO_CAMPO[c].toLowerCase()).join(" e ");
+    const sobreOPost =
+      r.postTrocou === null
+        ? " Não deu pra conferir se o post mudou."
+        : r.postTrocou
+          ? " O post mudou, então curtidas e comentários do anterior ficaram para trás."
+          : " O post continua o mesmo — curtidas e comentários seguem lá.";
+
+    revalidar(clientId);
+    return { ok: `Mudei ${quais} de ${r.nome}.${sobreOPost}` };
+  });
 }

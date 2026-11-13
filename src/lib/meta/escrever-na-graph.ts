@@ -53,7 +53,16 @@ function semSegredo(texto: string): string {
   return texto.split(t).join("[token]");
 }
 
-export type RespostaDaEscrita = { ok: true } | { ok: false; erro: string };
+/**
+ * O que um POST devolve.
+ *
+ * `dados` existe porque criar um criativo só é útil se a gente ficar com o
+ * id do que foi criado — sem ele, o anúncio não tem pra onde ser reapontado.
+ * Quem só liga e desliga ignora o campo e continua lendo `ok`.
+ */
+export type RespostaDaEscrita<T = unknown> =
+  | { ok: true; dados: T }
+  | { ok: false; erro: string };
 
 export interface ConferenciaDaEscrita {
   /** A variável existe? */
@@ -167,10 +176,10 @@ export async function conferirEscrita(): Promise<ConferenciaDaEscrita> {
  * Os campos vão no CORPO, como form-urlencoded, que é o que a Meta espera —
  * e não na query string, onde virariam rastro em todo proxy do caminho.
  */
-export async function escreverNaGraph(
+export async function escreverNaGraph<T = unknown>(
   caminho: string,
   campos: Record<string, string>
-): Promise<RespostaDaEscrita> {
+): Promise<RespostaDaEscrita<T>> {
   const chave = token();
   if (!chave) {
     return {
@@ -212,7 +221,16 @@ export async function escreverNaGraph(
       return { ok: false, erro: semSegredo(detalhe) };
     }
 
-    return { ok: true };
+    // Corpo vazio ou que não é JSON conta como sucesso sem dados: a Meta
+    // responde {"success":true} em algumas rotas e o objeto criado em
+    // outras, e quem só liga/desliga não olha isso.
+    let dados: T;
+    try {
+      dados = JSON.parse(texto) as T;
+    } catch {
+      dados = {} as T;
+    }
+    return { ok: true, dados };
   } catch (erro) {
     if (erro instanceof Error && erro.name === "AbortError") {
       return {

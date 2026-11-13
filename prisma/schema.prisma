@@ -41,30 +41,30 @@ model User {
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
-  employee           Employee?
-  assignedTasks      Task[]             @relation("TaskAssignee")
-  ownedLeads         Lead[]             @relation("LeadOwner")
-  clientHistories    ClientHistory[]
-  expensesLogged     Expense[]
-  assignedTickets    SupportTicket[]    @relation("TicketAssignee")
-  managedClients     Client[]           @relation("ClientManager")
-  dailyReviews       DailyReview[]      @relation("DailyReviewer")
-  weeklyReviews      WeeklyReview[]     @relation("WeeklyReviewer")
-  campaignChanges    CampaignChange[]   @relation("ChangeResponsible")
-  playbooks          Playbook[]
-  agendaItems        AgendaItem[]       @relation("AgendaOwner")
-  salesRegistered    ClientSale[]       @relation("SaleCreator")
-  pushSubscriptions  PushSubscription[]
-  gravacoes          Gravacao[]         @relation("GravacaoRegistrada")
-  etapasConcluidas   OnboardingEtapa[]  @relation("EtapaConcluida")
-  alertas            AlertaEstado[]
-  clientesConferidos ClienteConferido[] @relation("QuemConferiu")
-  relatoriosEnviados RelatorioEnviado[] @relation("QuemMandouRelatorio")
-  studioArtesCriadas   StudioArte[] @relation("StudioCriou")
-  studioArtesRevisadas StudioArte[] @relation("StudioRevisou")
-  resgatesFeitos     AcaoDeResgate[]    @relation("QuemResgatou")
-  verbasPedidas      PedidoDeVerba[]    @relation("VerbaPedidaPor")
-  metaAcoes          MetaAcao[]         @relation("MetaAcaoFeitaPor")
+  employee             Employee?
+  assignedTasks        Task[]             @relation("TaskAssignee")
+  ownedLeads           Lead[]             @relation("LeadOwner")
+  clientHistories      ClientHistory[]
+  expensesLogged       Expense[]
+  assignedTickets      SupportTicket[]    @relation("TicketAssignee")
+  managedClients       Client[]           @relation("ClientManager")
+  dailyReviews         DailyReview[]      @relation("DailyReviewer")
+  weeklyReviews        WeeklyReview[]     @relation("WeeklyReviewer")
+  campaignChanges      CampaignChange[]   @relation("ChangeResponsible")
+  playbooks            Playbook[]
+  agendaItems          AgendaItem[]       @relation("AgendaOwner")
+  salesRegistered      ClientSale[]       @relation("SaleCreator")
+  pushSubscriptions    PushSubscription[]
+  gravacoes            Gravacao[]         @relation("GravacaoRegistrada")
+  etapasConcluidas     OnboardingEtapa[]  @relation("EtapaConcluida")
+  alertas              AlertaEstado[]
+  clientesConferidos   ClienteConferido[] @relation("QuemConferiu")
+  relatoriosEnviados   RelatorioEnviado[] @relation("QuemMandouRelatorio")
+  studioArtesCriadas   StudioArte[]       @relation("StudioCriou")
+  studioArtesRevisadas StudioArte[]       @relation("StudioRevisou")
+  resgatesFeitos       AcaoDeResgate[]    @relation("QuemResgatou")
+  verbasPedidas        PedidoDeVerba[]    @relation("VerbaPedidaPor")
+  metaAcoes            MetaAcao[]         @relation("MetaAcaoFeitaPor")
 
   @@map("users")
 }
@@ -253,7 +253,6 @@ model RoboExecucao {
 
 /**
  * A identidade visual de uma loja.
- *
  * Uma por cliente. Sem ela a arte ainda sai, com a cara neutra do sistema —
  * mas é ela que faz a peça parecer da loja e não de um gerador qualquer.
  */
@@ -262,21 +261,26 @@ model StudioMarca {
   clientId String @unique
   client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  /** A logo da loja, como data URI. Reduzida na hora de subir. */
+  /**
+   * A logo da loja, como data URI. Reduzida na hora de subir.
+   */
   logoUrl String? @db.Text
 
-  /** As cores da loja, em #rrggbb. O padrão é um preto-e-dourado neutro. */
-  corPrimaria   String @default("#FFC20E")
-  corFundo      String @default("#0A0A0A")
-  corTexto      String @default("#FFFFFF")
+  /**
+   * As cores da loja, em #rrggbb. O padrão é um preto-e-dourado neutro.
+   */
+  corPrimaria String @default("#FFC20E")
+  corFundo    String @default("#0A0A0A")
+  corTexto    String @default("#FFFFFF")
 
-  /** Vão no rodapé da arte, quando existem. */
+  /**
+   * Vão no rodapé da arte, quando existem.
+   */
   telefone String?
   endereco String?
 
   /**
    * Qual desenho esta loja usa: "degrade", "faixa" ou "etiqueta".
-   *
    * Texto e não enum de propósito: desenho novo entra sem migração, e
    * layout que não existe mais cai no padrão em vez de quebrar a arte.
    * Mesma escolha dos tipos de alerta, pelo mesmo motivo.
@@ -291,7 +295,6 @@ model StudioMarca {
 
 /**
  * O estado de uma peça na esteira.
- *
  * Quatro e não dois porque "pronto" e "aprovado" são coisas diferentes: a
  * máquina termina, mas quem responde pelo que vai ao ar é gente. E
  * "corrigir" precisa existir separado de "rascunho" pra que o pedido de
@@ -305,7 +308,6 @@ enum StudioStatus {
 
 /**
  * Uma arte de veículo.
- *
  * Um registro gera DUAS peças — feed (quadrado) e Stories (vertical) — porque
  * são a mesma informação em dois recortes. Separar em dois registros faria a
  * equipe aprovar duas vezes a mesma coisa e deixaria aparecer no mundo um
@@ -316,37 +318,43 @@ model StudioArte {
   clientId String
   client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  /** A foto do carro, já reduzida, como data URI. */
+  /**
+   * A foto do carro, já reduzida, como data URI.
+   */
   fotoUrl String @db.Text
 
   // ── O que vai escrito na arte ──
   /// "CHEVROLET". Vai menor, acima do modelo — é como a arte da casa faz.
-  marca      String?
+  marca        String?
   /// "CRUZE". O nome grande.
-  modelo     String
+  modelo       String
   /// "LTZ2 SPORT6". Vai numa caixa da cor da loja, abaixo do modelo.
-  versao     String?
-  ano        String?
-  kmTexto    String?
-  precoCents Int?
+  versao       String?
+  ano          String?
+  kmTexto      String?
+  precoCents   Int?
   /// O preço "de", riscado, quando a loja anuncia desconto.
   precoDeCents Int?
   /// A ficha, separada por "|": "1.4 TURBO | AUTOMÁTICO | TETO SOLAR".
   /// Texto livre porque cada loja destaca o que quer, e uma lista fixa de
   /// campos faria a equipe deixar metade em branco.
-  detalhes   String?
-  /** "Entrada + 48x", "Aceita troca", o que a loja quiser destacar. */
-  chamada    String?
+  detalhes     String?
+  /**
+   * "Entrada + 48x", "Aceita troca", o que a loja quiser destacar.
+   */
+  chamada      String?
 
   status   StudioStatus @default(PRONTO)
-  /** O que o revisor pediu pra mudar. Só existe quando status = CORRIGIR. */
+  /**
+   * O que o revisor pediu pra mudar. Só existe quando status = CORRIGIR.
+   */
   correcao String?      @db.Text
 
   criadoPorId String?
   criadoPor   User?   @relation("StudioCriou", fields: [criadoPorId], references: [id], onDelete: SetNull)
 
   revisadoPorId String?
-  revisadoPor   User?   @relation("StudioRevisou", fields: [revisadoPorId], references: [id], onDelete: SetNull)
+  revisadoPor   User?     @relation("StudioRevisou", fields: [revisadoPorId], references: [id], onDelete: SetNull)
   revisadoEm    DateTime?
 
   criadoEm     DateTime @default(now())
@@ -423,11 +431,9 @@ model Client {
 
   /**
    * O grupo de WhatsApp desta loja, pra onde o relatório da semana vai.
-   *
    * No formato que a Z-API usa: `120363019502650977-group`. Pega-se o id no
    * painel da Z-API, na lista de grupos — não é o número de telefone de
    * ninguém, é o identificador do grupo.
-   *
    * Vazio quer dizer "ainda manda na mão": a loja aparece no Meu Dia com o
    * botão de marcar, mas sem o de enviar. Melhor isso do que um envio
    * silencioso pro lugar errado.
@@ -437,17 +443,17 @@ model Client {
   // visita — que não é o mesmo que "nunca foi", é só que ninguém marcou.
   // Guarda só a data, não o histórico: o que se quer saber é há quanto tempo
   // não se aparece lá.
-  ultimaVisitaEm           DateTime?
+  ultimaVisitaEm  DateTime?
   // Se esta conta entra no Controle de Vendas. Nem todo cliente é loja de
   // carro — consórcio, banco e afins não têm "carro vendido" pra cobrar, e
   // ficavam no vermelho pra sempre poluindo a tela. Tirar daqui não mexe em
   // mais nada do cliente: ele continua normal no resto do sistema.
-  controlaVendas           Boolean      @default(true)
-  internalNotes            String?
-  managerId                String?
-  manager                  User?        @relation("ClientManager", fields: [managerId], references: [id])
-  createdAt                DateTime     @default(now())
-  updatedAt                DateTime     @updatedAt
+  controlaVendas  Boolean   @default(true)
+  internalNotes   String?
+  managerId       String?
+  manager         User?     @relation("ClientManager", fields: [managerId], references: [id])
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   attachments        ClientAttachment[]
   history            ClientHistory[]
@@ -522,6 +528,23 @@ model MetaAcao {
   /// Só em tipo "verba": o orçamento pedido e o que havia antes.
   valorPedidoCents Int?
   valorAntesCents  Int?
+
+  /// Só em tipo "texto": a legenda antes e depois da edição.
+  ///
+  /// Guardados por inteiro, e não só "mudou": quando alguém perguntar por
+  /// que o anúncio perdeu os comentários, a resposta é esta linha — quem
+  /// mexeu, quando, e o que exatamente trocou. Sem o texto velho, a única
+  /// forma de saber seria a memória de quem editou.
+  textoAntes  String? @db.Text
+  textoDepois String? @db.Text
+
+  /// Só em tipo "texto": o post antes e depois.
+  ///
+  /// É o que responde, com dado nosso, se trocar o texto trocou o post — e
+  /// com ele as curtidas e os comentários. Iguais, a prova social sobreviveu;
+  /// diferentes, ficou para trás.
+  postAntes  String?
+  postDepois String?
 
   ok   Boolean
   /// A frase da Meta quando deu errado. Nunca carrega token: ver

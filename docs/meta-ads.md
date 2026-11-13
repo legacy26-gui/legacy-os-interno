@@ -736,22 +736,89 @@ Contra uma Meta falsa, seis caminhos:
 O cadastro é atualizado na hora e não na próxima varredura: sem isso, quem
 acabou de mudar recarregaria a tela, veria o valor velho e mudaria de novo.
 
-## Editar legenda, título e foto do anúncio: ainda não
+## Editar legenda, título e descrição pelo sistema
 
-E a razão não é falta de tempo.
+Dá pra mexer no texto de um anúncio sem abrir o Gerenciador: na aba
+**Anúncios**, embaixo do nome, tem "Mudar o texto".
 
-Na Meta o criativo de um anúncio é **imutável**. Não existe "editar a
-legenda": existe criar um criativo novo e apontar o anúncio pra ele. Isso é
-possível, e tem uma consequência que precisa ser medida antes:
+### Onde eu estava errado
 
-**A prova social mora no post, não no anúncio.** Curtidas, comentários e
-compartilhamentos pertencem ao `effective_object_story_id`. Se trocar o
-criativo gerar um post novo, o anúncio volta a zero — e um anúncio com 300
-comentários que volta a zero perde o que levou semanas pra juntar.
+Esta página dizia que o criativo da Meta era **imutável** e que editar era
+impossível sem criar outro. O Guilherme respondeu que edita direto pelo Meta
+e funciona — e ele está certo.
 
-A pergunta em aberto é essa, e ela se responde com medição, não com opinião:
-**editar o texto muda o `effective_object_story_id`?** O plano é gravar o id
-antes e depois da primeira edição real e descobrir com dado nosso.
+A referência da Graph v26.0 lista, para `POST /{ad_creative_id}`, só quatro
+campos que um criativo aceita trocar depois de criado: `account_id`,
+`adlabels`, `name` e `status`. `body` e `title` não estão lá. Mas a
+ferramenta de linha de comando da própria Meta oferece `--body` e `--title` e
+avisa: *"se a atualização falhar, crie um criativo novo"*. Ou seja, em algum
+formato de anúncio isso passa.
 
-Enquanto isso não for medido, editar legenda pelo sistema é arriscar o acervo
-de prova social das lojas pra economizar cliques.
+As duas coisas são verdade ao mesmo tempo: o Gerenciador deixa editar porque
+ele cria um criativo novo por baixo quando precisa, sem dizer nada.
+
+### Os dois caminhos, nessa ordem
+
+1. **Troca no lugar.** Um `POST` no criativo que já existe. Quando a Meta
+   aceita, é de graça: mesmo criativo, mesmo post, curtidas e comentários
+   intactos.
+2. **Criativo novo.** Quando ela recusa, o sistema **para** e pergunta. Só
+   com confirmação explícita ele lê o `object_story_spec` do criativo atual,
+   troca só os campos de texto, cria o novo e reaponta o anúncio.
+
+Copiar o spec inteiro e não remontar do zero é o que preserva imagem, link,
+botão e página. Remontar significaria adivinhar dezenas de campos e errar
+calado em algum formato.
+
+### O aviso que o Gerenciador não dá
+
+**A prova social mora no post, não no anúncio.** Curtidas e comentários
+pertencem ao `effective_object_story_id`. Criativo novo quase sempre
+significa post novo — e um anúncio com 300 comentários volta a zero.
+
+Por isso, abrir a edição dispara uma pergunta à Meta e o aviso aparece em
+cima do formulário, com número: *"as 143 curtidas e 27 comentários deste post
+ficam para trás"*. Antes de digitar, não depois — depois a pessoa já gastou o
+esforço e segue mesmo assim.
+
+Quando o post ainda não tem curtida nem comentário, o aviso diz isso e sai da
+frente.
+
+### A pergunta em aberto, agora respondida por dado
+
+Cada edição grava em `meta_acoes` o `postAntes` e o `postDepois`, perguntados
+à Meta. A mensagem de sucesso diz qual dos dois aconteceu: *"O post continua
+o mesmo"* ou *"O post mudou, então curtidas e comentários do anterior ficaram
+para trás"*. Não é mais opinião.
+
+### As travas
+
+- **Texto igual não vira chamada.** Apertar salvar sem mexer em nada criaria
+  um criativo novo e jogaria fora o post por nada.
+- **Legenda vazia é recusada.** A Meta aceita; quase sempre é engano. Quem
+  quer tirar o texto desliga o anúncio.
+- **Tetos de tamanho** (2200 / 255 / 1000) pegam o texto colado sem querer.
+  Não são os limites da Meta, que mudam por formato — são contra o acidente.
+- **Carteira**, como em todo o resto: o anúncio é procurado dentro das contas
+  daquela loja. Id trocado no navegador não alcança anúncio de outro cliente.
+- **Registro nos dois casos**, sucesso e falha, com o texto antes e depois
+  por inteiro. Quando alguém perguntar por que o anúncio perdeu os
+  comentários, a resposta é essa linha.
+
+### O que ainda não dá
+
+**Trocar a foto ou o vídeo.** O mesmo caminho serviria, mas exige subir o
+arquivo pra Meta antes (`adimages`/`advideos`) e lidar com hash, formato e
+proporção. Não foi feito.
+
+### Testado
+
+37 verificações contra uma Graph de mentira, cobrindo os dois caminhos, a
+trava de carteira, o que nem vira chamada, e a comparação de post antes e
+depois. Mais os dois caminhos no navegador, em build de produção.
+
+Uma coisa que o teste pegou e vale saber: **o formulário não se apaga em
+caso de erro.** Quando a Meta recusa e o sistema pede confirmação, o texto
+digitado continua lá. É o mesmo defeito que mordeu o Studio, e a causa é a
+mesma — `<form action={...}>` limpa o formulário quando a ação resolve,
+inclusive em erro. Aqui não se usa `action`.

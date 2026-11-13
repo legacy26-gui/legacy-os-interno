@@ -25,6 +25,7 @@ import { AcoesDaLoja, TrocarPraPix } from "./acoes";
 import { Criativo } from "./criativo";
 import { ChaveDeStatus } from "./chave";
 import { Verba } from "./verba";
+import { Legenda } from "./legenda";
 import {
   linhasDaLoja,
   cadastroDaLoja,
@@ -594,15 +595,21 @@ function Tabela({
                           {temFilho &&
                             `${i.dentro} ${nivel === "campanha" ? "conjunto" : "anúncio"}${i.dentro === 1 ? "" : "s"}`}
                         </span>
-                        {/* A legenda do anúncio.
-                            Até agora ela só existia dentro do Gerenciador:
-                            pra saber o que um anúncio dizia era preciso sair
-                            do sistema e procurar lá. Duas linhas bastam pra
-                            reconhecer qual é qual numa lista de vinte. */}
-                        {nivel === "anuncio" && i.legenda && (
-                          <span className="block text-xs text-foreground-muted mt-1 line-clamp-2 max-w-md">
-                            {i.legenda}
-                          </span>
+                        {/* A legenda do anúncio, e agora editável aqui.
+                            Até pouco tempo ela só existia dentro do
+                            Gerenciador: pra saber o que um anúncio dizia era
+                            preciso sair do sistema e procurar lá. Duas linhas
+                            bastam pra reconhecer qual é qual numa lista de
+                            vinte, e o lápis abre o texto inteiro. */}
+                        {nivel === "anuncio" && (
+                          <Legenda
+                            clientId={clientId}
+                            adId={i.id}
+                            legenda={i.legenda ?? null}
+                            titulo={i.titulo ?? null}
+                            descricao={i.descricao ?? null}
+                            podeMexer={podeMexer}
+                          />
                         )}
                       </div>
                     </div>

@@ -176,7 +176,17 @@ Com 65% fora não existe recorte que salve.
 Agora o recorte é feito **antes** do desenho, em `enquadrar()`, e segue duas
 regras:
 
-1. **Até 45% de perda, corta pelo que importa.** O `attention` do sharp acha
+**A régua é diferente nos dois formatos**, e isso veio de teste com foto
+real da Área 42 (Saveiro em pé, 1200×1600):
+
+- **Feed:** até 45%. Quadrado é onde o carro preenchendo a tela funciona, e
+  é o que a casa já faz.
+- **Stories:** até 12%, o que na prática quer dizer "quase nunca corta".
+  Foto de carro é tirada de frente ou de três quartos, com o carro ocupando
+  a largura toda — e no vertical é a LARGURA que sai. Com a régua do feed,
+  25% de corte comeu a frente da caminhonete.
+
+1. **Dentro do limite, corta pelo que importa.** O `attention` do sharp acha
    a região de maior saliência — num pátio, o carro. Comparado lado a lado
    numa foto real: o corte pelo centro decepa o para-choque; o por saliência
    mantém frente, grade e placa inteiras.
@@ -189,6 +199,19 @@ regras:
 cortado — o Cruze da Redline tem a traseira saindo pela borda — e fica bom.
 O número separa exatamente os dois casos medidos numa foto real: o feed
 (38%) corta, o Stories (65%) não. Não é um valor escolhido no olho.
+
+## Por que os três blocos de baixo são empilhados
+
+Chamada, ficha e preço ficavam em posições absolutas calculadas na mão. Eles
+se atropelavam: a pastilha do desconto encostava na ficha, e a chamada caía
+em cima da roda do carro. Cada conserto quebrava outro, porque nenhum dos
+três sabia da existência dos outros.
+
+Empilhados numa coluna só, o problema deixa de existir: o fluxo cuida do
+espaçamento. É menos código e não tem como sobrepor.
+
+É um padrão que vale repetir: **quando três coisas se atropelam, o erro não
+é a posição de nenhuma delas — é posicioná-las separadamente.**
 
 ## A arte sai como JPEG, não PNG
 

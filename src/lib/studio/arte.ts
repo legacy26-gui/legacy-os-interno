@@ -185,6 +185,30 @@ export async function prepararLogo(bytes: Buffer): Promise<FotoPronta> {
  */
 const PERDA_QUE_NAO_VALE = 0.45;
 
+/**
+ * O mesmo limite, mas pro vertical — e é muito menor.
+ *
+ * ── Por que os dois formatos não podem ter a mesma régua ─────────────────
+ *
+ * No FEED a casa aceita corte: o Cruze da Redline tem a traseira saindo
+ * pela borda e fica ótimo. Quadrado é o formato onde o carro preenchendo a
+ * tela funciona.
+ *
+ * No STORIES não. Testado com uma foto real da Área 42 (Saveiro em pé,
+ * 1200×1600): com a régua do feed, o corte de 25% comeu a frente da
+ * caminhonete e o Guilherme viu na hora — "story cortou tudo o carro".
+ *
+ * A razão é o enquadramento de origem: foto de carro é tirada de frente ou
+ * de três quartos, e o carro ocupa a largura toda. Tirar 25% da LARGURA
+ * tira sempre uma ponta do carro. Tirar 25% da altura tiraria céu e chão,
+ * que não faz falta — mas no vertical é a largura que sai.
+ *
+ * Então 12%: o suficiente pra acertar um desencontro pequeno de proporção,
+ * e não o bastante pra decepar nada. Acima disso o carro entra inteiro
+ * sobre o fundo borrado.
+ */
+const PERDA_QUE_NAO_VALE_NO_ALTO = 0.12;
+
 /** O quanto a cópia de fundo é borrada. Alto o bastante pra não competir. */
 const BORRAO = 42;
 
@@ -208,6 +232,10 @@ export async function enquadrar(
   alvoLargura: number,
   alvoAltura: number
 ): Promise<Enquadrada> {
+  // Quadro mais alto que largo = Stories, onde cortar a largura decepa o
+  // carro. Lá a régua é outra.
+  const limite =
+    alvoAltura > alvoLargura ? PERDA_QUE_NAO_VALE_NO_ALTO : PERDA_QUE_NAO_VALE;
   const bytes = Buffer.from(dataUri.split(",")[1] ?? "", "base64");
   const base = sharp(bytes, { failOn: "none" });
   const info = await base.metadata();
@@ -217,7 +245,7 @@ export async function enquadrar(
   const sobra = origem > alvo ? alvo / origem : origem / alvo;
   const perda = 1 - sobra;
 
-  if (perda <= PERDA_QUE_NAO_VALE) {
+  if (perda <= limite) {
     const saida = await sharp(bytes, { failOn: "none" })
       .resize(alvoLargura, alvoAltura, {
         fit: "cover",

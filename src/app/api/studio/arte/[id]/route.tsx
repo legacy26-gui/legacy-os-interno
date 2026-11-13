@@ -706,157 +706,189 @@ function vitrine(o: {
         </div>
       </div>
 
-      {/* ── A chamada, quando existe ── */}
-      {arte.chamada && (
-        <div
-          style={{
-            position: "absolute",
-            left: px(44),
-            bottom: alturaDoRodape + px(story ? 420 : 330),
-            display: "flex",
-            backgroundColor: cor.primaria,
-            color: cor.fundo,
-            fontFamily: "Anton",
-            fontSize: px(28),
-            letterSpacing: 1,
-            padding: `${px(10)}px ${px(20)}px`,
-            borderRadius: px(8),
-          }}
-        >
-          {arte.chamada.toUpperCase()}
-        </div>
-      )}
+      {/* ── O bloco de baixo: chamada, ficha e preço, EMPILHADOS ──────────
+          Os três ficavam em posições absolutas calculadas na mão, e se
+          atropelavam: a pastilha do desconto encostava na ficha, e a
+          chamada caía em cima da roda do carro. Cada conserto quebrava
+          outro, porque nenhum dos três sabia da existência dos outros.
 
-      {/* ── A ficha, com ícones e divisórias ── */}
-      {ficha.length > 0 && (
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: alturaDoRodape + px(story ? 250 : 190),
-            display: "flex",
-            alignItems: "stretch",
-            justifyContent: "center",
-            padding: `${px(10)}px ${px(30)}px`,
-          }}
-        >
-          {ficha.map((item, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "center" }}>
-              {/* A divisória vem ANTES do item, menos no primeiro: assim
-                  nunca sobra um fio solto na ponta. */}
-              {i > 0 && (
-                <div
-                  style={{
-                    display: "flex",
-                    width: 2,
-                    height: px(46),
-                    backgroundColor: "rgba(255,255,255,0.25)",
-                    margin: `0 ${px(18)}px`,
-                  }}
-                />
-              )}
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: px(46),
-                    height: px(46),
-                    borderRadius: 999,
-                    border: `${Math.max(2, px(3))}px solid ${cor.primaria}`,
-                    marginRight: px(10),
-                  }}
-                >
-                  <IconeDaFichaSvg nome={item.icone} cor={cor.primaria} tamanho={px(24)} />
-                </div>
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  {item.linhas.map((l, j) => (
-                    <div
-                      key={j}
-                      style={{
-                        display: "flex",
-                        fontFamily: "Anton",
-                        fontSize: px(24),
-                        color: cor.texto,
-                        lineHeight: 1.15,
-                        letterSpacing: 0.5,
-                      }}
-                    >
-                      {l.toUpperCase()}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* ── O preço, na caixa de cor ── */}
-      {preco && (
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            bottom: alturaDoRodape + px(story ? 90 : 56),
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-          }}
-        >
-          {/* O "de", riscado. Só aparece quando a loja anunciou desconto —
-              e some inteiro quando não, em vez de deixar um espaço vazio. */}
-          {precoDe && (
-            <div
-              style={{
-                display: "flex",
-                fontSize: px(26),
-                color: "rgba(255,255,255,0.75)",
-                textDecoration: "line-through",
-                marginBottom: px(6),
-              }}
-            >
-              {precoDe}
-            </div>
-          )}
+          Empilhados numa coluna só, o problema deixa de existir: o fluxo
+          cuida do espaçamento, e nada mais precisa saber a altura de nada.
+          É menos código e não tem como sobrepor. */}
+      <div
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: alturaDoRodape,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          paddingBottom: px(story ? 40 : 28),
+        }}
+      >
+        {arte.chamada && (
           <div
             style={{
               display: "flex",
-              alignItems: "center",
+              alignSelf: "flex-start",
+              marginLeft: px(44),
+              marginBottom: px(14),
               backgroundColor: cor.primaria,
               color: cor.fundo,
-              padding: `${px(12)}px ${px(40)}px`,
-              borderRadius: px(12),
+              fontFamily: "Anton",
+              fontSize: px(28),
+              letterSpacing: 1,
+              padding: `${px(10)}px ${px(20)}px`,
+              borderRadius: px(8),
             }}
           >
-            {/* "R$" menor que o número, como na arte real: o que a pessoa
-                precisa ler de longe é o número, não a moeda. */}
+            {arte.chamada.toUpperCase()}
+          </div>
+        )}
+
+        {ficha.length > 0 && (
+          <div
+            style={{
+              display: "flex",
+              alignSelf: "stretch",
+              alignItems: "stretch",
+              justifyContent: "center",
+              padding: `${px(14)}px ${px(30)}px`,
+              // A faixa escura atrás da ficha.
+              //
+              // O degradê do pé não dá conta sozinho: numa Saveiro BRANCA
+              // ao sol, "COMPLETO" em letra branca em cima da lataria some.
+              // As artes reais da casa têm essa faixa pelo mesmo motivo —
+              // não é enfeite, é o que faz a ficha ser legível em carro
+              // claro e em carro escuro com a mesma regra.
+              backgroundColor: "rgba(0,0,0,0.62)",
+            }}
+          >
+            {ficha.map((item, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center" }}>
+                {/* A divisória vem ANTES do item, menos no primeiro: assim
+                    nunca sobra um fio solto na ponta. */}
+                {i > 0 && (
+                  <div
+                    style={{
+                      display: "flex",
+                      width: 2,
+                      height: px(46),
+                      backgroundColor: "rgba(255,255,255,0.25)",
+                      margin: `0 ${px(18)}px`,
+                    }}
+                  />
+                )}
+                <div style={{ display: "flex", alignItems: "center" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      width: px(46),
+                      height: px(46),
+                      borderRadius: 999,
+                      border: `${Math.max(2, px(3))}px solid ${cor.primaria}`,
+                      marginRight: px(10),
+                    }}
+                  >
+                    <IconeDaFichaSvg nome={item.icone} cor={cor.primaria} tamanho={px(24)} />
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column" }}>
+                    {item.linhas.map((l, j) => (
+                      <div
+                        key={j}
+                        style={{
+                          display: "flex",
+                          fontFamily: "Anton",
+                          fontSize: px(24),
+                          color: cor.texto,
+                          lineHeight: 1.15,
+                          letterSpacing: 0.5,
+                        }}
+                      >
+                        {l.toUpperCase()}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {preco && (
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              marginTop: px(16),
+            }}
+          >
+            {/* O "de" riscado, numa pastilha escura.
+                Solto em cima da foto ele sumia: letra clara translúcida
+                sobre lataria branca é invisível, e foi o que aconteceu na
+                primeira arte com foto de verdade. */}
+            {precoDe && (
+              <div
+                style={{
+                  display: "flex",
+                  backgroundColor: "rgba(0,0,0,0.7)",
+                  borderRadius: px(8),
+                  padding: `${px(5)}px ${px(16)}px`,
+                  marginBottom: px(8),
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    fontSize: px(26),
+                    color: "#FFFFFF",
+                    textDecoration: "line-through",
+                  }}
+                >
+                  {precoDe}
+                </div>
+              </div>
+            )}
             <div
               style={{
                 display: "flex",
-                fontFamily: "Anton",
-                fontSize: px(38),
-                marginRight: px(10),
+                alignItems: "center",
+                backgroundColor: cor.primaria,
+                color: cor.fundo,
+                padding: `${px(12)}px ${px(40)}px`,
+                borderRadius: px(12),
               }}
             >
-              R$
-            </div>
-            <div
-              style={{
-                display: "flex",
-                fontFamily: "Anton",
-                fontSize: px(corpoDoPreco(preco, formato) * 0.92),
-                lineHeight: 1,
-              }}
-            >
-              {preco.replace(/^R\$\s*/, "")}
+              {/* "R$" menor que o número, como na arte real: o que a pessoa
+                  precisa ler de longe é o número, não a moeda. */}
+              <div
+                style={{
+                  display: "flex",
+                  fontFamily: "Anton",
+                  fontSize: px(38),
+                  marginRight: px(10),
+                }}
+              >
+                R$
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  fontFamily: "Anton",
+                  fontSize: px(corpoDoPreco(preco, formato) * 0.92),
+                  lineHeight: 1,
+                }}
+              >
+                {preco.replace(/^R\$\s*/, "")}
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* ── Rodapé ── */}
       {rodape && (

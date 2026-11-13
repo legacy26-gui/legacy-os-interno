@@ -196,12 +196,20 @@ export default async function MetaAdsPage({
       const urgencia = ORDEM_DO_TOM[a.veredito.tom] - ORDEM_DO_TOM[b.veredito.tom];
       if (urgencia !== 0) return urgencia;
 
-      // Menos dias em cima. Quem não tem conta de dias (sem ritmo, ou no
-      // cartão) fica depois de quem tem: "não sei quantos dias" não disputa
-      // o topo com "dois dias".
-      const da = a.veredito.diasDeSaldo ?? Number.POSITIVE_INFINITY;
-      const db = b.veredito.diasDeSaldo ?? Number.POSITIVE_INFINITY;
+      // Menos dias em cima — pelo número CHEIO, não pelo arredondado. Duas
+      // lojas zeradas mostram as duas "menos de 1 dia", e no inteiro empatam:
+      // foi assim que uma com R$ 36 apareceu acima de uma com R$ 0,00. Quem
+      // não tem conta de dias (sem ritmo, ou no cartão) fica depois de quem
+      // tem: "não sei quantos dias" não disputa o topo com "dois dias".
+      const da = a.veredito.diasExatos ?? Number.POSITIVE_INFINITY;
+      const db = b.veredito.diasExatos ?? Number.POSITIVE_INFINITY;
       if (da !== db) return da - db;
+
+      // Ainda empatado: menos dinheiro em cima. Pega o caso das duas contas
+      // sem ritmo nenhum, em que a conta de dias não existe pra nenhuma.
+      const sa = a.saldo ?? Number.POSITIVE_INFINITY;
+      const sb = b.saldo ?? Number.POSITIVE_INFINITY;
+      if (sa !== sb) return sa - sb;
 
       return a.cliente.companyName.localeCompare(b.cliente.companyName, "pt-BR");
     });
@@ -217,7 +225,12 @@ export default async function MetaAdsPage({
   // existe "quantos dias ainda roda".
   const acabando = comConta
     .filter((l) => l.veredito.tom === "sem-saldo" || l.veredito.tom === "acabando")
-    .sort((a, b) => (a.veredito.diasDeSaldo ?? -1) - (b.veredito.diasDeSaldo ?? -1));
+    // A mais urgente primeiro, pelo mesmo critério da lista.
+    .sort(
+      (a, b) =>
+        (a.veredito.diasExatos ?? -1) - (b.veredito.diasExatos ?? -1) ||
+        (a.saldo ?? -1) - (b.saldo ?? -1)
+    );
 
   // Gastou e não teve lead nenhum: ou a campanha está mesmo sem resultado, ou
   // o tipo de lead configurado não é o que essa conta usa. Os dois casos

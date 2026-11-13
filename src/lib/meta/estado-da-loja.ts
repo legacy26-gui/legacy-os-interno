@@ -82,8 +82,17 @@ export interface SinaisDaLoja {
 
 export interface Veredito {
   tom: TomDaLoja;
-  /** Quantos dias o saldo ainda dura. Null quando não dá pra saber. */
+  /** Quantos dias o saldo ainda dura, em inteiro, pra escrever na tela. */
   diasDeSaldo: number | null;
+  /**
+   * Os mesmos dias SEM arredondar, pra ordenar a lista.
+   *
+   * Não é preciosismo: duas lojas zeradas mostram as duas "menos de 1 dia"
+   * porque o inteiro de ambas é zero, e aí o desempate caía no nome — foi
+   * assim que uma loja com R$ 36 apareceu acima de uma com R$ 0,00. No
+   * número cheio, 0,0 vem antes de 0,4.
+   */
+  diasExatos: number | null;
   /** O ritmo usado, em centavos por dia. Null quando não há de onde tirar. */
   gastoDiarioCents: number | null;
   /** De onde veio o ritmo — a tela diz isso, pra ninguém confiar demais. */
@@ -114,7 +123,13 @@ export function avaliarLoja(s: SinaisDaLoja): Veredito {
   const { cents: gastoDiarioCents, origem } = gastoDiario(s);
 
   if (!s.temConta) {
-    return { tom: "neutro", diasDeSaldo: null, gastoDiarioCents, origemDoRitmo: origem };
+    return {
+      tom: "neutro",
+      diasDeSaldo: null,
+      diasExatos: null,
+      gastoDiarioCents,
+      origemDoRitmo: origem,
+    };
   }
 
   const semSaldoNenhum =
@@ -128,6 +143,7 @@ export function avaliarLoja(s: SinaisDaLoja): Veredito {
   const pronto = (tom: TomDaLoja): Veredito => ({
     tom,
     diasDeSaldo: dias === null ? null : Math.floor(dias),
+    diasExatos: dias,
     gastoDiarioCents,
     origemDoRitmo: origem,
   });

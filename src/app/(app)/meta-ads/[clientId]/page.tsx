@@ -594,6 +594,16 @@ function Tabela({
                           {temFilho &&
                             `${i.dentro} ${nivel === "campanha" ? "conjunto" : "anúncio"}${i.dentro === 1 ? "" : "s"}`}
                         </span>
+                        {/* A legenda do anúncio.
+                            Até agora ela só existia dentro do Gerenciador:
+                            pra saber o que um anúncio dizia era preciso sair
+                            do sistema e procurar lá. Duas linhas bastam pra
+                            reconhecer qual é qual numa lista de vinte. */}
+                        {nivel === "anuncio" && i.legenda && (
+                          <span className="block text-xs text-foreground-muted mt-1 line-clamp-2 max-w-md">
+                            {i.legenda}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </td>

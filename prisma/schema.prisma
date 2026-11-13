@@ -1601,6 +1601,23 @@ model MetaAdCreative {
   // O link de pré-visualização que a Meta gera: é o "ver o anúncio" dela.
   previewUrl   String?
 
+  // ── O texto do anúncio, e o post onde mora a prova social ──────────────
+  //
+  // Guardados pra duas coisas: mostrar a legenda atual na tela (hoje ela só
+  // existe dentro do Gerenciador) e tornar possível editar — editar exige
+  // ler o que está escrito antes de escrever o novo.
+  //
+  // `postId` é o `effective_object_story_id`: o post onde moram as curtidas
+  // e os comentários. É ele que responde à pergunta que ninguém respondeu
+  // ainda: editar o texto de um anúncio troca o post, e com ele zera a prova
+  // social? Guardando o id a cada passada, a primeira edição real responde
+  // com dado nosso em vez de opinião.
+  creativeId String?
+  legenda    String? @db.Text
+  titulo     String?
+  descricao  String? @db.Text
+  postId     String?
+
   atualizadoEm DateTime @default(now())
 
   @@unique([adAccountId, adId])

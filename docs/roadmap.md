@@ -33,15 +33,32 @@ Duas saídas, e a segunda é a boa:
 E vale fazer o sistema avisar sozinho quando o token estiver perto de vencer:
 o aviso tem que chegar antes da parada, não depois.
 
-**Dois projetos na Vercel apontando pro mesmo repositório.** O endereço que a
-equipe usa (`legacy-os-interno.vercel.app`) está servindo código de
-13/11 de manhã e não recebe mais implantação; o do time `legacy9` está em dia,
-mas protegido por senha. Enquanto isso não for resolvido, **nada do que for
-desenvolvido chega em quem usa**.
+**~~Dois projetos na Vercel apontando pro mesmo repositório.~~ Era diagnóstico
+errado meu, desfeito em 13/11/2026 às 18h.**
+
+Eu tinha escrito que o endereço da equipe (`legacy-os-interno.vercel.app`)
+estava preso em código velho e que o do time `legacy9` estava protegido por
+senha. Nenhuma das duas coisas era verdade. O domínio sempre esteve ligado ao
+projeto do `legacy9` — ele responde de
+`legacy-os-interno-ki4os2the-legacy9.vercel.app` e abre o login sem senha
+nenhuma.
+
+O que havia era uma coisa só: **todo build falhava desde as 10:11**, por causa
+da corrida de migração. O site continuava servindo a última versão que deu
+certo, e eu li isso como "projeto errado". Um deploy parado parece muita coisa
+que ele não é.
+
+Fica a lição, porque ela se repete: **o site no ar não prova que o deploy
+subiu.** Por isso o `/api/version` agora devolve `builtAt` congelado no build
+e o id da implantação — dois pedidos seguidos têm que dar o mesmo valor.
 
 **A fatura da Vercel em atraso.** O time aparece como `Overdue` com aviso de
-suspensão. Suspensão derruba o site e o banco junto, porque o Neon é cobrado
-por ali.
+suspensão: *"pay any open invoices before your account is shut down"*.
+Suspensão derruba o site **e o banco junto**, porque o Neon é cobrado por ali.
+
+É o maior risco aberto hoje — maior que qualquer defeito de código, porque
+nenhum conserto sobrevive à conta ser desligada. É também o único item desta
+página que não tem solução técnica.
 
 ---
 

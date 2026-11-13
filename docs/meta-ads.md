@@ -661,3 +661,97 @@ O envio é por botão, um de cada vez. Mandar a casa inteira de uma vez, sozinho
 na segunda de manhã, é o passo seguinte — e é o que exige cuidado com ritmo:
 quarenta mensagens em rajada de um número não oficial é o jeito mais rápido de
 ele ser bloqueado.
+
+## Mudar a verba pelo sistema
+
+Campanha e conjunto. **Anúncio não tem verba na Meta** — quem tem é o
+conjunto (ou a campanha, no modo CBO), e o anúncio gasta o que o conjunto
+libera.
+
+### "Gasto" não se edita
+
+O pedido foi "editar verba, gasto e tal". Verba sim; gasto não, e a diferença
+não é implicância de nome.
+
+**Verba** é o que você manda a Meta gastar. **Gasto** é o que ela gastou. Um é
+instrução, o outro é resultado. Não existe campo de gasto pra escrever — nem
+aqui nem na API da Meta. Seria o mesmo que editar quantos carros a loja
+vendeu no mês passado.
+
+Quando alguém diz "quero mexer no gasto", quer dizer a verba.
+
+### A trava que importa aqui é a vírgula
+
+A de permissão é a mesma do ligar/desligar: o gestor, nas lojas dele, e só em
+objeto que está no nosso cadastro daquela loja.
+
+O perigo é outro. Quem quer R$ 50,00 e digita **5000** multiplica a verba por
+cem. A Meta obedece em segundos, e o dinheiro sai antes de alguém reabrir o
+sistema. Não tem desfazer.
+
+Por isso subir para **mais que o dobro** exige confirmação — e não um "tem
+certeza?" genérico, que se clica no automático. A tela mostra os dois valores
+e quantas vezes maior é:
+
+> *Isso é 100,0× a verba de agora (R$ 50,00 → R$ 5.000,00). A Meta obedece na
+> hora e não tem desfazer. Confirma?*
+
+Descer nunca pede confirmação: errar pra baixo entrega menos até alguém
+perceber, o que é chato e reversível.
+
+### Diária ou total: só o valor muda, nunca o tipo
+
+São excludentes na Meta, e trocar de um pro outro num objeto rodando ela
+recusa — ou aceita de um jeito que ninguém esperava. Então o sistema muda o
+VALOR do tipo que o objeto já usa, e recusa quando não dá pra saber qual é.
+
+O caso real disso é o **conjunto dentro de campanha CBO**: ele não tem
+orçamento próprio, quem manda é a campanha. O sistema recusa **antes** de
+falar com a Meta, com a frase que diz o que fazer: *"quem manda é a campanha.
+Mude na campanha"*.
+
+### O registro guarda o erro também
+
+`meta_acoes` ganhou `tipo` ("status" ou "verba") em vez de uma segunda tabela
+quase igual: a pergunta feita ali é sempre a mesma — "o que mexeram nisto,
+quem, e deu certo?" — e separar forçaria juntar as duas de novo pra responder.
+
+Grava nos dois casos. Quando alguém perguntar "por que a verba desta loja
+está estranha", a tentativa que a Meta recusou é tão informativa quanto a que
+passou.
+
+### Conferido
+
+Contra uma Meta falsa, seis caminhos:
+
+| Caso | Resultado |
+|---|---|
+| Ler a verba da campanha | R$ 50,00 diária |
+| Conjunto em campanha CBO | recusado **antes** da Meta, com o motivo |
+| Subir pra R$ 120,00 | passou, e o cadastro atualizou na hora |
+| Id que não é da loja | recusado pela trava de carteira, sem chamada |
+| Abaixo do mínimo da Meta | a Meta recusa, a frase dela aparece |
+| O token | no cabeçalho `Authorization`, nunca na URL |
+
+O cadastro é atualizado na hora e não na próxima varredura: sem isso, quem
+acabou de mudar recarregaria a tela, veria o valor velho e mudaria de novo.
+
+## Editar legenda, título e foto do anúncio: ainda não
+
+E a razão não é falta de tempo.
+
+Na Meta o criativo de um anúncio é **imutável**. Não existe "editar a
+legenda": existe criar um criativo novo e apontar o anúncio pra ele. Isso é
+possível, e tem uma consequência que precisa ser medida antes:
+
+**A prova social mora no post, não no anúncio.** Curtidas, comentários e
+compartilhamentos pertencem ao `effective_object_story_id`. Se trocar o
+criativo gerar um post novo, o anúncio volta a zero — e um anúncio com 300
+comentários que volta a zero perde o que levou semanas pra juntar.
+
+A pergunta em aberto é essa, e ela se responde com medição, não com opinião:
+**editar o texto muda o `effective_object_story_id`?** O plano é gravar o id
+antes e depois da primeira edição real e descobrir com dado nosso.
+
+Enquanto isso não for medido, editar legenda pelo sistema é arriscar o acervo
+de prova social das lojas pra economizar cliques.

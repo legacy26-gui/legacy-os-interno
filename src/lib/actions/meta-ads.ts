@@ -10,6 +10,14 @@ import { prazoDe } from "@/lib/meta/sincronizar-insights";
 import { varrerContas, varrerCliente } from "@/lib/meta/varredura";
 import { VALIDADE_DO_PEDIDO_MS } from "@/lib/meta/pedido-de-verba";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
+import {
+  mudarVerba,
+  verbaDoObjeto,
+  nivelTemVerba,
+  VERBA_MINIMA_CENTS,
+  SUBIDA_QUE_ASSUSTA,
+  type NivelComVerba,
+} from "@/lib/meta/mudar-verba";
 import { FORMATO_DO_GRUPO } from "@/lib/whatsapp/zapi";
 import {
   acharObjetoDaLoja,
@@ -728,4 +736,93 @@ export async function desvincularConta(contaId: string): Promise<MetaAdsState> {
     revalidatePath("/meta-ads/vincular");
     return { ok: `${conta.metaAccountId} desvinculada.` };
   });
+}
+
+
+/**
+ * Muda a verba de uma campanha ou conjunto, de verdade, na Meta.
+ *
+ * ── A trava que importa aqui não é de permissão: é a vírgula ─────────────
+ *
+ * Quem pode mexer é o mesmo de ligar/desligar — o gestor, nas lojas dele. O
+ * perigo é outro: digitar "5000" querendo R$ 50,00 multiplica a verba por
+ * cem, e a Meta obedece em segundos. Não há desfazer: o dinheiro já saiu.
+ *
+ * Por isso a subida grande exige um `confirmado` explícito. Não é um "tem
+ * certeza?" genérico — a tela diz o valor de antes, o de depois e quantas
+ * vezes maior é, e só então deixa passar.
+ *
+ * Descer nunca pede confirmação: o pior caso de errar pra baixo é a campanha
+ * entregar menos até alguém perceber, o que é chato e reversível.
+ */
+export async function definirVerba(
+  clientId: string,
+  nivel: string,
+  objetoId: string,
+  reais: string,
+  confirmado: boolean,
+): Promise<MetaAdsState & { precisaConfirmar?: string }> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Esta loja não está na sua carteira." };
+    }
+    if (!nivelTemVerba(nivel as NivelComVerba)) {
+      return { erro: "Só campanha e conjunto têm verba. Anúncio gasta o que o conjunto libera." };
+    }
+
+    const texto = reais.trim();
+    if (texto === "") return { erro: "Escreva o valor da verba." };
+
+    // Mesma leitura do resto do sistema: "50", "50,00", "R$ 1.200,00".
+    const limpo = texto.replace(/[R$\s.]/g, "").replace(",", ".");
+    const valor = Number(limpo);
+    if (!Number.isFinite(valor) || valor <= 0) {
+      return { erro: "Valor inválido. Escreva só o número, por exemplo 50." };
+    }
+    const centavos = Math.round(valor * 100);
+    if (centavos < VERBA_MINIMA_CENTS) {
+      return { erro: "Verba baixa demais. O mínimo aqui é R$ 1,00." };
+    }
+    if (valor > 100_000) {
+      return { erro: "Valor alto demais — confira se não sobrou um zero." };
+    }
+
+    const atual = await verbaDoObjeto(clientId, nivel as NivelComVerba, objetoId);
+    if (!atual) return { erro: "Este item não está no cadastro desta loja." };
+
+    // O pedágio da subida grande.
+    if (
+      !confirmado &&
+      atual.atualCents !== null &&
+      centavos > atual.atualCents * SUBIDA_QUE_ASSUSTA
+    ) {
+      const vezes = (centavos / atual.atualCents).toFixed(1).replace(".", ",");
+      return {
+        precisaConfirmar:
+          `Isso é ${vezes}× a verba de agora (${reaisDeCentavos(atual.atualCents)} → ` +
+          `${reaisDeCentavos(centavos)}). A Meta obedece na hora e não tem desfazer. Confirma?`,
+      };
+    }
+
+    const r = await mudarVerba({
+      clientId,
+      quemId: user.id,
+      nivel: nivel as NivelComVerba,
+      objetoId,
+      valorCents: centavos,
+    });
+
+    if (!r.ok) return { erro: r.erro };
+
+    revalidar(clientId);
+    return {
+      ok: `Verba ${r.tipo === "diaria" ? "diária" : "total"} de ${r.nome} agora é ${reaisDeCentavos(r.valorCents)}.`,
+    };
+  });
+}
+
+/** R$ 1.200,00 a partir de centavos. */
+function reaisDeCentavos(c: number): string {
+  return (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }

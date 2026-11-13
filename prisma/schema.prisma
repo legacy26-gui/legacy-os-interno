@@ -484,10 +484,24 @@ model MetaAcao {
   /// depois que a campanha for renomeada ou apagada lá.
   nome     String
 
-  /// O que foi pedido: "ACTIVE" ou "PAUSED".
+  /// O que foi mexido: "status" (ligar/desligar) ou "verba" (orçamento).
+  ///
+  /// Tem padrão "status" porque toda linha que já existia era disso — a
+  /// tabela nasceu só pro ligar/desligar. Em vez de uma segunda tabela quase
+  /// igual, ela ganhou um tipo: a pergunta feita aqui é sempre a mesma ("o
+  /// que mexeram nisto, quem, e deu certo?"), e separar forçaria juntar as
+  /// duas de novo pra responder.
+  tipo String @default("status")
+
+  /// Em tipo "status": "ACTIVE" ou "PAUSED". Em tipo "verba": qual campo foi
+  /// escrito na Meta ("daily_budget" ou "lifetime_budget").
   statusPedido String
   /// O que estava antes, pelo nosso cadastro. Vazio se não sabíamos.
   statusAntes  String?
+
+  /// Só em tipo "verba": o orçamento pedido e o que havia antes.
+  valorPedidoCents Int?
+  valorAntesCents  Int?
 
   ok   Boolean
   /// A frase da Meta quando deu errado. Nunca carrega token: ver

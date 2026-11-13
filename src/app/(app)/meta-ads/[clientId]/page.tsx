@@ -24,6 +24,7 @@ import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
 import { AcoesDaLoja, TrocarPraPix } from "./acoes";
 import { Criativo } from "./criativo";
 import { ChaveDeStatus } from "./chave";
+import { Verba } from "./verba";
 import {
   linhasDaLoja,
   cadastroDaLoja,
@@ -597,16 +598,18 @@ function Tabela({
                     </div>
                   </td>
                   <td className="px-4 py-3 text-right align-top hidden lg:table-cell">
-                    {i.orcamentoCents === null ? (
-                      <span className="text-foreground-muted">—</span>
-                    ) : (
-                      <>
-                        <span className="tabular-nums">{reais(i.orcamentoCents)}</span>
-                        <span className="block text-xs text-foreground-muted">
-                          {i.orcamentoDiario ? "Diário" : "Total"}
-                        </span>
-                      </>
-                    )}
+                    {/* A verba é editável aqui mesmo. A decisão de mexer
+                        nela nasce olhando gasto, leads e custo por lead na
+                        mesma linha — tirá-la pra outra tela faria a pessoa
+                        mudar o número sem os outros na frente. */}
+                    <Verba
+                      clientId={clientId}
+                      nivel={nivel}
+                      objetoId={i.id}
+                      centavos={i.orcamentoCents}
+                      diario={i.orcamentoDiario}
+                      podeMexer={podeMexer}
+                    />
                   </td>
                   <td className="px-4 py-3 text-right align-top tabular-nums">
                     {i.spendCents > 0 ? reais(i.spendCents) : <span className="text-foreground-muted">—</span>}

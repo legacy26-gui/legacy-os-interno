@@ -294,6 +294,19 @@ model Client {
   // gasto REAL, que é melhor porque acompanha a realidade sozinho. Este campo
   // entra quando a loja é nova ou ficou parada e não há de onde calcular.
   gastoMensalPrevistoCents Int?
+
+  /**
+   * O grupo de WhatsApp desta loja, pra onde o relatório da semana vai.
+   *
+   * No formato que a Z-API usa: `120363019502650977-group`. Pega-se o id no
+   * painel da Z-API, na lista de grupos — não é o número de telefone de
+   * ninguém, é o identificador do grupo.
+   *
+   * Vazio quer dizer "ainda manda na mão": a loja aparece no Meu Dia com o
+   * botão de marcar, mas sem o de enviar. Melhor isso do que um envio
+   * silencioso pro lugar errado.
+   */
+  whatsappGrupoId String?
   // Último dia em que alguém da casa foi na loja. Vazio = nunca registrou
   // visita — que não é o mesmo que "nunca foi", é só que ninguém marcou.
   // Guarda só a data, não o histórico: o que se quer saber é há quanto tempo

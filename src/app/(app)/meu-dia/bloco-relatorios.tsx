@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { FileBarChart, Check, Undo2, ExternalLink } from "lucide-react";
+import { FileBarChart, Check, Undo2, ExternalLink, Send, Loader2 } from "lucide-react";
 import {
   marcarRelatorioEnviado,
   desmarcarRelatorioEnviado,
+  enviarRelatorioPeloWhatsapp,
 } from "@/lib/actions/relatorio-semanal";
 
 // Os relatórios da semana, no Meu Dia.
@@ -37,15 +38,20 @@ export interface LojaDoRelatorio {
   id: string;
   nome: string;
   enviado: boolean;
+  /** Tem grupo de WhatsApp cadastrado na ficha. */
+  temGrupo: boolean;
 }
 
 export function BlocoRelatorios({
   lojas,
   diaDaSemana,
+  zapiLigado,
 }: {
   lojas: LojaDoRelatorio[];
   /** 1 = segunda. Vem do servidor, no fuso da casa. */
   diaDaSemana: number;
+  /** O WhatsApp está configurado no sistema. */
+  zapiLigado: boolean;
 }) {
   // Carteira sem loja com conta de anúncio não ganha bloco nenhum.
   if (lojas.length === 0) return null;
@@ -89,15 +95,27 @@ export function BlocoRelatorios({
 
       <ul className="flex flex-col divide-y divide-border">
         {lojas.map((l) => (
-          <Linha key={l.id} loja={l} />
+          <Linha key={l.id} loja={l} zapiLigado={zapiLigado} />
         ))}
       </ul>
+
+      {/* Quantas ainda dependem de alguém abrir o WhatsApp.
+          Dito aqui e não escondido na ficha: enquanto faltar grupo, o
+          "automático" é meia verdade, e a tela não deve fingir o contrário. */}
+      {zapiLigado && lojas.some((l) => !l.temGrupo) && (
+        <p className="text-xs text-foreground-muted">
+          {lojas.filter((l) => !l.temGrupo).length} sem grupo cadastrado — essas vão na mão.
+          O grupo se cadastra na ficha da loja.
+        </p>
+      )}
     </div>
   );
 }
 
-function Linha({ loja }: { loja: LojaDoRelatorio }) {
+function Linha({ loja, zapiLigado }: { loja: LojaDoRelatorio; zapiLigado: boolean }) {
   const [pendendo, iniciar] = useTransition();
+  const [mandando, comecarEnvio] = useTransition();
+  const [erro, setErro] = useState<string | null>(null);
   // Otimista: o clique marca na hora e volta atrás se o servidor recusar.
   // Quem está mandando quarenta relatórios não pode esperar a rede a cada um.
   const [enviado, setEnviado] = useState(loja.enviado);
@@ -113,8 +131,20 @@ function Linha({ loja }: { loja: LojaDoRelatorio }) {
     });
   };
 
+  const mandar = () => {
+    setErro(null);
+    comecarEnvio(async () => {
+      const r = await enviarRelatorioPeloWhatsapp(loja.id);
+      // Só marca na tela se o servidor disse que saiu. A ação já grava o
+      // "enviado" no banco — aqui é só não mentir enquanto a página não
+      // recarrega.
+      if (r?.erro) setErro(r.erro);
+      else setEnviado(true);
+    });
+  };
+
   return (
-    <li className="flex items-center gap-2 py-1.5">
+    <li className="flex flex-wrap items-center gap-2 py-1.5">
       {/* Abrir o relatório é a ação principal, então é ela que ocupa a linha
           inteira. Marcar é o que vem DEPOIS de mandar, e fica no canto. */}
       <Link
@@ -127,10 +157,32 @@ function Linha({ loja }: { loja: LojaDoRelatorio }) {
         {!enviado && <ExternalLink size={13} className="text-foreground-muted shrink-0" />}
       </Link>
 
+      {/* Mandar pelo sistema é o caminho principal quando existe grupo. O
+          "Enviei" continua ao lado porque nem toda loja tem grupo, e porque
+          alguém pode ter mandado por fora. */}
+      {zapiLigado && loja.temGrupo && !enviado && (
+        <button
+          type="button"
+          onClick={mandar}
+          disabled={mandando}
+          className="shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-xs font-medium bg-accent text-white hover:opacity-90 disabled:opacity-50"
+        >
+          {mandando ? (
+            <>
+              <Loader2 size={13} className="animate-spin" /> Mandando
+            </>
+          ) : (
+            <>
+              <Send size={13} /> Mandar no grupo
+            </>
+          )}
+        </button>
+      )}
+
       <button
         type="button"
         onClick={alternar}
-        disabled={pendendo}
+        disabled={pendendo || mandando}
         // 44px de alvo: esta tela é usada de pé, com o telefone na mão.
         className={`shrink-0 inline-flex items-center gap-1.5 min-h-11 px-3 rounded-lg text-xs font-medium border disabled:opacity-50 ${
           enviado
@@ -148,6 +200,12 @@ function Linha({ loja }: { loja: LojaDoRelatorio }) {
           </>
         )}
       </button>
+
+      {/* O erro fica na linha da loja, não num aviso geral: com quarenta
+          lojas, "algo deu errado" no topo não diz em qual. */}
+      {erro && (
+        <p className="basis-full text-xs text-red-600 dark:text-red-400">{erro}</p>
+      )}
     </li>
   );
 }

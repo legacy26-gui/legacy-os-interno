@@ -5,6 +5,7 @@ import { requireModuleAccess } from "@/lib/dal";
 import { estadoDaVenda, DIAS_VERMELHO, DIAS_CRITICO } from "@/lib/controle-vendas";
 import { diaDaCasaComoData, ehDiaDaFoto, segundaDaSemana } from "@/lib/dia-da-casa";
 import { montarPainelDoDia } from "@/lib/meta/painel-do-dia";
+import { zapiConfigurado } from "@/lib/whatsapp/zapi";
 import { LinhaDoCliente, type ClienteDoDia } from "./linha-do-cliente";
 import { BlocoMetaDoDia } from "./bloco-meta";
 import { BlocoRelatorios } from "./bloco-relatorios";
@@ -71,7 +72,7 @@ export default async function MeuDiaPage() {
         status: { not: "CANCELADO" },
         metaAdAccounts: { some: { active: true } },
       },
-      select: { id: true, companyName: true },
+      select: { id: true, companyName: true, whatsappGrupoId: true },
       orderBy: { companyName: "asc" },
     }),
     prisma.relatorioEnviado.findMany({
@@ -160,8 +161,10 @@ export default async function MeuDiaPage() {
           id: l.id,
           nome: l.companyName,
           enviado: enviados.has(l.id),
+          temGrupo: !!l.whatsappGrupoId,
         }))}
         diaDaSemana={diaDaSemana}
+        zapiLigado={zapiConfigurado()}
       />
 
       {urgentes.length > 0 && (

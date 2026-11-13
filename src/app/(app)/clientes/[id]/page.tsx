@@ -214,6 +214,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
                 maximumFractionDigits: 2,
               })
         }
+        grupoDoWhatsapp={client.whatsappGrupoId ?? ""}
       />
 
       {client.onboardings[0] && (

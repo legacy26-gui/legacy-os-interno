@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { clienteEDaCarteira } from "@/lib/carteira";
 import { segundaDaSemana } from "@/lib/dia-da-casa";
+import { mandarRelatorioNoGrupo } from "@/lib/whatsapp/mandar-relatorio";
 
 // "Mandei o relatório desta loja esta semana."
 //
@@ -70,6 +71,38 @@ export async function desmarcarRelatorioEnviado(clientId: string): Promise<Envio
 
   await prisma.relatorioEnviado.deleteMany({
     where: { clientId, semana: segundaDaSemana() },
+  });
+  revalidar();
+  return { ok: true };
+}
+
+/**
+ * Manda o relatório no grupo da loja e, se sair, marca como enviado.
+ *
+ * ── A ordem importa, e é esta ─────────────────────────────────────────────
+ *
+ * Manda primeiro, marca depois. Nunca o contrário.
+ *
+ * Marcar antes seria mais fácil de escrever e criaria o pior defeito
+ * possível: a Z-API fora do ar, o cliente sem receber nada, e a tela dizendo
+ * "enviado" pra todo mundo. Ninguém descobriria até o dono da loja cobrar o
+ * relatório que o sistema jura ter mandado.
+ *
+ * Do jeito certo o pior caso é o oposto, e é muito melhor: a mensagem sai, a
+ * marcação falha, e a loja continua aparecendo como pendente. Alguém manda de
+ * novo e o grupo recebe duas vezes — chato, visível, sem dano.
+ */
+export async function enviarRelatorioPeloWhatsapp(clientId: string): Promise<EnvioState> {
+  const user = await podeMexer(clientId);
+  if (!user) return { erro: "Esta loja não está na sua carteira." };
+
+  const r = await mandarRelatorioNoGrupo(clientId);
+  if (!r.ok) return { erro: r.erro };
+
+  await prisma.relatorioEnviado.upsert({
+    where: { clientId_semana: { clientId, semana: segundaDaSemana() } },
+    update: {},
+    create: { clientId, semana: segundaDaSemana(), quemId: user.id },
   });
   revalidar();
   return { ok: true };

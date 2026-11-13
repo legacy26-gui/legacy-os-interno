@@ -10,6 +10,7 @@ import { prazoDe } from "@/lib/meta/sincronizar-insights";
 import { varrerContas, varrerCliente } from "@/lib/meta/varredura";
 import { VALIDADE_DO_PEDIDO_MS } from "@/lib/meta/pedido-de-verba";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
+import { FORMATO_DO_GRUPO } from "@/lib/whatsapp/zapi";
 import {
   acharObjetoDaLoja,
   mudarStatus,
@@ -397,6 +398,69 @@ export async function definirGastoMensal(
           ? "Investimento mensal apagado. O aviso de saldo volta a usar só o gasto real."
           : "Investimento mensal guardado.",
     };
+  });
+}
+
+/**
+ * Cadastra o grupo de WhatsApp pra onde o relatório desta loja vai.
+ *
+ * ── Por que a direção, e não o gestor ────────────────────────────────────
+ *
+ * Porque errar aqui manda o gasto e os leads de uma loja pro grupo de OUTRA.
+ * Não é um número errado numa tela interna que alguém corrige depois: é um
+ * dado de cliente entregue a quem não devia ver, e não tem como desfazer.
+ *
+ * ── Por que o formato é conferido duas vezes ─────────────────────────────
+ *
+ * Aqui, pra dizer à pessoa na hora o que está errado. E de novo na hora de
+ * enviar (ver lib/whatsapp/zapi.ts), porque o que protege o cliente é a
+ * trava mais perto do envio — esta aqui protege contra o dedo escorregado,
+ * aquela protege contra tudo o mais.
+ */
+export async function definirGrupoDoWhatsapp(
+  clientId: string,
+  grupoId: string,
+): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await quemPodeVincular(clientId);
+    if (!user) {
+      return { erro: "Só a direção cadastra o grupo de WhatsApp da loja." };
+    }
+
+    const texto = grupoId.trim();
+
+    if (texto === "") {
+      await prisma.client.update({
+        where: { id: clientId },
+        data: { whatsappGrupoId: null },
+      });
+      revalidar(clientId);
+      return { ok: "Grupo apagado. O relatório desta loja volta a ser enviado na mão." };
+    }
+
+    if (!FORMATO_DO_GRUPO.test(texto)) {
+      return {
+        erro: "Formato errado. O id do grupo na Z-API é só números seguidos de “-group”, por exemplo 120363019502650977-group.",
+      };
+    }
+
+    // Dois clientes no mesmo grupo é quase certamente erro de digitação, e o
+    // estrago é o pior possível: a loja A recebendo o relatório da loja B.
+    // Barrar aqui custa uma consulta; descobrir depois custa um cliente.
+    const jaUsado = await prisma.client.findFirst({
+      where: { whatsappGrupoId: texto, id: { not: clientId } },
+      select: { companyName: true },
+    });
+    if (jaUsado) {
+      return { erro: `Esse grupo já está cadastrado em ${jaUsado.companyName}.` };
+    }
+
+    await prisma.client.update({
+      where: { id: clientId },
+      data: { whatsappGrupoId: texto },
+    });
+    revalidar(clientId);
+    return { ok: "Grupo guardado. O relatório da semana passa a sair por aqui." };
   });
 }
 

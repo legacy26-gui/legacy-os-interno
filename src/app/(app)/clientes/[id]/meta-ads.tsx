@@ -12,12 +12,14 @@ import {
   CreditCard,
   QrCode,
   Target,
+  Send,
 } from "lucide-react";
 import {
   vincularContaAnuncios,
   atualizarLojaAgora,
   definirFormaDePagamento,
   definirGastoMensal,
+  definirGrupoDoWhatsapp,
   type MetaAdsState,
 } from "@/lib/actions/meta-ads";
 
@@ -44,12 +46,14 @@ export function BlocoMetaAds({
   contas,
   podeVincular,
   gastoMensalTexto,
+  grupoDoWhatsapp,
 }: {
   clientId: string;
   contas: ContaNaTela[];
   podeVincular: boolean;
   /** O investimento mensal combinado, já escrito ("3.000,00"), ou "". */
   gastoMensalTexto: string;
+  grupoDoWhatsapp: string;
 }) {
   const [estado, setEstado] = useState<MetaAdsState>({});
   const [pendente, comecar] = useTransition();
@@ -76,6 +80,11 @@ export function BlocoMetaAds({
   function salvarGasto(formData: FormData) {
     const valor = (formData.get("gastoMensal") as string) ?? "";
     comecar(async () => setEstado(await definirGastoMensal(clientId, valor)));
+  }
+
+  function salvarGrupo(formData: FormData) {
+    const valor = (formData.get("grupoWhats") as string) ?? "";
+    comecar(async () => setEstado(await definirGrupoDoWhatsapp(clientId, valor)));
   }
 
   return (
@@ -223,6 +232,44 @@ export function BlocoMetaAds({
           Serve pra dizer se o saldo está acabando. Quando a loja já tem gasto de verdade nos
           últimos dias, a conta usa o gasto <strong>real</strong> — este número entra quando a loja
           é nova ou ficou parada. Deixe em branco se não houver combinado.
+        </p>
+      </div>
+
+      {/* O grupo de WhatsApp pra onde o relatório vai.
+          Fica junto do Meta Ads e não no cadastro geral porque é aqui que a
+          pessoa está quando pensa no relatório da loja — e porque depende de
+          a loja ter conta de anúncio pra fazer sentido. */}
+      <div className="border-t border-border pt-4">
+        <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium flex items-center gap-2">
+          <Send size={13} /> Grupo do WhatsApp
+        </p>
+        {podeVincular ? (
+          <form action={salvarGrupo} className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              name="grupoWhats"
+              defaultValue={grupoDoWhatsapp}
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="120363019502650977-group"
+              className="w-72 max-w-full px-3 py-2 rounded-lg border border-border bg-background text-sm font-mono"
+            />
+            <button
+              type="submit"
+              disabled={pendente}
+              className="px-3.5 py-2 border border-border rounded-lg text-sm hover:bg-surface-muted disabled:opacity-60"
+            >
+              Salvar
+            </button>
+          </form>
+        ) : (
+          <p className="text-sm mt-1.5 font-mono break-all">
+            {grupoDoWhatsapp || "não cadastrado"}
+          </p>
+        )}
+        <p className="text-xs text-foreground-muted mt-2 max-w-prose">
+          O id do grupo, copiado do painel da Z-API — não é o telefone de ninguém. Com ele, o
+          relatório da semana sai por aqui com um toque no Meu Dia. Sem ele, a loja continua
+          aparecendo na lista, mas pra mandar na mão.
         </p>
       </div>
 

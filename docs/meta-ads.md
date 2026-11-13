@@ -581,3 +581,83 @@ Ficam escritas porque custaram tempo:
   ele ia parar no x=655 e esticava o documento até lá — a tela toda rolava de
   lado por causa da palavra "Atualizar", que ninguém vê. A célula leva
   `relative` pra prender o texto nela.
+
+## Mandar o relatório no grupo do WhatsApp (Z-API)
+
+Decisão do Guilherme em 13/11/2026, com o risco na mesa: o relatório vai pro
+**grupo** de cada loja, e grupo é justamente o que a API oficial da Meta não
+entrega bem. Por isso Z-API e não WhatsApp Business Platform.
+
+**O risco, escrito pra não ser esquecido.** A Z-API não é oficial: ela conecta
+um número comum pelo mesmo caminho do WhatsApp Web. A Meta pode bloquear esse
+número, e bloqueia sem avisar. Por isso o número tem que ser **dedicado ao
+robô** — se cair, para o envio automático, não o atendimento da agência.
+
+### O que precisa estar configurado
+
+Três variáveis na Vercel, em Production e Preview:
+
+| Variável | Onde achar |
+|---|---|
+| `ZAPI_INSTANCE_ID` | painel da Z-API, na instância |
+| `ZAPI_TOKEN` | painel da Z-API, na instância |
+| `ZAPI_CLIENT_TOKEN` | painel da Z-API, em Segurança da conta |
+
+Faltando qualquer uma, o sistema diz "não configurado" e o botão de mandar
+nem aparece — em vez de aparecer e falhar.
+
+Existe uma quarta, `ZAPI_BASE_URL`, que **não se define em produção**: ela
+serve pra apontar os testes pra um servidor falso e assim exercitar o envio
+sem mandar mensagem pro grupo de um cliente de verdade.
+
+### A URL inteira é segredo
+
+A Z-API põe o id da instância e o token no CAMINHO do endereço:
+
+```
+https://api.z-api.io/instances/{instancia}/token/{token}/send-image
+```
+
+Não é escolha nossa. A consequência é que a URL inteira vale como senha — e
+URL é o que mais vaza, porque todo mundo loga URL sem pensar. Em
+`src/lib/whatsapp/zapi.ts` a URL é montada dentro da função e morre nela:
+nenhum erro, log ou retorno a contém. Conferido: depois de um envio bom e um
+recusado, o log do servidor não tinha nenhuma ocorrência do token, da
+instância nem do endereço.
+
+### O grupo de cada loja
+
+Na ficha da loja, bloco Meta Ads, campo **Grupo do WhatsApp**. O id vem do
+painel da Z-API no formato `120363019502650977-group` — não é telefone de
+ninguém.
+
+Três travas, porque mandar o relatório de uma loja pro grupo de outra não tem
+como desfazer:
+
+1. **Só a direção cadastra** (ADMIN ou GERENTE).
+2. **O formato é conferido duas vezes** — na hora de salvar, pra avisar a
+   pessoa, e de novo na hora de enviar, que é a trava que realmente protege.
+   Um telefone de pessoa (`5554999887766`) não passa em nenhuma das duas.
+3. **O mesmo grupo não serve a duas lojas.** É quase sempre erro de
+   digitação, e o estrago seria a loja A recebendo os números da loja B.
+
+### A ordem do envio: manda primeiro, marca depois
+
+Nunca o contrário. Marcar antes seria mais fácil de escrever e criaria o pior
+defeito possível: a Z-API fora do ar, o cliente sem receber nada, e a tela
+dizendo "enviado" pra todo mundo — ninguém descobriria até o dono cobrar.
+
+Do jeito certo, o pior caso é o oposto e é muito melhor: a mensagem sai, a
+marcação falha, a loja continua pendente, alguém manda de novo e o grupo
+recebe duas vezes. Chato, visível, sem dano.
+
+Conferido no navegador com uma Z-API falsa: a loja cujo grupo a Z-API recusou
+**não** foi marcada como enviada, e o erro apareceu na linha dela — não num
+aviso genérico no topo, que com quarenta lojas não diria em qual.
+
+### O que ainda é na mão
+
+O envio é por botão, um de cada vez. Mandar a casa inteira de uma vez, sozinho
+na segunda de manhã, é o passo seguinte — e é o que exige cuidado com ritmo:
+quarenta mensagens em rajada de um número não oficial é o jeito mais rápido de
+ele ser bloqueado.

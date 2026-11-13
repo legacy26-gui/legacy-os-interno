@@ -49,19 +49,28 @@ export const runtime = "nodejs";
 const LARGURA = 1080;
 
 /**
- * A altura ACOMPANHA o conteúdo.
+ * Altura FIXA, e isto mudou.
  *
- * Com altura fixa, uma loja de duas campanhas saía com um terço de folha em
- * branco — parece erro, e no WhatsApp o pedaço vazio é o que aparece grande
- * na pré-visualização.
+ * Antes a folha crescia com o número de campanhas, porque a lista delas
+ * estava dentro. O Guilherme tirou a lista: "não precisa mostrar por
+ * campanha, só o geral". Ele está certo — quem recebe é dono de loja, e a
+ * pergunta dele é "a semana foi boa", não "qual campanha puxou".
+ *
+ * Sem conteúdo variável, a altura passa a ser sempre a mesma. E isso vale por
+ * si: quarenta e duas imagens do mesmo tamanho ficam iguais no WhatsApp, e a
+ * pré-visualização da conversa corta todas no mesmo lugar.
  */
-const ALTURA_FIXA = 1000;
-const ALTURA_POR_CAMPANHA = 76;
-/** Nunca menor que isto: folha curta demais fica estranha ao lado das outras. */
-const ALTURA_MINIMA = 1180;
+const ALTURA = 985;
 
 // ── A paleta, tirada da arte que a equipe já usava ────────────────────────
-const PRETO = "#070707";
+// Preto PURO, e isto não é capricho.
+//
+// A logo chegou como JPEG, que não tem transparência: ela carrega o próprio
+// retângulo preto junto. Com o fundo da folha em #070707, esse retângulo
+// aparecia — um quadrado levemente mais escuro em volta da águia. Igualando
+// os dois, a logo se funde e some a emenda. No dia em que existir um PNG com
+// fundo transparente, isto pode voltar a ser #070707.
+const PRETO = "#000000";
 /** Fundo dos cartões: quase preto, mas não igual ao fundo — é o que os separa. */
 const CARTAO = "#111111";
 const OURO = "#FFC20E";
@@ -69,34 +78,6 @@ const OURO = "#FFC20E";
 const OURO_FRACO = "rgba(255, 194, 14, 0.35)";
 const BRANCO = "#FFFFFF";
 const CINZA = "#8A8A8A";
-
-/** Quantas campanhas cabem na folha antes de virar "e outras N". */
-const CABEM = 6;
-
-/**
- * Traz a arte pra dentro da imagem.
- *
- * Em vez de deixar o Satori buscar o endereço: se a CDN da Meta demorar ou
- * recusar, ele estoura e a imagem inteira não sai. Buscando aqui, com prazo
- * curto, o pior caso é um relatório sem foto.
- */
-async function arteEmbutida(url: string | null): Promise<string | null> {
-  if (!url) return null;
-  try {
-    const corte = AbortSignal.timeout(5000);
-    const r = await fetch(url, { signal: corte, cache: "no-store" });
-    if (!r.ok) return null;
-    const tipo = r.headers.get("content-type") ?? "image/jpeg";
-    if (!tipo.startsWith("image/")) return null;
-    const bytes = Buffer.from(await r.arrayBuffer());
-    // Acima disso não vale: a imagem toda tem orçamento, e miniatura grande
-    // só deixa a geração lenta.
-    if (bytes.byteLength > 2_000_000) return null;
-    return `data:${tipo};base64,${bytes.toString("base64")}`;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * A logo da Legacy, se o arquivo estiver em `assets/legacy-logo.png`.
@@ -164,19 +145,11 @@ export async function GET(req: Request) {
   // de TUDO — nome de campanha, rodapé, explicação do que é lead. Anton é
   // tipografia de título, estreita e sem peso leve; parágrafo nela fica
   // ilegível e grita. A Roboto é o texto; a Anton é só número e título.
-  const [arte, logo, anton, roboto] = await Promise.all([
-    arteEmbutida(r.fotoDeCapa),
+  const [logo, anton, roboto] = await Promise.all([
     logoEmbutida(),
     readFile(join(process.cwd(), "assets", "Anton-Regular.ttf")),
     readFile(join(process.cwd(), "assets", "Roboto-Regular.ttf")),
   ]);
-
-  const mostradas = r.linhas.slice(0, CABEM);
-  const sobraram = r.linhas.length - mostradas.length;
-  const altura = Math.max(
-    ALTURA_MINIMA,
-    ALTURA_FIXA + mostradas.length * ALTURA_POR_CAMPANHA + (sobraram > 0 ? 50 : 0)
-  );
 
   return new ImageResponse(
     (
@@ -229,7 +202,7 @@ export async function GET(req: Request) {
           {logo ? (
             // height sem width: a logo mantém a proporção dela, qualquer que
             // seja o arquivo que for posto na pasta.
-            <img src={logo} alt="" height={118} style={{ objectFit: "contain" }} />
+            <img src={logo} alt="" height={150} style={{ objectFit: "contain" }} />
           ) : (
             <MarcaEmLetra />
           )}
@@ -317,83 +290,6 @@ export async function GET(req: Request) {
           </Cartao>
         </div>
 
-        {/* ── Por campanha ──────────────────────────────────────────── */}
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            padding: "38px 44px 0",
-            flex: 1,
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              marginBottom: 10,
-            }}
-          >
-            <div style={{ display: "flex", fontSize: 20, letterSpacing: 4, color: OURO }}>
-              POR CAMPANHA
-            </div>
-            {arte && (
-              <img
-                src={arte}
-                alt=""
-                width={46}
-                height={46}
-                style={{ borderRadius: 10, objectFit: "cover", marginLeft: "auto" }}
-              />
-            )}
-          </div>
-          {mostradas.map((l) => (
-            <div
-              key={l.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "18px 0",
-                borderBottom: "1px solid #1E1E1E",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  fontSize: 26,
-                  color: "#D4D4D4",
-                  maxWidth: 580,
-                  overflow: "hidden",
-                }}
-              >
-                {l.nome}
-              </div>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <div style={{ display: "flex", fontSize: 26, color: CINZA, marginRight: 30 }}>
-                  {reais(l.spendCents)}
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    fontSize: 28,
-                    fontFamily: "Anton",
-                    color: l.leads > 0 ? OURO : CINZA,
-                    width: 74,
-                    justifyContent: "flex-end",
-                  }}
-                >
-                  {l.leads > 0 ? numero(l.leads) : "—"}
-                </div>
-              </div>
-            </div>
-          ))}
-          {sobraram > 0 && (
-            <div style={{ display: "flex", fontSize: 22, color: CINZA, paddingTop: 16 }}>
-              e mais {sobraram} {sobraram === 1 ? "campanha" : "campanhas"}
-            </div>
-          )}
-        </div>
-
         {/* ── Rodapé ────────────────────────────────────────────────── */}
         {/* Quem lê é dono de loja, não gestor de tráfego: "lead" e
             "visualização" não são óbvios. Explicar custa duas linhas e evita a
@@ -404,6 +300,10 @@ export async function GET(req: Request) {
             flexDirection: "column",
             padding: "24px 44px 34px",
             borderTop: `2px solid ${OURO_FRACO}`,
+            // Sem a lista no meio, nada mais empurra o rodapé pra baixo. O
+            // `auto` encosta ele no pé da folha em vez de deixá-lo colado
+            // nos cartões com um vão preto embaixo.
+            marginTop: "auto",
           }}
         >
           <div style={{ display: "flex", fontSize: 21, color: CINZA }}>
@@ -417,7 +317,7 @@ export async function GET(req: Request) {
     ),
     {
       width: LARGURA,
-      height: altura,
+      height: ALTURA,
       fonts: [
         { name: "Roboto", data: roboto, style: "normal", weight: 400 },
         { name: "Anton", data: anton, style: "normal", weight: 400 },

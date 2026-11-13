@@ -14,12 +14,29 @@ Está aqui e não vem da internet de propósito: buscar fonte na hora de gerar
 deixaria o relatório dependendo de um site de fora ficar de pé, e o dia em
 que ele cair é o dia em que ninguém manda relatório.
 
-## legacy-logo.png  (FALTA)
+## legacy-logo.png
 
-A logo da Legacy Digital — águia + `LEGACY7 Digital`, branco e dourado sobre
-fundo preto. Enquanto o arquivo não estiver aqui, o relatório desenha o nome
-em letra, sem a águia; assim ele continua saindo em vez de quebrar.
+A logo da Legacy Digital — águia + `LEGACY7 Digital`, branco e dourado.
 
-Pra colocar: suba o PNG com esse nome exato nesta pasta. Fundo transparente
-é melhor que fundo preto (o relatório já é preto, e fundo chapado cria um
-retângulo visível em volta).
+Veio de um `WhatsApp Image ....jpeg` de 1080×1080, que é um quadrado preto
+com a logo pequena no meio. Usado assim, a logo sairia minúscula no
+relatório: a altura que o desenho pede seria gasta quase toda com fundo.
+Então a borda preta foi cortada:
+
+```
+node -e '
+const sharp = require("sharp");
+sharp("entrada.jpeg").trim({ threshold: 20 }).png().toFile("assets/legacy-logo.png");
+'
+```
+
+O `threshold: 20` existe porque JPEG não guarda preto exato — perto da logo o
+fundo vira `#030202`, `#010101`. Sem folga, o corte para na primeira sujeira
+e não corta nada. Resultado: 544×265.
+
+Como é JPEG de origem, não tem transparência: ela traz o próprio retângulo
+preto. Por isso o fundo do relatório é `#000000` e não um preto aproximado —
+assim a emenda some. Se um dia aparecer um PNG com fundo transparente, trocar
+o arquivo basta.
+
+Se este arquivo sumir, o relatório escreve o nome em letra em vez de quebrar.

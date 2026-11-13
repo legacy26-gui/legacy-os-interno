@@ -133,6 +133,131 @@ export async function prepararLogo(bytes: Buffer): Promise<FotoPronta> {
   };
 }
 
+// ─────────────────────────── O enquadramento ────────────────────────────
+//
+// ── O problema, medido ───────────────────────────────────────────────────
+//
+// A foto de um carro vem deitada: 1254×780 é típico, proporção 1,61. A arte
+// de feed é quadrada e a de Stories é 0,56. Mandar "preencha o quadro" faz
+// o navegador cortar as laterais a partir do CENTRO, e a conta é cruel:
+//
+//   feed   sobra 62% da imagem — perde 38%
+//   story  sobra 35% da imagem — perde 65%
+//
+// Com 65% fora não existe recorte que salve: o carro perde a frente, a
+// traseira, ou as duas. Foi exatamente o que apareceu na primeira peça
+// gerada com foto de verdade, e foi o Guilherme quem viu.
+//
+// ── As duas regras ───────────────────────────────────────────────────────
+//
+// 1. Quando a perda é tolerável, cortar pelo que IMPORTA e não pelo centro.
+//    O `attention` do sharp procura a região de maior saliência — num pátio,
+//    o carro. Custa uma passada a mais e acerta muito mais que o centro.
+//
+// 2. Quando a perda passa do limite, NÃO cortar. A foto inteira entra, e o
+//    que sobra de moldura é preenchido com uma cópia ampliada e borrada
+//    dela mesma. É o que arte boa faz quando a proporção não bate: parece
+//    decisão, enquanto faixa preta parece erro e carro decepado parece
+//    descuido.
+
+/**
+ * Quanto da imagem se pode perder antes de valer mais não cortar.
+ *
+ * ── Por que 45%, e não menos ─────────────────────────────────────────────
+ *
+ * O número saiu de olhar as artes reais da equipe e de comparar os dois
+ * recortes lado a lado numa foto de verdade.
+ *
+ * Nas artes de FEED da casa o carro é cortado sim — o Cruze da Redline tem
+ * a traseira saindo pela borda esquerda, e fica bom. Foto deitada num
+ * quadrado perde 38%, e com o corte por saliência o que se perde é a
+ * traseira, enquanto a frente, a grade e a placa ficam inteiras. É o
+ * enquadramento que eles mesmos usam.
+ *
+ * Com 35% de limite, o feed caía no fundo borrado — mais conservador e
+ * menos parecido com o que a casa faz.
+ *
+ * Já o Stories perde 65%. Aí não há recorte que salve: a informação não
+ * cabe, e qualquer corte entrega um pedaço de carro.
+ *
+ * Então 45% separa exatamente os dois casos. Não é um número redondo
+ * escolhido no olho: é onde a medida de uma foto real cai de cada lado.
+ */
+const PERDA_QUE_NAO_VALE = 0.45;
+
+/** O quanto a cópia de fundo é borrada. Alto o bastante pra não competir. */
+const BORRAO = 42;
+
+export interface Enquadrada {
+  dataUri: string;
+  /** Falso quando a foto entrou inteira sobre um fundo borrado. */
+  cortada: boolean;
+  /** Quanto da imagem original ficou de fora, de 0 a 1. */
+  perda: number;
+}
+
+/**
+ * Prepara a foto já no formato exato da arte.
+ *
+ * Feito aqui e não no desenho porque o Satori só sabe "preencher" ou
+ * "caber" — ele não tem onde está o carro nem como borrar um fundo. O
+ * desenho recebe a imagem pronta e só a coloca.
+ */
+export async function enquadrar(
+  dataUri: string,
+  alvoLargura: number,
+  alvoAltura: number
+): Promise<Enquadrada> {
+  const bytes = Buffer.from(dataUri.split(",")[1] ?? "", "base64");
+  const base = sharp(bytes, { failOn: "none" });
+  const info = await base.metadata();
+
+  const origem = (info.width ?? 1) / (info.height ?? 1);
+  const alvo = alvoLargura / alvoAltura;
+  const sobra = origem > alvo ? alvo / origem : origem / alvo;
+  const perda = 1 - sobra;
+
+  if (perda <= PERDA_QUE_NAO_VALE) {
+    const saida = await sharp(bytes, { failOn: "none" })
+      .resize(alvoLargura, alvoAltura, {
+        fit: "cover",
+        position: sharp.strategy.attention,
+      })
+      .jpeg({ quality: 88, mozjpeg: true })
+      .toBuffer();
+    return {
+      dataUri: `data:image/jpeg;base64,${saida.toString("base64")}`,
+      cortada: true,
+      perda,
+    };
+  }
+
+  // Fundo: a própria foto, ampliada até preencher e borrada. Usar a foto em
+  // vez de uma cor chapada mantém a peça na paleta do carro — um Onix
+  // branco num pátio claro ganha fundo claro, e não um retângulo preto.
+  const fundo = await sharp(bytes, { failOn: "none" })
+    .resize(alvoLargura, alvoAltura, { fit: "cover", position: sharp.strategy.attention })
+    .blur(BORRAO)
+    .modulate({ brightness: 0.55 })
+    .toBuffer();
+
+  // A foto inteira, do tamanho que couber dentro do quadro.
+  const inteira = await sharp(bytes, { failOn: "none" })
+    .resize(alvoLargura, alvoAltura, { fit: "inside", withoutEnlargement: false })
+    .toBuffer();
+
+  const saida = await sharp(fundo)
+    .composite([{ input: inteira, gravity: "center" }])
+    .jpeg({ quality: 88, mozjpeg: true })
+    .toBuffer();
+
+  return {
+    dataUri: `data:image/jpeg;base64,${saida.toString("base64")}`,
+    cortada: false,
+    perda,
+  };
+}
+
 // ──────────────────────── O que vai escrito na arte ─────────────────────
 
 /**

@@ -16,6 +16,7 @@ import {
   FORMATOS,
   formatoValido,
   layoutDaLoja,
+  enquadrar,
   precoDaArte,
   fichaDoVeiculo,
   corpoDoModelo,
@@ -208,6 +209,15 @@ export async function GET(
     : 72;
   const respiro = story ? 60 : 44;
 
+  // A foto já vem no formato exato que vai ocupar.
+  //
+  // Antes isto era `objectFit: cover` no desenho, e o corte saía do CENTRO:
+  // uma foto deitada num Stories perdia 65% da largura e o carro aparecia
+  // decepado. Agora o recorte é feito antes, pelo ponto de maior saliência
+  // da imagem — e quando a perda passaria de 35%, não há recorte nenhum: a
+  // foto entra inteira sobre uma cópia borrada dela mesma.
+  const quadro = await enquadrar(arte.fotoUrl, largura, fimDaFoto);
+
   // ── O layout "vitrine" é outro desenho inteiro ─────────────────────────
   //
   // Os outros três são variações de um mesmo esqueleto (foto, informação no
@@ -225,7 +235,7 @@ export async function GET(
 
   if (layout === "vitrine") {
     const png = new ImageResponse(
-      vitrine({ arte, m, cor, formato, largura, altura, story, preco, rodape }),
+      vitrine({ arte, foto: quadro.dataUri, m, cor, formato, largura, altura, story, preco, rodape }),
       { width: largura, height: altura, fonts: fontes }
     );
     return responder(await comoJpeg(png, cor.fundo, larguraPedida), arte.modelo, formato);
@@ -248,7 +258,7 @@ export async function GET(
             embaixo de um anúncio é a cara de arte feita com pressa. Recortar
             um pouco do carro é melhor do que emoldurá-lo de preto. */}
         <img
-          src={arte.fotoUrl}
+          src={quadro.dataUri}
           alt=""
           width={largura}
           height={fimDaFoto}
@@ -512,8 +522,9 @@ function nomeDoArquivo(modelo: string, formato: Formato) {
 // precisa de um serviço de remoção de fundo. Ver docs/studio.md.
 
 function vitrine(o: {
+  /** A foto JÁ enquadrada no tamanho da arte. Ver enquadrar() em arte.ts. */
+  foto: string;
   arte: {
-    fotoUrl: string;
     marca: string | null;
     modelo: string;
     versao: string | null;
@@ -533,7 +544,7 @@ function vitrine(o: {
   preco: string | null;
   rodape: string;
 }) {
-  const { arte, m, cor, formato, largura, altura, story, preco, rodape } = o;
+  const { arte, foto, m, cor, formato, largura, altura, story, preco, rodape } = o;
   const ficha = itensDaFicha(arte.detalhes, arte.ano, arte.kmTexto);
   const precoDe = precoDaArte(arte.precoDeCents);
   const k = story ? 1.25 : 1;
@@ -554,11 +565,11 @@ function vitrine(o: {
       }}
     >
       <img
-        src={arte.fotoUrl}
+        src={foto}
         alt=""
         width={largura}
         height={altura}
-        style={{ position: "absolute", top: 0, left: 0, objectFit: "cover" }}
+        style={{ position: "absolute", top: 0, left: 0 }}
       />
 
       {/* Escurece o topo e o pé, deixando o meio da foto limpo — é onde o

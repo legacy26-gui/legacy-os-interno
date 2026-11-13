@@ -158,6 +158,38 @@ decisão a tomar.
 
 As outras 5 usam a foto real do pátio, e essas o Vitrine reproduz hoje.
 
+## O enquadramento: o carro não pode sair cortado
+
+Foi o Guilherme quem viu, na primeira arte gerada com foto de verdade: *"o
+carro ficou cortado"*. Estava, e a conta explica por quê.
+
+Foto de carro vem deitada — 1254×780 é típico, proporção 1,61. O `objectFit:
+cover` do desenho recortava a partir do CENTRO:
+
+| Formato | Sobra da imagem | Perde |
+|---|---|---|
+| Feed 1:1 | 62% | **38%** |
+| Stories 9:16 | 35% | **65%** |
+
+Com 65% fora não existe recorte que salve.
+
+Agora o recorte é feito **antes** do desenho, em `enquadrar()`, e segue duas
+regras:
+
+1. **Até 45% de perda, corta pelo que importa.** O `attention` do sharp acha
+   a região de maior saliência — num pátio, o carro. Comparado lado a lado
+   numa foto real: o corte pelo centro decepa o para-choque; o por saliência
+   mantém frente, grade e placa inteiras.
+2. **Acima de 45%, não corta.** A foto entra inteira sobre uma cópia
+   ampliada e borrada dela mesma. Fundo tirado da própria foto e não cor
+   chapada: um Onix branco num pátio claro ganha fundo claro, e a peça fica
+   na paleta do carro.
+
+**Por que 45% e não 35%:** porque nas artes de feed da casa o carro É
+cortado — o Cruze da Redline tem a traseira saindo pela borda — e fica bom.
+O número separa exatamente os dois casos medidos numa foto real: o feed
+(38%) corta, o Stories (65%) não. Não é um valor escolhido no olho.
+
 ## A arte sai como JPEG, não PNG
 
 O `ImageResponse` só devolve PNG. Numa arte que é 90% fotografia isso deu

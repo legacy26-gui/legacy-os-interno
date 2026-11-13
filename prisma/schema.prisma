@@ -60,6 +60,7 @@ model User {
   alertas          AlertaEstado[]
   clientesConferidos ClienteConferido[] @relation("QuemConferiu")
   resgatesFeitos     AcaoDeResgate[]    @relation("QuemResgatou")
+  verbasPedidas      PedidoDeVerba[]    @relation("VerbaPedidaPor")
 
   @@map("users")
 }
@@ -296,8 +297,51 @@ model Client {
   resgates         AcaoDeResgate[]
   metaAdAccounts   MetaAdAccount[]
   gravacoes        Gravacao[]
+  pedidosDeVerba   PedidoDeVerba[]
 
   @@map("clients")
+}
+
+/// "Já mandei o link do Pix pra essa loja."
+///
+/// Existe por um motivo bem concreto: a lista do Meta Ads acende vermelho na
+/// loja sem saldo, mas não sabia a diferença entre uma loja que ninguém ainda
+/// olhou e uma que o gestor já cobrou às oito da manhã. As duas gritavam
+/// igual, e vermelho que grita por coisa já resolvida é vermelho que ninguém
+/// olha mais.
+///
+/// Marcar aqui acalma o alerta pelo resto do dia. Se a verba não entrar, ele
+/// volta — e volta PIOR que antes, porque agora existe uma promessa que não
+/// foi cumprida.
+///
+/// Não existe "marcar como pago", de propósito: quem diz que a verba entrou é
+/// a Meta, não a memória de ninguém. É pra isso que serve o saldo guardado no
+/// momento do envio — saldo só desce com gasto, então qualquer subida
+/// relevante depois disso é dinheiro que chegou.
+model PedidoDeVerba {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  enviadoEm    DateTime @default(now())
+  enviadoPorId String?
+  enviadoPor   User?    @relation("VerbaPedidaPor", fields: [enviadoPorId], references: [id])
+
+  /// O saldo somado das contas pré-pagas quando o link foi mandado. É a marca
+  /// d'água que diz se a verba entrou depois. Vazio quando não deu pra ler o
+  /// saldo na hora — aí só o tempo resolve o pedido.
+  saldoNoEnvioCents Int?
+
+  /// Preenchido quando o sistema viu o saldo subir. Guardado em vez de
+  /// calculado toda vez pra que o histórico não mude de resposta quando a
+  /// loja gastar o dinheiro que entrou.
+  entrouEm          DateTime?
+  entrouCents       Int?
+
+  createdAt DateTime @default(now())
+
+  @@index([clientId, enviadoEm])
+  @@map("pedidos_de_verba")
 }
 
 // Venda registrada pelo gestor (ex: carro vendido): quanto o cliente vendeu e

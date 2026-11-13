@@ -27,10 +27,23 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Instalar o cliente do Postgres 17
-        # O pg_dump precisa ser igual ou mais novo que o servidor, senão ele
-        # se recusa a rodar. O que vem na imagem do runner é mais antigo.
+      - name: Instalar o cliente mais novo do Postgres
+        # O pg_dump precisa ser igual ou MAIS NOVO que o servidor, senão ele
+        # se recusa a rodar — e o que vem na imagem do runner é mais antigo.
+        #
+        # Nada de versão fixa aqui. Esta linha já dizia "17" e quebrou o
+        # backup no dia em que o Neon passou pra 18:
+        #
+        #   pg_dump: error: aborting because of server version mismatch
+        #   detail: server version: 18.7; pg_dump version: 17.12
+        #
+        # Backup que para sozinho quando o provedor atualiza é backup que não
+        # existe, porque ninguém olha workflow que vinha passando. Então
+        # instala o metapacote (que aponta sempre pro mais novo) e descobre o
+        # caminho em vez de escrevê-lo à mão. No dia em que o Neon for pro 19,
+        # isto continua funcionando sem ninguém mexer.
         run: |
+          set -euo pipefail
           sudo install -d /usr/share/postgresql-common/pgdg
           sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
             -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
@@ -38,12 +51,13 @@ jobs:
             https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client-17
-          # O runner já vem com o cliente 16 e ele continua ganhando no PATH.
-          # Apontar pro caminho exato é o que garante que o dump use o 17 —
-          # pg_dump mais velho que o servidor se recusa a rodar.
-          echo "PG_BIN=/usr/lib/postgresql/17/bin" >> "$GITHUB_ENV"
-          /usr/lib/postgresql/17/bin/pg_dump --version
+          sudo apt-get install -y -qq postgresql-client
+          # O runner já vem com um cliente antigo e ele continua ganhando no
+          # PATH. `sort -V` ordena por número de versão (assim 9 não vem
+          # depois de 18), e o último é o mais novo instalado.
+          PG_BIN="$(ls -d /usr/lib/postgresql/*/bin | sort -V | tail -1)"
+          echo "PG_BIN=$PG_BIN" >> "$GITHUB_ENV"
+          "$PG_BIN/pg_dump" --version
 
       - name: Conferir a conexão
         env:

@@ -55,6 +55,8 @@ export function Legenda({
   const [confirmar, setConfirmar] = useState<string | null>(null);
   const [pendente, comecar] = useTransition();
   const [conferindo, setConferindo] = useState(false);
+  // Só pra quem não pode editar: ver o texto sem abrir o editor.
+  const [espiando, setEspiando] = useState(false);
 
   function abrir() {
     setAberto(true);
@@ -90,13 +92,20 @@ export function Legenda({
   }
 
   if (!aberto) {
+    // ── Fechada, a legenda não aparece ───────────────────────────────────
+    //
+    // Ela aparecia, cortada em duas linhas. Só que o corte não estava
+    // pegando na tela do Guilherme e a legenda inteira — emoji, lista de
+    // itens, telefone, assinatura da loja — descia dentro da célula. Uma
+    // linha de anúncio ficava com a altura de meia tela, e uma lista de
+    // vinte anúncios virava rolagem sem fim.
+    //
+    // Agora é como no Gerenciador: a linha mostra o nome do anúncio e a
+    // miniatura, que é o que serve pra reconhecer qual é qual, e o texto só
+    // existe quando alguém pede pra ver. Quem precisa do texto quase sempre
+    // precisa pra MUDAR — e aí já entra no lugar de mudar.
     return (
       <div className="mt-1 max-w-md">
-        {mostrado && (
-          <span className="block text-xs text-foreground-muted line-clamp-2">
-            {mostrado}
-          </span>
-        )}
         {podeMexer && (
           <button
             type="button"
@@ -104,8 +113,28 @@ export function Legenda({
             className="inline-flex items-center gap-1.5 min-h-11 -my-2 text-xs text-foreground-muted hover:text-accent"
           >
             <Pencil size={12} />{" "}
-            {mostrado ? "Mudar o texto" : "Escrever o texto"}
+            {mostrado ? "Ver e editar o texto" : "Escrever o texto"}
           </button>
+        )}
+
+        {/* Quem não pode editar continua podendo LER. Sem isto, gestor sem
+            acesso de escrita — ou a casa inteira enquanto a chave da Meta
+            não estiver configurada — ficaria sem nenhuma forma de saber o
+            que o anúncio diz, que é justamente o que esta tela veio
+            resolver. */}
+        {!podeMexer && mostrado && (
+          <button
+            type="button"
+            onClick={() => setEspiando((v) => !v)}
+            className="inline-flex items-center gap-1.5 min-h-11 -my-2 text-xs text-foreground-muted hover:text-accent"
+          >
+            <Pencil size={12} /> {espiando ? "Esconder o texto" : "Ver o texto"}
+          </button>
+        )}
+        {!podeMexer && espiando && mostrado && (
+          <span className="block text-xs text-foreground-muted whitespace-pre-wrap mt-1">
+            {mostrado}
+          </span>
         )}
         {ok && (
           <span className="block text-xs text-emerald-600 dark:text-emerald-400 mt-1">

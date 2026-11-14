@@ -822,3 +822,72 @@ caso de erro.** Quando a Meta recusa e o sistema pede confirmação, o texto
 digitado continua lá. É o mesmo defeito que mordeu o Studio, e a causa é a
 mesma — `<form action={...}>` limpa o formulário quando a ação resolve,
 inclusive em erro. Aqui não se usa `action`.
+
+## Cobrar verba (e por que não existe "gerar Pix")
+
+Pergunta que apareceu: *"gerar Pix, código Pix pelo sistema já conseguimos?
+Quando o cliente estiver sem verba geramos por ali e já enviamos?"*
+
+**Não dá pra gerar aquele Pix, e não é limitação técnica — é de quem é o
+dinheiro.** Nesta agência o cliente abastece a conta dele direto na Meta. O
+Pix que ele paga nasce dentro da tela de cobrança da Meta, com a chave da
+Meta, e ninguém de fora emite. Não existe endpoint na API pra isso: a própria
+API só devolve a forma de pagamento (`funding_source_details`), nunca cria
+uma cobrança. Se o sistema gerasse um Pix aqui, seria um Pix pra Legacy — e o
+dinheiro cairia na conta errada.
+
+O que o sistema faz é a parte que realmente dava trabalho: **descobrir quanto
+pedir.**
+
+### O que a janela monta
+
+Na lista de lojas, a faixa colorida abre **Cobrar verba** (só em loja de Pix;
+no cartão a Meta cobra sozinha e não há o que pedir). A janela traz:
+
+- **O valor já preenchido**: sete dias no ritmo real da loja, descontando o
+  que já tem em conta, arredondado pra cima no degrau de R$ 50. Sete e não
+  trinta porque estas lojas abastecem por semana — ver `DIAS_DA_COBRANCA`.
+  O campo é editável: o sistema sabe o ritmo, mas não sabe do feirão de
+  sábado.
+- **A mensagem pronta**, escrita como gente escreve, com o saldo de hoje, o
+  valor, quantos dias ele compra, e como pagar.
+- **O link da tela de cobrança daquela conta**, montado do `metaAccountId`
+  (`act_123456` → `?act=123456`). Atenção: esse endereço **não é
+  documentado** pela Meta. Funciona, é o que o Gerenciador usa, mas pode
+  mudar sem aviso — por isso a mensagem leva sempre o caminho na mão junto
+  (`CAMINHO_MANUAL`). Link morto na mão de cliente é pior que link nenhum.
+- Com **duas contas pré-pagas** na mesma loja o link não é gerado: ele
+  abriria a cobrança de uma delas e o cliente poria o dinheiro na conta
+  errada sem nunca saber. Nesse caso vai só o caminho manual.
+
+### Copiar e marcar são o mesmo botão
+
+De propósito. Marcar "mandei o Pix" é a parte sem recompensa: o gestor copia,
+vai pro WhatsApp, manda — e teria que voltar aqui pra clicar em "marquei".
+Ninguém volta. E sem a marcação a loja segue vermelha, o alerta segue
+gritando, e em duas semanas vermelho não quer dizer mais nada.
+
+Copiar **é** a prova de que a cobrança foi feita, então copiar marca. Se o
+navegador recusar a área de transferência, não marca: aí ninguém garante que
+a mensagem saiu daqui.
+
+Quem cobrou por fora continua tendo o atalho **"Já cobrei por fora"**, que é
+o botão antigo com nome novo.
+
+### Quando o valor não resolve
+
+Se o valor digitado não fecha nem um dia, a mensagem diz isso na cara —
+*"ainda assim não fecha um dia inteiro"*. Não é enfeite: é o aviso de que
+aquela cobrança não vai adiantar nada, e é melhor lê-lo antes de mandar do
+que descobrir amanhã.
+
+### O que falta
+
+**Mandar sozinho.** O botão existe, apagado, dizendo por quê. Precisa da
+Z-API ligada (as três variáveis de ambiente) e do WhatsApp do cliente
+cadastrado. Hoje a Z-API só manda imagem pra grupo — falta a função de texto
+pra número.
+
+**Saber na hora que o cliente pagou** exigiria API de banco, e não é o caso
+aqui: quem recebe é a Meta. O fechamento continua sendo o que já era — o
+saldo subiu, logo entrou dinheiro (ver `pedido-de-verba.ts`).

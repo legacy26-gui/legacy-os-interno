@@ -7,6 +7,7 @@ import { verbaEntrou } from "./pedido-de-verba";
 import { sincronizarCriativos } from "./sincronizar-criativos";
 import { sincronizarEstrutura } from "./sincronizar-estrutura";
 import {
+  registrarVeredito,
   sincronizarInsights,
   sincronizarVidaInteira,
   aindaDaTempo,
@@ -85,7 +86,10 @@ const CAMPOS: Prisma.MetaAdAccountSelect = {
  * em lastSyncError, e uma conta ruim não pode derrubar a varredura das
  * outras.
  */
-async function umaConta(conta: ContaDaVarredura, prazo: Prazo): Promise<boolean> {
+async function umaConta(
+  conta: ContaDaVarredura,
+  prazo: Prazo,
+): Promise<boolean> {
   try {
     // ── Por que as cinco buscas vão juntas ──────────────────────────────
     //
@@ -118,13 +122,42 @@ async function umaConta(conta: ContaDaVarredura, prazo: Prazo): Promise<boolean>
     // útil, e não ter a miniatura não pode pintar a loja de amarelo como se
     // o GASTO estivesse desatualizado. Falhou, fica sem imagem e pronto.
     if (arte.status === "rejected") {
-      console.error("[meta] falhou a arte de", conta.metaAccountId, arte.reason);
+      console.error(
+        "[meta] falhou a arte de",
+        conta.metaAccountId,
+        arte.reason,
+      );
     }
     if (cadastro.status === "rejected") {
-      console.error("[meta] falhou o cadastro de", conta.metaAccountId, cadastro.reason);
+      console.error(
+        "[meta] falhou o cadastro de",
+        conta.metaAccountId,
+        cadastro.reason,
+      );
     }
 
-    return [saldo, numeros, vida].every((r) => r.status === "fulfilled" && r.value.ok);
+    // ── O veredito, escrito uma vez só ──────────────────────────────────
+    //
+    // Enquanto cada busca gravava o próprio resultado em `lastSyncError`, as
+    // que rodam juntas disputavam o campo: a dos 30 dias limpava o erro ao
+    // dar certo, a de vida inteira gravava erro ao falhar, e valia a última
+    // a terminar. A mesma conta aparecia com erro numa atualização e sem
+    // erro na seguinte, com os mesmos dados.
+    //
+    // E a ordem das falhas importa: a de NÚMEROS é a que para a loja, e é
+    // ela que tem que aparecer na tela quando as duas falham. "O acumulado
+    // de vida inteira não veio" ao lado de números velhos mandaria procurar
+    // no lugar errado.
+    const problema =
+      motivo(saldo, "o saldo não veio") ??
+      motivo(numeros, "os números do período não vieram") ??
+      motivo(
+        vida,
+        "o acumulado de vida inteira não veio — os números do período estão certos",
+      );
+
+    await registrarVeredito(conta.id, problema);
+    return problema === null;
   } catch (erro) {
     console.error("[meta] falhou a conta", conta.metaAccountId, erro);
     return false;
@@ -150,13 +183,21 @@ export async function fecharPedidosPagos(clientIds: string[]): Promise<void> {
 
   try {
     const abertos = await prisma.pedidoDeVerba.findMany({
-      where: { clientId: { in: clientIds }, entrouEm: null, saldoNoEnvioCents: { not: null } },
+      where: {
+        clientId: { in: clientIds },
+        entrouEm: null,
+        saldoNoEnvioCents: { not: null },
+      },
       select: { id: true, clientId: true, saldoNoEnvioCents: true },
     });
     if (abertos.length === 0) return;
 
     const contas = await prisma.metaAdAccount.findMany({
-      where: { clientId: { in: abertos.map((p) => p.clientId) }, active: true, isPrepay: true },
+      where: {
+        clientId: { in: abertos.map((p) => p.clientId) },
+        active: true,
+        isPrepay: true,
+      },
       select: {
         clientId: true,
         balanceSnapshots: {
@@ -197,7 +238,7 @@ export async function fecharPedidosPagos(clientIds: string[]): Promise<void> {
 /** Varre uma lista de contas, de quatro em quatro, dentro do prazo. */
 export async function varrerContas(
   contas: ContaDaVarredura[],
-  prazo: Prazo
+  prazo: Prazo,
 ): Promise<ResultadoDaVarredura> {
   let ok = 0;
   let falhou = 0;
@@ -207,9 +248,19 @@ export async function varrerContas(
     // pela metade deixaria contas com saldo novo e números velhos.
     if (!aindaDaTempo(prazo)) {
       await fecharPedidosPagos([
-        ...new Set(contas.slice(0, i).filter((c) => c.isPrepay).map((c) => c.clientId)),
+        ...new Set(
+          contas
+            .slice(0, i)
+            .filter((c) => c.isPrepay)
+            .map((c) => c.clientId),
+        ),
       ]);
-      return { ok, falhou, naoDeuTempo: contas.length - ok - falhou, total: contas.length };
+      return {
+        ok,
+        falhou,
+        naoDeuTempo: contas.length - ok - falhou,
+        total: contas.length,
+      };
     }
     const onda = contas.slice(i, i + CONCORRENCIA);
     const resultados = await Promise.all(onda.map((c) => umaConta(c, prazo)));
@@ -218,7 +269,9 @@ export async function varrerContas(
 
   // No fim e não a cada onda: a conta é da loja inteira, e perguntar antes de
   // ler todas as contas dela daria falso negativo.
-  await fecharPedidosPagos([...new Set(contas.filter((c) => c.isPrepay).map((c) => c.clientId))]);
+  await fecharPedidosPagos([
+    ...new Set(contas.filter((c) => c.isPrepay).map((c) => c.clientId)),
+  ]);
 
   return { ok, falhou, naoDeuTempo: 0, total: contas.length };
 }
@@ -255,4 +308,21 @@ export async function varrerCasa(prazo: Prazo): Promise<ResultadoDaVarredura> {
   })) as ContaDaVarredura[];
 
   return varrerContas(contas, prazo);
+}
+
+/**
+ * O motivo da falha de uma busca, ou null quando deu certo.
+ *
+ * `rejected` é exceção (rede caiu, código quebrou); `ok: false` é a Meta
+ * tendo dito não. Os dois contam como falha, mas só o segundo tem uma frase
+ * que vale mostrar — a primeira vira texto de erro de programador na tela da
+ * loja, e por isso recebe a explicação curta de quem chamou.
+ */
+function motivo(
+  r: PromiseSettledResult<{ ok: boolean; erro?: string }>,
+  oQue: string,
+): string | null {
+  if (r.status === "rejected") return `${oQue}.`;
+  if (r.value.ok) return null;
+  return r.value.erro ? `${oQue}: ${r.value.erro}` : `${oQue}.`;
 }

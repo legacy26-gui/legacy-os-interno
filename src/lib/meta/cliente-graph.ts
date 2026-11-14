@@ -19,7 +19,17 @@ import "server-only";
 // Este arquivo é "server-only": se alguém importar numa tela de navegador, o
 // build quebra em vez de mandar o token pro cliente.
 
-/** 10 segundos. Além disso é a Meta que está fora do ar, não a rede. */
+/**
+ * 10 segundos pra uma busca comum. Além disso é a Meta que está fora do ar,
+ * não a rede.
+ *
+ * Não serve pra tudo, porém: a busca de vida inteira pede o acumulado de
+ * TODOS os anúncios de uma conta desde sempre, e numa conta antiga e grande
+ * ela passa dos 10 segundos com facilidade. O corte cedo demais virava um
+ * "a Meta demorou demais" numa loja em que estava tudo certo — os números do
+ * período já tinham entrado, só o acumulado é que não. Por isso quem chama
+ * pode pedir mais tempo.
+ */
 const TIMEOUT_MS = 10_000;
 
 const VERSAO_PADRAO = "v26.0";
@@ -64,11 +74,16 @@ export type RespostaGraph<T> =
  */
 export async function buscarNaGraph<T>(
   caminho: string,
-  params: Record<string, string> = {}
+  params: Record<string, string> = {},
+  /** Quanto esperar. Só as buscas sabidamente pesadas pedem mais. */
+  timeoutMs: number = TIMEOUT_MS,
 ): Promise<RespostaGraph<T>> {
   const chave = token();
   if (!chave) {
-    return { ok: false, erro: "Token de leitura da Meta não configurado no sistema." };
+    return {
+      ok: false,
+      erro: "Token de leitura da Meta não configurado no sistema.",
+    };
   }
 
   const url = new URL(`${base()}/${versao()}/${caminho}`);
@@ -78,7 +93,7 @@ export async function buscarNaGraph<T>(
   // corte precisa ser distinguível de um erro de rede pra a mensagem fazer
   // sentido pra quem lê.
   const corte = new AbortController();
-  const relogio = setTimeout(() => corte.abort(), TIMEOUT_MS);
+  const relogio = setTimeout(() => corte.abort(), timeoutMs);
 
   try {
     const resposta = await fetch(url, {
@@ -107,15 +122,23 @@ export async function buscarNaGraph<T>(
     try {
       return { ok: true, dados: JSON.parse(texto) as T };
     } catch {
-      return { ok: false, erro: "A Meta respondeu num formato que não deu pra ler." };
+      return {
+        ok: false,
+        erro: "A Meta respondeu num formato que não deu pra ler.",
+      };
     }
   } catch (erro) {
     if (erro instanceof Error && erro.name === "AbortError") {
-      return { ok: false, erro: "A Meta demorou demais pra responder (mais de 10 segundos)." };
+      return {
+        ok: false,
+        erro: `A Meta demorou demais pra responder (mais de ${Math.round(timeoutMs / 1000)} segundos).`,
+      };
     }
     return {
       ok: false,
-      erro: semSegredo(erro instanceof Error ? erro.message : "Falha ao falar com a Meta."),
+      erro: semSegredo(
+        erro instanceof Error ? erro.message : "Falha ao falar com a Meta.",
+      ),
     };
   } finally {
     clearTimeout(relogio);

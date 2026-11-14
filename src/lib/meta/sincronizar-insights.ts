@@ -86,6 +86,17 @@ export function prazoDe(ms: number): Prazo {
   return { restante: () => fim - Date.now() };
 }
 
+/**
+ * Quanto esperar pela busca de vida inteira.
+ *
+ * Ela pede o acumulado de TODOS os anúncios da conta desde sempre, numa
+ * chamada só. Numa conta nova volta em segundos; numa conta antiga e grande
+ * passa dos 10 que servem pro resto, e aí estourava o corte e gravava "a
+ * Meta demorou demais" numa loja em que estava tudo certo — os números do
+ * período já tinham entrado, só o acumulado é que não.
+ */
+const TIMEOUT_DA_VIDA_INTEIRA = 25_000;
+
 /** Abaixo disso não vale começar outra chamada que pode levar 10 segundos. */
 const MINIMO_PRA_TENTAR_MS = 12_000;
 
@@ -133,10 +144,7 @@ export async function sincronizarInsights(
       },
     );
 
-    if (!resposta.ok) {
-      await registrarErro(conta.id, resposta.erro);
-      return { ok: false, erro: resposta.erro };
-    }
+    if (!resposta.ok) return { ok: false, erro: resposta.erro };
 
     const lote = resposta.dados.data ?? [];
     todas.push(...lote);
@@ -193,8 +201,16 @@ export async function sincronizarInsights(
       await tx.metaAdAccount.update({
         where: { id: conta.id },
         data: {
+          // O carimbo de "li esta conta agora" entra aqui porque é aqui que
+          // os números entram — separado, uma falha no meio deixaria a conta
+          // marcada como atualizada sem os dados.
+          //
+          // O ERRO, não: quem decide se a conta está boa é a varredura, uma
+          // vez só, depois que as cinco buscas terminam. Enquanto cada busca
+          // escrevia o próprio veredito, as que rodam juntas disputavam o
+          // campo e ganhava a última a terminar — a conta aparecia com erro
+          // ou sem erro meio ao acaso, com os mesmos dados.
           lastSyncedAt: new Date(),
-          lastSyncError: null,
           // O que a Meta devolveu de ação, somado por tipo. É o que deixa a
           // tela distinguir "não vendeu" de "está contando a coisa errada".
           acoesVistas: somarAcoesPorTipo(todas),
@@ -237,12 +253,10 @@ export async function sincronizarVidaInteira(
         limit: String(POR_PAGINA),
         ...(depois ? { after: depois } : {}),
       },
+      TIMEOUT_DA_VIDA_INTEIRA,
     );
 
-    if (!resposta.ok) {
-      await registrarErro(conta.id, resposta.erro);
-      return { ok: false, erro: resposta.erro };
-    }
+    if (!resposta.ok) return { ok: false, erro: resposta.erro };
 
     const lote = resposta.dados.data ?? [];
     todas.push(...lote);
@@ -275,10 +289,23 @@ export async function sincronizarVidaInteira(
   return { ok: true, linhas: unicas.length, dias: 0 };
 }
 
-async function registrarErro(contaId: string, erro: string) {
+/**
+ * O veredito da conta, escrito UMA vez, pela varredura.
+ *
+ * Fica aqui e não em cada busca por causa de uma corrida: desde que as cinco
+ * buscas de uma conta passaram a rodar juntas, duas delas escreviam neste
+ * mesmo campo — a dos 30 dias limpava o erro ao dar certo, a de vida inteira
+ * gravava erro ao falhar — e o valor final era o da que terminasse por
+ * último. A mesma conta, com os mesmos dados, aparecia com erro numa
+ * atualização e sem erro na seguinte.
+ */
+export async function registrarVeredito(contaId: string, erro: string | null) {
   await prisma.metaAdAccount.update({
     where: { id: contaId },
-    data: { lastSyncedAt: new Date(), lastSyncError: erro.slice(0, 300) },
+    data: {
+      lastSyncedAt: new Date(),
+      lastSyncError: erro ? erro.slice(0, 300) : null,
+    },
   });
 }
 

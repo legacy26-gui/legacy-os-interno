@@ -1,7 +1,15 @@
 // Únicos dias de vencimento/pagamento aceitos no sistema.
 export const PAYMENT_DAYS = [5, 10, 15, 20, 25, 30] as const;
 
-export const EXPENSE_CATEGORIES = ["Salários", "Aluguel", "Ferramentas/Software", "Impostos", "Marketing", "Comissões", "Outros"];
+export const EXPENSE_CATEGORIES = [
+  "Salários",
+  "Aluguel",
+  "Ferramentas/Software",
+  "Impostos",
+  "Marketing",
+  "Comissões",
+  "Outros",
+];
 
 // Planos contratados disponíveis no cadastro de cliente.
 export const PLAN_OPTIONS = [
@@ -155,13 +163,25 @@ export const TICKET_STATUS_COLORS = {
   RESOLVIDO: "bg-emerald-500/15 text-emerald-500",
 } as const;
 
+/**
+ * A lista de chamada do dia, agora de RELACIONAMENTO.
+ *
+ * ── O que saiu, e por quê ────────────────────────────────────────────────
+ *
+ * Saldo, orçamento diário, gasto de hoje, limite de cobrança e pagamentos
+ * pendentes. Cinco quadradinhos pra confirmar à mão números que o sistema já
+ * busca de quinze em quinze minutos, mostra na tela da loja e grita por
+ * alerta quando saem do lugar.
+ *
+ * Marcar à mão o que a máquina já olha não é conferência, é digitação — e
+ * quadradinho que se marca sem olhar ensina a marcar sem olhar o resto.
+ *
+ * As COLUNAS continuam no banco: o histórico do que já foi marcado é
+ * registro, e registro não se apaga porque a regra mudou. Elas só pararam de
+ * ser perguntadas.
+ */
 export const DAILY_REVIEW_CHECKS = [
-  ["checkedBalance", "Verificou saldo da conta"],
-  ["checkedDailyBudget", "Verificou orçamento diário"],
-  ["checkedTodaySpend", "Verificou gasto de hoje"],
-  ["checkedBillingLimit", "Verificou limite de cobrança"],
-  ["checkedPendingPayments", "Verificou pagamentos pendentes"],
-  ["checkedWhatsappResolved", "WhatsApp resolvido?"],
+  ["checkedWhatsappResolved", "Respondeu o WhatsApp da loja"],
 ] as const;
 
 export const WEEKLY_REVIEW_CHECKS = [

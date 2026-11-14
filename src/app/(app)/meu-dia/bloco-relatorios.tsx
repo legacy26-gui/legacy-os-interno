@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { FileBarChart, Check, Undo2, ExternalLink, Send, Loader2 } from "lucide-react";
+import {
+  FileBarChart,
+  Check,
+  Undo2,
+  ExternalLink,
+  Send,
+  Loader2,
+} from "lucide-react";
 import {
   marcarRelatorioEnviado,
   desmarcarRelatorioEnviado,
@@ -67,7 +74,10 @@ export function BlocoRelatorios({
     >
       <div className="flex items-baseline justify-between gap-3">
         <p className="text-xs uppercase text-foreground-muted tracking-wide font-medium flex items-center gap-2">
-          <FileBarChart size={14} className={atrasado ? "text-red-500" : "text-accent"} />
+          <FileBarChart
+            size={14}
+            className={atrasado ? "text-red-500" : "text-accent"}
+          />
           Relatórios da semana
         </p>
         <p
@@ -104,15 +114,21 @@ export function BlocoRelatorios({
           "automático" é meia verdade, e a tela não deve fingir o contrário. */}
       {zapiLigado && lojas.some((l) => !l.temGrupo) && (
         <p className="text-xs text-foreground-muted">
-          {lojas.filter((l) => !l.temGrupo).length} sem grupo cadastrado — essas vão na mão.
-          O grupo se cadastra na ficha da loja.
+          {lojas.filter((l) => !l.temGrupo).length} sem grupo cadastrado — essas
+          vão na mão. O grupo se cadastra na ficha da loja.
         </p>
       )}
     </div>
   );
 }
 
-function Linha({ loja, zapiLigado }: { loja: LojaDoRelatorio; zapiLigado: boolean }) {
+function Linha({
+  loja,
+  zapiLigado,
+}: {
+  loja: LojaDoRelatorio;
+  zapiLigado: boolean;
+}) {
   const [pendendo, iniciar] = useTransition();
   const [mandando, comecarEnvio] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
@@ -154,7 +170,9 @@ function Linha({ loja, zapiLigado }: { loja: LojaDoRelatorio; zapiLigado: boolea
         }`}
       >
         <span className="truncate">{loja.nome}</span>
-        {!enviado && <ExternalLink size={13} className="text-foreground-muted shrink-0" />}
+        {!enviado && (
+          <ExternalLink size={13} className="text-foreground-muted shrink-0" />
+        )}
       </Link>
 
       {/* Mandar pelo sistema é o caminho principal quando existe grupo. O
@@ -204,7 +222,9 @@ function Linha({ loja, zapiLigado }: { loja: LojaDoRelatorio; zapiLigado: boolea
       {/* O erro fica na linha da loja, não num aviso geral: com quarenta
           lojas, "algo deu errado" no topo não diz em qual. */}
       {erro && (
-        <p className="basis-full text-xs text-red-600 dark:text-red-400">{erro}</p>
+        <p className="basis-full text-xs text-red-600 dark:text-red-400">
+          {erro}
+        </p>
       )}
     </li>
   );

@@ -32,34 +32,25 @@ export type ReviewFormState = { error?: string } | undefined;
 export async function submitDailyReview(
   clientId: string,
   _prevState: ReviewFormState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ReviewFormState> {
   const user = await requireModuleAccess("gestao-contas");
 
-  const photo = formData.get("photo");
-  let photoUrl: string | null = null;
-  if (photo instanceof File && photo.size > 0) {
-    if (!photo.type.startsWith("image/")) {
-      return { error: "A foto precisa ser uma imagem (foto ou print)." };
-    }
-    if (photo.size > MAX_PHOTO_BYTES) {
-      return { error: "Foto muito grande (máx. 5MB). Tire uma foto com menos resolução ou comprima." };
-    }
-    const buffer = Buffer.from(await photo.arrayBuffer());
-    photoUrl = `data:${photo.type};base64,${buffer.toString("base64")}`;
-  }
-
+  // A foto da campanha saiu do formulário: o sistema mostra a campanha
+  // inteira hoje — veiculação, gasto, resultado, a arte, o texto — e uma
+  // foto de tela provando o que a tela ao lado já mostra não prova mais
+  // nada. A coluna `photoUrl` continua na tabela porque as fotos que já
+  // foram tiradas são registro.
+  //
+  // As cinco conferências operacionais também saíram, pela mesma razão:
+  // eram marcação à mão de números que a varredura já busca de quinze em
+  // quinze minutos. As colunas ficam, com o valor padrão `false`, e o que
+  // já foi marcado continua lá.
   await prisma.dailyReview.create({
     data: {
       clientId,
       reviewerId: user.id,
-      checkedBalance: bool(formData, "checkedBalance"),
-      checkedDailyBudget: bool(formData, "checkedDailyBudget"),
-      checkedTodaySpend: bool(formData, "checkedTodaySpend"),
-      checkedBillingLimit: bool(formData, "checkedBillingLimit"),
-      checkedPendingPayments: bool(formData, "checkedPendingPayments"),
       checkedWhatsappResolved: bool(formData, "checkedWhatsappResolved"),
-      photoUrl,
       notes: (formData.get("notes") as string)?.trim() || null,
     },
   });
@@ -74,19 +65,24 @@ export async function submitDailyReview(
 export async function submitWeeklyReview(
   clientId: string,
   _prevState: ReviewFormState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ReviewFormState> {
   const user = await requireModuleAccess("gestao-contas");
 
   const photo = formData.get("reportPhoto");
   if (!(photo instanceof File) || photo.size === 0) {
-    return { error: "Anexe a foto do relatório para concluir a revisão semanal." };
+    return {
+      error: "Anexe a foto do relatório para concluir a revisão semanal.",
+    };
   }
   if (!photo.type.startsWith("image/")) {
     return { error: "O relatório precisa ser uma imagem (foto ou print)." };
   }
   if (photo.size > MAX_PHOTO_BYTES) {
-    return { error: "Foto muito grande (máx. 5MB). Tire uma foto com menos resolução ou comprima." };
+    return {
+      error:
+        "Foto muito grande (máx. 5MB). Tire uma foto com menos resolução ou comprima.",
+    };
   }
 
   const buffer = Buffer.from(await photo.arrayBuffer());
@@ -96,9 +92,12 @@ export async function submitWeeklyReview(
   // preencher com atraso sem cair na semana errada; sem isso, usa hoje.
   const now = new Date();
   const weekRaw = Number(formData.get("weekOfMonth"));
-  const weekOfMonth = weekRaw >= 1 && weekRaw <= 5 ? weekRaw : weekOfMonthFor(now);
+  const weekOfMonth =
+    weekRaw >= 1 && weekRaw <= 5 ? weekRaw : weekOfMonthFor(now);
   const refMonthRaw = (formData.get("refMonth") as string) || "";
-  const refMonth = /^\d{4}-\d{2}$/.test(refMonthRaw) ? refMonthRaw : monthKey(now);
+  const refMonth = /^\d{4}-\d{2}$/.test(refMonthRaw)
+    ? refMonthRaw
+    : monthKey(now);
 
   await prisma.weeklyReview.create({
     data: {

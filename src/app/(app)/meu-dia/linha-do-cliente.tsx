@@ -4,7 +4,7 @@ import { useActionState, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
   Check,
-  Camera,
+  Pin,
   AlertTriangle,
   Loader2,
   ChevronDown,
@@ -16,8 +16,16 @@ import {
   desconferirCliente,
   type ConferirState,
 } from "@/lib/actions/conferencia";
-import { ESTILO_DO_SELO, ROTULO_DO_TOM, type TomDaVenda } from "@/lib/controle-vendas";
-import { DailyReviewForm } from "../gestao-contas/[id]/daily-review-form";
+import {
+  ESTILO_DO_SELO,
+  ROTULO_DO_TOM,
+  type TomDaVenda,
+} from "@/lib/controle-vendas";
+import {
+  DailyReviewForm,
+  type RevisaoDeHoje,
+  type ObservacaoFixada,
+} from "../gestao-contas/[id]/daily-review-form";
 
 // Uma linha por cliente, baixa o bastante pra a carteira inteira caber na
 // tela de uma vez.
@@ -35,7 +43,12 @@ export interface ClienteDoDia {
   conferidoHoje: boolean;
   /** Quem marcou a caixinha hoje — primeiro nome. */
   conferidoPor: string | null;
-  temFoto: boolean;
+  /** As observações internas da loja: senha, verba combinada, o que houver. */
+  observacoes: string | null;
+  /** O que foi fixado na ficha da loja. */
+  fixadas: ObservacaoFixada[];
+  /** O que já foi salvo na revisão de hoje. */
+  revisaoDeHoje: RevisaoDeHoje | null;
   diasSemVender: number;
   tomDaVenda: TomDaVenda;
   textoDaVenda: string;
@@ -49,16 +62,12 @@ export interface ClienteDoDia {
   controlaVendas: boolean;
 }
 
-export function LinhaDoCliente({
-  cliente,
-  diaDaFoto,
-}: {
-  cliente: ClienteDoDia;
-  /** Hoje é segunda: a caixinha pede a foto da campanha. */
-  diaDaFoto: boolean;
-}) {
+export function LinhaDoCliente({ cliente }: { cliente: ClienteDoDia }) {
   const marcar = conferirCliente.bind(null, cliente.id);
-  const [estado, enviar, enviando] = useActionState<ConferirState, FormData>(marcar, undefined);
+  const [estado, enviar, enviando] = useActionState<ConferirState, FormData>(
+    marcar,
+    undefined,
+  );
   const [desmarcando, iniciarDesmarcar] = useTransition();
   const [aberto, setAberto] = useState(false);
   const form = useRef<HTMLFormElement>(null);
@@ -75,12 +84,15 @@ export function LinhaDoCliente({
 
   // Tamanho do alvo de toque. Grande, e com borda forte quando falta marcar:
   // é o botão mais apertado do sistema, vinte vezes por dia.
-  const caixa = "w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0";
+  const caixa =
+    "w-9 h-9 rounded-lg flex items-center justify-center transition-colors shrink-0";
 
   return (
     <div
       className={`rounded-xl border bg-surface ${
-        urgente && !cliente.conferidoHoje ? "border-red-500/60" : "border-border"
+        urgente && !cliente.conferidoHoje
+          ? "border-red-500/60"
+          : "border-border"
       }`}
     >
       <div className="flex items-center gap-3 px-2.5 py-2">
@@ -93,51 +105,37 @@ export function LinhaDoCliente({
             title={`Conferido hoje${cliente.conferidoPor ? ` por ${cliente.conferidoPor}` : ""} — clique pra desmarcar`}
             className={`${caixa} bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50`}
           >
-            {ocupado ? <Loader2 size={16} className="animate-spin" /> : <Check size={18} />}
+            {ocupado ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Check size={18} />
+            )}
           </button>
         ) : (
-          <form ref={form} action={enviar} className="shrink-0 flex items-center">
-            {diaDaFoto ? (
-              <>
-                <input
-                  type="file"
-                  name="foto"
-                  accept="image/*"
-                  capture="environment"
-                  id={`foto-${cliente.id}`}
-                  className="sr-only"
-                  onChange={(e) => {
-                    setErroLocal(null);
-                    if (e.target.files?.length) form.current?.requestSubmit();
-                  }}
+          // A foto de segunda-feira saiu: o sistema mostra a campanha
+          // inteira agora, e foto de tela provando o que a tela ao lado já
+          // mostra não prova mais nada. Todo dia é um clique só.
+          <form
+            ref={form}
+            action={enviar}
+            className="shrink-0 flex items-center"
+          >
+            <button
+              type="submit"
+              disabled={ocupado}
+              aria-pressed={false}
+              title="Marcar que você olhou este cliente hoje"
+              className={`${caixa} border-2 border-foreground-muted/50 text-transparent hover:border-accent hover:bg-accent/10 hover:text-accent/40 disabled:opacity-50`}
+            >
+              {ocupado ? (
+                <Loader2
+                  size={16}
+                  className="animate-spin text-foreground-muted"
                 />
-                <label
-                  htmlFor={`foto-${cliente.id}`}
-                  title="Segunda-feira é o dia da foto: anexe a foto da campanha"
-                  className={`${caixa} cursor-pointer border-2 ${
-                    ocupado
-                      ? "opacity-50 border-border"
-                      : "border-amber-500 text-amber-500 hover:bg-amber-500/15"
-                  }`}
-                >
-                  {ocupado ? <Loader2 size={16} className="animate-spin" /> : <Camera size={16} />}
-                </label>
-              </>
-            ) : (
-              <button
-                type="submit"
-                disabled={ocupado}
-                aria-pressed={false}
-                title="Marcar que você olhou este cliente hoje"
-                className={`${caixa} border-2 border-foreground-muted/50 text-transparent hover:border-accent hover:bg-accent/10 hover:text-accent/40 disabled:opacity-50`}
-              >
-                {ocupado ? (
-                  <Loader2 size={16} className="animate-spin text-foreground-muted" />
-                ) : (
-                  <Check size={18} />
-                )}
-              </button>
-            )}
+              ) : (
+                <Check size={18} />
+              )}
+            </button>
           </form>
         )}
 
@@ -150,10 +148,6 @@ export function LinhaDoCliente({
             {cliente.companyName}
           </p>
         </div>
-
-        {cliente.conferidoHoje && cliente.temFoto && (
-          <Camera size={13} className="shrink-0 text-emerald-500" aria-label="foto da semana enviada" />
-        )}
 
         {/* O mesmo selo e as mesmas cores do Controle de Vendas. Conta fora do
             controle não ganha selo de dias: não vende carro, e cobrar isso
@@ -175,6 +169,17 @@ export function LinhaDoCliente({
           </span>
         )}
 
+        {/* O alfinete diz, sem abrir, que esta loja tem recado guardado —
+            senha, verba combinada. Sem ele a observação só existe pra quem
+            já sabia que existia. */}
+        {(cliente.observacoes?.trim() || cliente.fixadas.length > 0) && (
+          <Pin
+            size={13}
+            className="shrink-0 text-amber-500"
+            aria-label="esta loja tem observações"
+          />
+        )}
+
         <button
           type="button"
           onClick={() => setAberto((v) => !v)}
@@ -192,8 +197,8 @@ export function LinhaDoCliente({
         <div className="px-3 pb-3 pt-1 border-t border-border">
           <div className="flex items-center justify-between gap-3 mb-2">
             <p className="text-[11px] text-foreground-muted">
-              A revisão completa, sem sair daqui. A caixinha ao lado do nome é outra coisa: só diz
-              que você olhou o cliente hoje.
+              O que foi combinado com a loja, sem sair daqui. A caixinha ao lado
+              do nome é outra coisa: só diz que você olhou o cliente hoje.
             </p>
             <Link
               href={`/gestao-contas/${cliente.id}`}
@@ -202,7 +207,12 @@ export function LinhaDoCliente({
               Abrir a conta <ExternalLink size={11} />
             </Link>
           </div>
-          <DailyReviewForm clientId={cliente.id} />
+          <DailyReviewForm
+            clientId={cliente.id}
+            observacoes={cliente.observacoes}
+            fixadas={cliente.fixadas}
+            revisaoDeHoje={cliente.revisaoDeHoje}
+          />
         </div>
       )}
     </div>

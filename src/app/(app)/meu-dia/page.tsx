@@ -1,12 +1,23 @@
 import Link from "next/link";
-import { ClipboardList, PartyPopper, ExternalLink, AlertTriangle, Car } from "lucide-react";
+import {
+  ClipboardList,
+  PartyPopper,
+  ExternalLink,
+  AlertTriangle,
+  Car,
+} from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
-import { estadoDaVenda, DIAS_VERMELHO, DIAS_CRITICO } from "@/lib/controle-vendas";
-import { diaDaCasaComoData, ehDiaDaFoto, segundaDaSemana } from "@/lib/dia-da-casa";
+import {
+  estadoDaVenda,
+  DIAS_VERMELHO,
+  DIAS_CRITICO,
+} from "@/lib/controle-vendas";
+import { diaDaCasaComoData, segundaDaSemana } from "@/lib/dia-da-casa";
 import { montarPainelDoDia } from "@/lib/meta/painel-do-dia";
 import { zapiConfigurado } from "@/lib/whatsapp/zapi";
 import { LinhaDoCliente, type ClienteDoDia } from "./linha-do-cliente";
+import type { RevisaoDeHoje } from "../gestao-contas/[id]/daily-review-form";
 import { BlocoMetaDoDia } from "./bloco-meta";
 import { BlocoRelatorios } from "./bloco-relatorios";
 
@@ -34,7 +45,7 @@ export default async function MeuDiaPage() {
   const hoje = new Date();
   const hoje0 = diaDaCasaComoData();
 
-  const [clients, vendas, conferidos] = await Promise.all([
+  const [clients, vendas, conferidos, revisoesDeHoje] = await Promise.all([
     prisma.client.findMany({
       where: { managerId: user.id, status: { not: "CANCELADO" } },
       select: {
@@ -43,6 +54,14 @@ export default async function MeuDiaPage() {
         startDate: true,
         createdAt: true,
         controlaVendas: true,
+        // As observações da loja — senha, verba combinada — pra quem abre o
+        // cliente no Meu Dia já ter na frente o que precisa pra falar com
+        // ela, em vez de ir buscar na ficha a dois cliques daqui.
+        internalNotes: true,
+        pinnedInfo: {
+          select: { label: true, value: true },
+          orderBy: { createdAt: "asc" },
+        },
       },
       orderBy: { companyName: "asc" },
     }),
@@ -51,13 +70,30 @@ export default async function MeuDiaPage() {
     // Quem já foi conferido hoje.
     prisma.clienteConferido.findMany({
       where: { dia: hoje0, client: { managerId: user.id } },
-      select: { clientId: true, fotoUrl: true, quem: { select: { name: true } } },
+      select: { clientId: true, quem: { select: { name: true } } },
+    }),
+    // O que já foi preenchido HOJE. Sem isto o formulário voltava vazio logo
+    // depois de salvar, e quem reabria depois do almoço não sabia se já
+    // tinha passado por ali — e remarcava.
+    prisma.dailyReview.findMany({
+      where: { createdAt: { gte: hoje0 }, client: { managerId: user.id } },
+      orderBy: { createdAt: "asc" },
+      select: {
+        clientId: true,
+        checkedWhatsappResolved: true,
+        notes: true,
+        createdAt: true,
+        reviewer: { select: { name: true } },
+      },
     }),
   ]);
 
   // O Meta entra DEPOIS da lista de clientes porque precisa dos ids dela. É
   // uma rodada a mais de consulta, e não dá pra juntar com as de cima.
-  const painelMeta = await montarPainelDoDia(clients.map((c) => c.id), hoje);
+  const painelMeta = await montarPainelDoDia(
+    clients.map((c) => c.id),
+    hoje,
+  );
 
   // ── Os relatórios da semana ──────────────────────────────────────────
   //
@@ -86,23 +122,57 @@ export default async function MeuDiaPage() {
   // "atrasado". `segundaDaSemana` já devolve meia-noite UTC do dia certo, e
   // a diferença em dias entre hoje e ela dá 0 na segunda, 1 na terça...
   const diaDaSemana =
-    1 + Math.round((diaDaCasaComoData(hoje).getTime() - semana.getTime()) / 86_400_000);
+    1 +
+    Math.round(
+      (diaDaCasaComoData(hoje).getTime() - semana.getTime()) / 86_400_000,
+    );
 
   const ultimaVenda = new Map(vendas.map((v) => [v.clientId, v._max.soldAt]));
   const conferidosPorId = new Map(conferidos.map((c) => [c.clientId, c]));
-  const diaDaFoto = ehDiaDaFoto();
+
+  // Várias revisões no mesmo dia viram UMA: as marcações se somam (quem
+  // marcou de manhã não "desmarca" marcando de novo à tarde) e as
+  // observações se empilham na ordem em que foram escritas.
+  const revisaoPorId = new Map<string, RevisaoDeHoje>();
+  for (const r of revisoesDeHoje) {
+    const antes = revisaoPorId.get(r.clientId);
+    const marcados = new Set(antes?.marcados ?? []);
+    if (r.checkedWhatsappResolved) marcados.add("checkedWhatsappResolved");
+    const notas =
+      [antes?.notas, r.notes?.trim()].filter(Boolean).join("\n\n") || null;
+    revisaoPorId.set(r.clientId, {
+      marcados: [...marcados],
+      notas,
+      // Quem e quando são do PRIMEIRO registro do dia: a pergunta é "já
+      // passaram por aqui hoje?", e quem passou primeiro é quem responde.
+      quem: antes?.quem ?? r.reviewer?.name?.split(" ")[0] ?? null,
+      hora:
+        antes?.hora ??
+        r.createdAt.toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+          timeZone: "America/Sao_Paulo",
+        }),
+    });
+  }
 
   const linhas: ClienteDoDia[] = clients.map((c) => {
     // Sem venda nenhuma, a conta parte de quando a loja entrou — mesma regra
     // do Controle de Vendas, mesma função.
-    const estado = estadoDaVenda(ultimaVenda.get(c.id) ?? null, c.startDate ?? c.createdAt, hoje);
+    const estado = estadoDaVenda(
+      ultimaVenda.get(c.id) ?? null,
+      c.startDate ?? c.createdAt,
+      hoje,
+    );
     const conferido = conferidosPorId.get(c.id);
     return {
       id: c.id,
       companyName: c.companyName,
       conferidoHoje: !!conferido,
       conferidoPor: conferido?.quem?.name?.split(" ")[0] ?? null,
-      temFoto: !!conferido?.fotoUrl,
+      observacoes: c.internalNotes,
+      fixadas: c.pinnedInfo,
+      revisaoDeHoje: revisaoPorId.get(c.id) ?? null,
       diasSemVender: estado.dias,
       tomDaVenda: estado.tom,
       textoDaVenda: estado.texto,
@@ -115,12 +185,13 @@ export default async function MeuDiaPage() {
   // Conta fora do Controle de Vendas não tem "dias sem vender" pra ordenar:
   // consórcio e banco não vendem carro, e deixá-los subir na fila pelo número
   // empurraria pra baixo as lojas que de fato pararam.
-  const diasQueContam = (l: ClienteDoDia) => (l.controlaVendas ? l.diasSemVender : -1);
+  const diasQueContam = (l: ClienteDoDia) =>
+    l.controlaVendas ? l.diasSemVender : -1;
   linhas.sort(
     (a, b) =>
       Number(a.conferidoHoje) - Number(b.conferidoHoje) ||
       diasQueContam(b) - diasQueContam(a) ||
-      a.companyName.localeCompare(b.companyName)
+      a.companyName.localeCompare(b.companyName),
   );
 
   const total = linhas.length;
@@ -128,9 +199,14 @@ export default async function MeuDiaPage() {
   const tudoFeito = total > 0 && feitos === total;
   const porcento = total > 0 ? Math.round((feitos / total) * 100) : 0;
 
-  const urgentes = linhas.filter((l) => l.controlaVendas && l.diasSemVender >= DIAS_CRITICO);
+  const urgentes = linhas.filter(
+    (l) => l.controlaVendas && l.diasSemVender >= DIAS_CRITICO,
+  );
   const atencao = linhas.filter(
-    (l) => l.controlaVendas && l.diasSemVender >= DIAS_VERMELHO && l.diasSemVender < DIAS_CRITICO
+    (l) =>
+      l.controlaVendas &&
+      l.diasSemVender >= DIAS_VERMELHO &&
+      l.diasSemVender < DIAS_CRITICO,
   );
 
   return (
@@ -140,13 +216,9 @@ export default async function MeuDiaPage() {
           <ClipboardList size={20} className="text-accent" /> Meu Dia
         </h1>
         <p className="text-sm text-foreground-muted mt-0.5">
-          Sua carteira inteira — {user.name.split(" ")[0]}. Marque a caixinha de cada cliente que
-          você olhou hoje.{" "}
-          {diaDaFoto && (
-            <strong className="text-amber-600 dark:text-amber-400">
-              Hoje é segunda: a caixinha pede a foto da campanha.
-            </strong>
-          )}
+          Sua carteira inteira — {user.name.split(" ")[0]}. Marque a caixinha de
+          cada cliente que você falou hoje. A setinha abre as observações da
+          loja e o que ficou combinado.
         </p>
       </div>
 
@@ -172,9 +244,11 @@ export default async function MeuDiaPage() {
           <p className="text-sm font-semibold text-red-500 flex items-start gap-2">
             <AlertTriangle size={15} className="shrink-0 mt-0.5" />
             <span>
-              {urgentes.length} {urgentes.length === 1 ? "loja" : "lojas"} há {DIAS_CRITICO} dias ou
-              mais sem vender — resolver hoje:{" "}
-              <span className="font-normal">{urgentes.map((u) => u.companyName).join(", ")}</span>
+              {urgentes.length} {urgentes.length === 1 ? "loja" : "lojas"} há{" "}
+              {DIAS_CRITICO} dias ou mais sem vender — resolver hoje:{" "}
+              <span className="font-normal">
+                {urgentes.map((u) => u.companyName).join(", ")}
+              </span>
             </span>
           </p>
         </div>
@@ -198,7 +272,9 @@ export default async function MeuDiaPage() {
       {total > 0 && (
         <div
           className={`rounded-2xl border p-5 ${
-            tudoFeito ? "border-emerald-500/40 bg-emerald-500/5" : "border-border bg-surface"
+            tudoFeito
+              ? "border-emerald-500/40 bg-emerald-500/5"
+              : "border-border bg-surface"
           }`}
         >
           <div className="flex items-end justify-between gap-3 mb-3">
@@ -212,7 +288,6 @@ export default async function MeuDiaPage() {
               </p>
               <p className="text-sm text-foreground-muted mt-1.5">
                 {feitos} de {total} conferidos hoje
-                {diaDaFoto && " · segunda é dia de foto"}
               </p>
             </div>
             {tudoFeito && (
@@ -239,12 +314,13 @@ export default async function MeuDiaPage() {
 
       {total === 0 ? (
         <p className="text-sm text-foreground-muted rounded-xl border border-border bg-surface p-8 text-center">
-          Nenhum cliente atribuído a você ainda. Fale com seu gestor para receber sua carteira.
+          Nenhum cliente atribuído a você ainda. Fale com seu gestor para
+          receber sua carteira.
         </p>
       ) : (
         <div className="flex flex-col gap-1.5">
           {linhas.map((l) => (
-            <LinhaDoCliente key={l.id} cliente={l} diaDaFoto={diaDaFoto} />
+            <LinhaDoCliente key={l.id} cliente={l} />
           ))}
         </div>
       )}
@@ -261,7 +337,8 @@ export default async function MeuDiaPage() {
             href="/gestao-contas"
             className="self-start inline-flex items-center gap-1.5 text-sm text-foreground-muted hover:text-foreground"
           >
-            <ExternalLink size={14} /> Revisão semanal, relatórios e histórico completo
+            <ExternalLink size={14} /> Revisão semanal, relatórios e histórico
+            completo
           </Link>
         </div>
       )}

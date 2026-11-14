@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { Megaphone, AlertTriangle, Image as Arte, TrendingUp, TrendingDown } from "lucide-react";
+import {
+  Megaphone,
+  AlertTriangle,
+  Image as Arte,
+  TrendingUp,
+  TrendingDown,
+} from "lucide-react";
 import { reais } from "@/lib/meta/insights";
 import { comoPorcentagem } from "@/lib/meta/ritmo-do-combinado";
 import { comoVariacao } from "@/lib/meta/criativo-cansado";
@@ -21,23 +27,35 @@ import type { PainelDoDia, LojaNoDia } from "@/lib/meta/painel-do-dia";
 const ARTES_NA_TELA = 3;
 
 export function BlocoMetaDoDia({ painel }: { painel: PainelDoDia }) {
-  const cobrancaVencida = painel.lojas.filter((l) => l.veredito.pedido === "vencido");
+  const cobrancaVencida = painel.lojas.filter(
+    (l) => l.veredito.pedido === "vencido",
+  );
   // Fora as que já estão na lista de cobrança vencida: elas continuam sem
   // saldo, mas apareceriam duas vezes — e a segunda apareceria sem o motivo
   // que importa, que é a cobrança ignorada.
   const semSaldo = painel.lojas.filter(
     (l) =>
       (l.veredito.tom === "sem-saldo" || l.veredito.tom === "acabando") &&
-      l.veredito.pedido !== "vencido"
+      l.veredito.pedido !== "vencido",
   );
-  const aguardando = painel.lojas.filter((l) => l.veredito.tom === "aguardando");
-  const acelerado = painel.lojas.filter((l) => l.projecao.ritmo === "acelerado");
+  const aguardando = painel.lojas.filter(
+    (l) => l.veredito.tom === "aguardando",
+  );
+  const acelerado = painel.lojas.filter(
+    (l) => l.projecao.ritmo === "acelerado",
+  );
   const parado = painel.lojas.filter((l) => l.projecao.ritmo === "parado");
-  const artes = painel.criativos.filter((c) => c.diagnostico.estado === "cansado");
+  const artes = painel.criativos.filter(
+    (c) => c.diagnostico.estado === "cansado",
+  );
 
   const temAlgo =
-    semSaldo.length + cobrancaVencida.length + aguardando.length + acelerado.length +
-      parado.length + artes.length >
+    semSaldo.length +
+      cobrancaVencida.length +
+      aguardando.length +
+      acelerado.length +
+      parado.length +
+      artes.length >
     0;
 
   // Silêncio é resposta. Carteira sem pendência não ganha um bloco dizendo
@@ -90,7 +108,8 @@ export function BlocoMetaDoDia({ painel }: { painel: PainelDoDia }) {
         >
           {aguardando.map((l) => (
             <Loja key={l.clientId} l={l}>
-              link enviado {l.pedidoEnviadoEm ? desdeOEnvio(l.pedidoEnviadoEm) : ""}
+              link enviado{" "}
+              {l.pedidoEnviadoEm ? desdeOEnvio(l.pedidoEnviadoEm) : ""}
             </Loja>
           ))}
         </Aviso>
@@ -139,9 +158,12 @@ export function BlocoMetaDoDia({ painel }: { painel: PainelDoDia }) {
               className="flex items-baseline gap-2 flex-wrap hover:text-foreground"
             >
               <span className="font-medium text-foreground">{c.loja}</span>
-              <span className="text-foreground-muted truncate max-w-[20rem]">{c.nome}</span>
+              <span className="text-foreground-muted truncate max-w-[20rem]">
+                {c.nome}
+              </span>
               <span className="text-foreground-muted">
-                — custo por lead {comoVariacao(c.diagnostico.variacaoDoCusto) ?? "mudou"}
+                — custo por lead{" "}
+                {comoVariacao(c.diagnostico.variacaoDoCusto) ?? "mudou"}
                 {c.diagnostico.custoAgoraCents !== null &&
                   `, de ${reais(c.diagnostico.custoAntesCents ?? 0)} pra ${reais(c.diagnostico.custoAgoraCents)}`}
               </span>
@@ -190,7 +212,9 @@ function Aviso({
         <Icone size={15} className="shrink-0" />
         {titulo}
       </p>
-      <div className="mt-1.5 flex flex-col gap-1 text-sm text-foreground">{children}</div>
+      <div className="mt-1.5 flex flex-col gap-1 text-sm text-foreground">
+        {children}
+      </div>
     </div>
   );
 }

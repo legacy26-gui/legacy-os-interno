@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { clienteEDaCarteira } from "@/lib/carteira";
-import { diaDaCasaComoData, ehDiaDaFoto } from "@/lib/dia-da-casa";
+import { diaDaCasaComoData } from "@/lib/dia-da-casa";
 
 // A caixinha do dia, no Meu Dia.
 //
@@ -12,11 +12,7 @@ import { diaDaCasaComoData, ehDiaDaFoto } from "@/lib/dia-da-casa";
 // chamada da carteira — sem ela, cliente quieto some de vista e só reaparece
 // quando o dono pergunta por que parou de vender.
 //
-// Na segunda-feira a caixinha pede a foto da campanha, e não fecha sem ela.
 // Nos outros dias é um clique.
-
-/** 5MB: foto de celular passa disso só se ninguém comprimir. */
-const FOTO_MAX = 5 * 1024 * 1024;
 
 export type ConferirState = { erro?: string; ok?: boolean } | undefined;
 
@@ -32,45 +28,32 @@ async function podeMexer(clientId: string) {
 }
 
 /**
- * Marca o cliente como conferido hoje.
+ * Marca o cliente como conferido hoje. Um clique, todo dia.
  *
- * Em dia comum, um clique. Na segunda-feira vem com a foto — e sem ela a
- * conferência simplesmente não é gravada, em vez de ser gravada "pela
- * metade". Marcação pela metade é pior que marcação nenhuma: a barra diz que
- * está completo e a foto não existe.
+ * ── A foto da campanha saiu ──────────────────────────────────────────────
+ *
+ * Na segunda-feira isto exigia a foto da campanha e não gravava sem ela. A
+ * razão original era boa: prova de que a campanha estava no ar. Mas agora o
+ * sistema MOSTRA a campanha — veiculação, gasto, resultado, a arte, o texto
+ * — e uma foto de tela provando o que a tela ao lado já mostra é trabalho
+ * que não prova mais nada.
+ *
+ * A coluna `fotoUrl` continua na tabela: as fotos que já foram tiradas são
+ * registro e não se apagam por mudança de regra.
  */
 export async function conferirCliente(
   clientId: string,
   _anterior: ConferirState,
-  formData: FormData
+  _formData: FormData,
 ): Promise<ConferirState> {
   const user = await podeMexer(clientId);
   if (!user) return { erro: "Este cliente não está na sua carteira." };
 
-  const dia = diaDaCasaComoData();
-  let fotoUrl: string | null = null;
-
-  if (ehDiaDaFoto()) {
-    const foto = formData.get("foto");
-    if (!(foto instanceof File) || foto.size === 0) {
-      return { erro: "Segunda-feira é o dia da foto: anexe a foto da campanha." };
-    }
-    if (!foto.type.startsWith("image/")) {
-      return { erro: "A foto precisa ser uma imagem (foto ou print)." };
-    }
-    if (foto.size > FOTO_MAX) {
-      return { erro: "Foto muito grande (máx. 5MB). Tire com menos resolução ou comprima." };
-    }
-    const bytes = Buffer.from(await foto.arrayBuffer());
-    fotoUrl = `data:${foto.type};base64,${bytes.toString("base64")}`;
-  }
-
   await prisma.clienteConferido.upsert({
-    where: { clientId_dia: { clientId, dia } },
-    // Já conferido: só deixa a foto entrar se ainda não tinha. Reclicar não
-    // troca o nome de quem olhou primeiro nem a hora.
-    update: fotoUrl ? { fotoUrl } : {},
-    create: { clientId, dia, quemId: user.id, fotoUrl },
+    where: { clientId_dia: { clientId, dia: diaDaCasaComoData() } },
+    // Reclicar não troca o nome de quem olhou primeiro nem a hora.
+    update: {},
+    create: { clientId, dia: diaDaCasaComoData(), quemId: user.id },
   });
   revalidar();
   return { ok: true };
@@ -81,6 +64,8 @@ export async function desconferirCliente(clientId: string) {
   const user = await podeMexer(clientId);
   if (!user) return;
 
-  await prisma.clienteConferido.deleteMany({ where: { clientId, dia: diaDaCasaComoData() } });
+  await prisma.clienteConferido.deleteMany({
+    where: { clientId, dia: diaDaCasaComoData() },
+  });
   revalidar();
 }

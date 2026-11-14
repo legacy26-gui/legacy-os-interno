@@ -2,7 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, CheckCircle2, AlertCircle, ExternalLink, CalendarSearch } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  AlertCircle,
+  ExternalLink,
+  CalendarSearch,
+} from "lucide-react";
 import { DailyReviewForm } from "../gestao-contas/[id]/daily-review-form";
 
 export function ClientChecklistRow({
@@ -33,7 +40,10 @@ export function ClientChecklistRow({
       <div className="flex flex-wrap items-center justify-between gap-3 p-4">
         {/* Nome abre a página completa do cliente; o botão ao lado só expande
             o checklist pra preencher rápido, sem sair da lista. */}
-        <Link href={`/gestao-contas/${clientId}`} className="flex items-center gap-3 min-w-0 group">
+        <Link
+          href={`/gestao-contas/${clientId}`}
+          className="flex items-center gap-3 min-w-0 group"
+        >
           {dailyDoneToday ? (
             <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />
           ) : (
@@ -42,10 +52,15 @@ export function ClientChecklistRow({
           <div className="min-w-0">
             <p className="font-medium truncate group-hover:text-accent transition-colors flex items-center gap-1.5">
               {companyName}
-              <ExternalLink size={12} className="text-foreground-muted shrink-0" />
+              <ExternalLink
+                size={12}
+                className="text-foreground-muted shrink-0"
+              />
             </p>
             <p className="text-xs text-foreground-muted mt-0.5">
-              {dailyDoneToday ? "Revisão diária feita hoje" : "Revisão diária pendente hoje"}
+              {dailyDoneToday
+                ? "Revisão diária feita hoje"
+                : "Revisão diária pendente hoje"}
               {" · "}
               {weeklyDoneThisWeek ? "semanal em dia" : "semanal pendente"}
             </p>
@@ -53,7 +68,11 @@ export function ClientChecklistRow({
         </Link>
 
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${scoreClass}`}>{score}</span>
+          <span
+            className={`text-xs font-semibold px-2.5 py-1 rounded-full ${scoreClass}`}
+          >
+            {score}
+          </span>
 
           {/* Abre a página do cliente, onde dá pra ver mês a mês, vendas,
               semanas e observações. */}

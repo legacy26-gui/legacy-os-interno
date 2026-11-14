@@ -248,19 +248,88 @@ export function lerIntervalo(
  * campanha de WhatsApp, outra de formulário, e somar as duas coisas como se
  * fossem a mesma daria um custo por lead que não quer dizer nada.
  */
-export const TIPOS_DE_LEAD: { valor: string; rotulo: string }[] = [
-  {
-    valor: "onsite_conversion.messaging_conversation_started_7d",
-    rotulo: "Conversa iniciada no WhatsApp/Direct",
-  },
-  { valor: "lead", rotulo: "Formulário de cadastro (Lead Ads)" },
-  {
-    valor: "onsite_conversion.lead_grouped",
-    rotulo: "Lead (agrupado pela Meta)",
-  },
-  { valor: "offsite_conversion.fb_pixel_lead", rotulo: "Lead no site (Pixel)" },
-  { valor: "link_click", rotulo: "Clique no link (quando não há conversão)" },
-];
+/**
+ * O que conta como RESULTADO em cada conta.
+ *
+ * ── Por que isto é escolhido por conta, e não fixo ───────────────────────
+ *
+ * Porque "resultado" não quer dizer a mesma coisa em todas as lojas. Numa
+ * revenda de carro é conversa aberta no WhatsApp; numa loja que vende pelo
+ * site é compra. A Meta devolve TODAS as ações de cada anúncio, e quem
+ * decide qual delas é a que importa é o cadastro da conta.
+ *
+ * ── A compra estava faltando, e sumia o número sem avisar ────────────────
+ *
+ * A lista tinha cinco tipos e os cinco eram de lead. A Rustic vende pelo
+ * site: o resultado dela é compra, e não havia nem como configurar isso. O
+ * número aparecia zerado — não "não configurado", zerado — como se a loja não
+ * tivesse vendido nada.
+ *
+ * ── Qual compra escolher ─────────────────────────────────────────────────
+ *
+ * No Gerenciador, a coluna "Resultados" de uma campanha otimizada pra compra
+ * com Pixel diz "Website purchases", que é o
+ * `offsite_conversion.fb_pixel_purchase`. É esse o certo pra venda no site.
+ *
+ * `omni_purchase` é a soma que a Meta faz de todas as origens — site, app,
+ * loja física. Fica como segunda opção porque conta a mesma venda uma vez
+ * só quando ela chega por dois caminhos; usar os dois juntos contaria duas
+ * vezes, e por isso é um OU, não uma soma.
+ */
+/**
+ * `forca` ordena o palpite do sistema, e NÃO a lista da tela.
+ *
+ * ── Por que a quantidade não serve pra decidir ───────────────────────────
+ *
+ * Porque clique sempre ganha de conversão, por ordem de grandeza. Na
+ * primeira versão o palpite era "o tipo que mais apareceu", e numa loja com
+ * 412 compras e 9.800 cliques ele sugeriu contar CLIQUE — que faria a loja
+ * parecer ter 9.800 resultados e o custo por resultado despencar pra um
+ * número lindo e mentiroso.
+ *
+ * Então a ordem é por valor pro negócio: compra ganha de lead, lead ganha de
+ * checkout iniciado, e clique só entra quando não há mais nada. A quantidade
+ * só desempata entre tipos da mesma força.
+ */
+export const TIPOS_DE_LEAD: { valor: string; rotulo: string; forca: number }[] =
+  [
+    {
+      valor: "onsite_conversion.messaging_conversation_started_7d",
+      rotulo: "Conversa iniciada no WhatsApp/Direct",
+      forca: 3,
+    },
+    { valor: "lead", rotulo: "Formulário de cadastro (Lead Ads)", forca: 3 },
+    {
+      valor: "onsite_conversion.lead_grouped",
+      rotulo: "Lead (agrupado pela Meta)",
+      forca: 3,
+    },
+    {
+      valor: "offsite_conversion.fb_pixel_lead",
+      rotulo: "Lead no site (Pixel)",
+      forca: 3,
+    },
+    {
+      valor: "offsite_conversion.fb_pixel_purchase",
+      rotulo: "Compra no site (Pixel)",
+      forca: 4,
+    },
+    {
+      valor: "omni_purchase",
+      rotulo: "Compra (somando todas as origens)",
+      forca: 4,
+    },
+    {
+      valor: "offsite_conversion.fb_pixel_initiate_checkout",
+      rotulo: "Checkout iniciado no site (Pixel)",
+      forca: 2,
+    },
+    {
+      valor: "link_click",
+      rotulo: "Clique no link (quando não há conversão)",
+      forca: 1,
+    },
+  ];
 
 export function rotuloDoTipoDeLead(valor: string): string {
   return TIPOS_DE_LEAD.find((t) => t.valor === valor)?.rotulo ?? valor;
@@ -337,6 +406,67 @@ export function contarLeads(
   return actions
     .filter((a) => a.action_type === tipoDeLead)
     .reduce((soma, a) => soma + inteiro(a.value), 0);
+}
+
+/**
+ * Tudo que a Meta devolveu de ação nesta resposta, somado por tipo.
+ *
+ * É o que permite dizer, depois, se o zero na tela é "a loja não vendeu" ou
+ * "o tipo configurado é o errado". Sem guardar isto, os dois são o mesmo zero
+ * — e o segundo passa meses sem ninguém perceber, que foi o que aconteceu
+ * com uma loja que vende pelo site e estava configurada como conversa no
+ * WhatsApp.
+ *
+ * Guarda só os tipos com alguma ocorrência: a Meta devolve dezenas de tipos
+ * por anúncio e a maioria vem zerada.
+ */
+export function somarAcoesPorTipo(linhas: LinhaCrua[]): Record<string, number> {
+  const total: Record<string, number> = {};
+  for (const l of linhas) {
+    for (const a of l.actions ?? []) {
+      if (!a.action_type) continue;
+      const n = inteiro(a.value);
+      if (n <= 0) continue;
+      total[a.action_type] = (total[a.action_type] ?? 0) + n;
+    }
+  }
+  return total;
+}
+
+/**
+ * O tipo que mais apareceu, tirando o que já está configurado.
+ *
+ * Serve pra sugerir na tela: "a Meta está devolvendo 412 compras no site e
+ * nenhuma conversa iniciada — era isso que você queria contar?". Só sugere
+ * tipo que o sistema sabe contar; sugerir um que não está na lista seria
+ * apontar pra uma opção que não existe no seletor.
+ *
+ * Escolhe pela FORÇA e não pela quantidade — ver o comentário da lista. E
+ * nunca sugere clique: clique é o fundo do poço da lista, só aceitável como
+ * escolha consciente de quem configurou, nunca como palpite do sistema.
+ */
+export function tipoQueTalvezSejaOCerto(
+  vistas: Record<string, number>,
+  configurado: string,
+): { valor: string; rotulo: string; quantas: number } | null {
+  const candidatos = TIPOS_DE_LEAD.filter(
+    (t) => t.valor !== configurado && (vistas[t.valor] ?? 0) > 0,
+  ).sort(
+    (a, b) =>
+      b.forca - a.forca || (vistas[b.valor] ?? 0) - (vistas[a.valor] ?? 0),
+  );
+
+  const melhor = candidatos[0];
+  if (!melhor) return null;
+  // Palpite de clique não se dá: contar clique como resultado faz a loja
+  // parecer ter dez mil resultados e o custo por resultado virar centavos.
+  // Se é isso que a loja quer, que seja escolhido na mão.
+  if (melhor.forca <= 1) return null;
+  return {
+    valor: melhor.valor,
+    rotulo: melhor.rotulo,
+    quantas: vistas[melhor.valor] ?? 0,
+  };
 }
 
 /** A ação configurada apareceu nesta resposta? Serve pra avisar na tela. */

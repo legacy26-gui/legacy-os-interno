@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { buscarNaGraph } from "./cliente-graph";
 import {
   limparLinhas,
+  somarAcoesPorTipo,
   limparVidaInteira,
   comoDataDaMeta,
   desdeQuando,
@@ -100,7 +101,7 @@ export function aindaDaTempo(prazo: Prazo | undefined): boolean {
  */
 export async function sincronizarInsights(
   conta: ContaPraInsights,
-  prazo?: Prazo
+  prazo?: Prazo,
 ): Promise<ResultadoDosInsights> {
   const ate = new Date();
   const de = desdeQuando(DIAS_DE_INSIGHT, ate);
@@ -124,10 +125,13 @@ export async function sincronizarInsights(
     // A paginação vai pelo cursor `after` e NÃO seguindo a URL `next` que a
     // Meta devolve: aquela URL vem com o token dentro. Seguir ela colocaria o
     // token em lugares que este sistema inteiro foi feito pra evitar.
-    const resposta = await buscarNaGraph<RespostaInsights>(`${conta.metaAccountId}/insights`, {
-      ...params,
-      ...(depois ? { after: depois } : {}),
-    });
+    const resposta = await buscarNaGraph<RespostaInsights>(
+      `${conta.metaAccountId}/insights`,
+      {
+        ...params,
+        ...(depois ? { after: depois } : {}),
+      },
+    );
 
     if (!resposta.ok) {
       await registrarErro(conta.id, resposta.erro);
@@ -169,12 +173,18 @@ export async function sincronizarInsights(
     async (tx) => {
       if (anuncios.length > 0) {
         await tx.metaInsightDaily.deleteMany({
-          where: { adAccountId: conta.id, date: { gte: de }, adId: { in: anuncios } },
+          where: {
+            adAccountId: conta.id,
+            date: { gte: de },
+            adId: { in: anuncios },
+          },
         });
       }
       for (let i = 0; i < linhas.length; i += LINHAS_POR_LOTE) {
         await tx.metaInsightDaily.createMany({
-          data: linhas.slice(i, i + LINHAS_POR_LOTE).map((l) => ({ adAccountId: conta.id, ...l })),
+          data: linhas
+            .slice(i, i + LINHAS_POR_LOTE)
+            .map((l) => ({ adAccountId: conta.id, ...l })),
         });
       }
       // O carimbo entra junto: "esta conta está em dia" só é verdade se os
@@ -182,13 +192,19 @@ export async function sincronizarInsights(
       // marcada como atualizada sem os dados.
       await tx.metaAdAccount.update({
         where: { id: conta.id },
-        data: { lastSyncedAt: new Date(), lastSyncError: null },
+        data: {
+          lastSyncedAt: new Date(),
+          lastSyncError: null,
+          // O que a Meta devolveu de ação, somado por tipo. É o que deixa a
+          // tela distinguir "não vendeu" de "está contando a coisa errada".
+          acoesVistas: somarAcoesPorTipo(todas),
+        },
       });
     },
     // O limite do Prisma é 5s e não dá pra contar com ele: o banco fica longe
     // e a latência varia. 20s cabe com folga e continua bem abaixo do tempo
     // da função.
-    { timeout: 20_000, maxWait: 10_000 }
+    { timeout: 20_000, maxWait: 10_000 },
   );
 
   return { ok: true, linhas: linhas.length, dias: DIAS_DE_INSIGHT };
@@ -205,20 +221,23 @@ export async function sincronizarInsights(
  * acumulado não serviria pra nada — quem quer a evolução olha a diária.
  */
 export async function sincronizarVidaInteira(
-  conta: ContaPraInsights
+  conta: ContaPraInsights,
 ): Promise<ResultadoDosInsights> {
   const todas: LinhaCrua[] = [];
   let depois: string | undefined;
 
   for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
-    const resposta = await buscarNaGraph<RespostaInsights>(`${conta.metaAccountId}/insights`, {
-      level: "ad",
-      date_preset: "maximum",
-      fields:
-        "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,clicks,inline_link_clicks,actions",
-      limit: String(POR_PAGINA),
-      ...(depois ? { after: depois } : {}),
-    });
+    const resposta = await buscarNaGraph<RespostaInsights>(
+      `${conta.metaAccountId}/insights`,
+      {
+        level: "ad",
+        date_preset: "maximum",
+        fields:
+          "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,impressions,reach,clicks,inline_link_clicks,actions",
+        limit: String(POR_PAGINA),
+        ...(depois ? { after: depois } : {}),
+      },
+    );
 
     if (!resposta.ok) {
       await registrarErro(conta.id, resposta.erro);
@@ -244,11 +263,13 @@ export async function sincronizarVidaInteira(
       await tx.metaLifetime.deleteMany({ where: { adAccountId: conta.id } });
       for (let i = 0; i < unicas.length; i += LINHAS_POR_LOTE) {
         await tx.metaLifetime.createMany({
-          data: unicas.slice(i, i + LINHAS_POR_LOTE).map((l) => ({ adAccountId: conta.id, ...l })),
+          data: unicas
+            .slice(i, i + LINHAS_POR_LOTE)
+            .map((l) => ({ adAccountId: conta.id, ...l })),
         });
       }
     },
-    { timeout: 20_000, maxWait: 10_000 }
+    { timeout: 20_000, maxWait: 10_000 },
   );
 
   return { ok: true, linhas: unicas.length, dias: 0 };
@@ -262,7 +283,10 @@ async function registrarErro(contaId: string, erro: string) {
 }
 
 /** Todas as contas ativas de um cliente. */
-export async function sincronizarInsightsDoCliente(clientId: string, prazo?: Prazo) {
+export async function sincronizarInsightsDoCliente(
+  clientId: string,
+  prazo?: Prazo,
+) {
   const contas = await prisma.metaAdAccount.findMany({
     where: { clientId, active: true },
     select: { id: true, metaAccountId: true, leadActionType: true },
@@ -273,7 +297,10 @@ export async function sincronizarInsightsDoCliente(clientId: string, prazo?: Pra
     if (!aindaDaTempo(prazo)) break;
     // Em sequência: a Meta limita chamadas por token, e nada aqui tem pressa
     // que justifique levar bloqueio.
-    resultados.push({ conta, resultado: await sincronizarInsights(conta, prazo) });
+    resultados.push({
+      conta,
+      resultado: await sincronizarInsights(conta, prazo),
+    });
   }
   return resultados;
 }

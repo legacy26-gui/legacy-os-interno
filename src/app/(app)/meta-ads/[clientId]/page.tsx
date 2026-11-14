@@ -21,6 +21,7 @@ import {
   lerIntervalo,
   textoDaData,
   rotuloDoTipoDeLead,
+  tipoQueTalvezSejaOCerto,
   cpm,
   cpc,
   ctr,
@@ -33,6 +34,7 @@ import { Criativo } from "./criativo";
 import { ChaveDeStatus } from "./chave";
 import { Verba } from "./verba";
 import { Legenda } from "./legenda";
+import { TipoErrado } from "./tipo-errado";
 import {
   LoteProvider,
   CaixaDeSelecao,
@@ -229,6 +231,28 @@ export default async function LojaNoMetaAdsPage({
   // escrita na Meta, que é coisa do sistema, não de quem está na tela.
   const podeMexer = escritaLiberada();
   const tiposUsados = [...new Set(contas.map((c) => c.leadActionType))];
+
+  // ── A conta que está contando a coisa errada ──────────────────────────
+  //
+  // A varredura guarda o que a Meta devolveu de ação, somado por tipo. Com
+  // isso dá pra separar dois zeros que antes eram o mesmo: "a loja não
+  // vendeu" e "o tipo configurado não é o que a loja faz".
+  //
+  // Uma loja que vende pelo site estava configurada como conversa no
+  // WhatsApp e passou meses com o resultado zerado — e zero parece
+  // "não vendeu", não "está contando outra coisa".
+  const sugestoes = contas
+    .map((c) => {
+      const vistas = (c.acoesVistas ?? null) as Record<string, number> | null;
+      if (!vistas) return null;
+      // Só sugere quando o tipo configurado não apareceu NENHUMA vez: se
+      // apareceu, a conta está contando algo de verdade e a escolha é de
+      // quem configurou, não do sistema.
+      if ((vistas[c.leadActionType] ?? 0) > 0) return null;
+      const melhor = tipoQueTalvezSejaOCerto(vistas, c.leadActionType);
+      return melhor ? { conta: c, melhor } : null;
+    })
+    .filter((x) => x !== null);
   const tipoDeLead = rotuloDoTipoDeLead(tiposUsados[0] ?? "");
 
   /** Endereço desta tela mudando só o que o clique muda. */
@@ -460,6 +484,23 @@ export default async function LojaNoMetaAdsPage({
           </p>
         </div>
       )}
+
+      {/* O aviso de tipo errado explica o zero que o aviso de cima levanta.
+          Quando as duas coisas acontecem juntas — gastou, não registrou, e a
+          Meta devolveu outra ação aos montes — é quase sempre isto. */}
+      {sugestoes.map(({ conta, melhor }) => (
+        <TipoErrado
+          key={conta.id}
+          clientId={cliente.id}
+          contaId={conta.id}
+          nomeDaConta={conta.name ?? conta.metaAccountId}
+          configurado={rotuloDoTipoDeLead(conta.leadActionType)}
+          sugerido={melhor.valor}
+          rotuloSugerido={melhor.rotulo}
+          quantas={melhor.quantas}
+          periodo={periodo.rotulo}
+        />
+      ))}
 
       {(campanhaAberta || conjuntoAberto) && (
         <nav className="flex flex-wrap items-center gap-1.5 text-sm">
@@ -1021,6 +1062,7 @@ async function carregarContas(clientId: string) {
       metaAccountId: true,
       isPrepay: true,
       leadActionType: true,
+      acoesVistas: true,
       lastSyncedAt: true,
       lastSyncError: true,
       balanceSnapshots: {

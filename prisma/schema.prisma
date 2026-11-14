@@ -1455,6 +1455,16 @@ model MetaAdAccount {
   // O erro da última tentativa, pra a falha aparecer na tela em vez de só no
   // log — sincronização que falha calada vira número velho passando por novo.
   lastSyncError  String?
+
+  /// Que ações a Meta devolveu nesta conta na última varredura, e quantas.
+  ///
+  /// Guardado pra responder uma pergunta que antes não tinha resposta: "o
+  /// resultado está zerado porque a loja não vendeu, ou porque o tipo
+  /// configurado é o errado?". Sem isto os dois casos são o mesmo zero na
+  /// tela, e o segundo passa meses sem ninguém perceber.
+  ///
+  /// Formato: { "offsite_conversion.fb_pixel_purchase": 412, "link_click": 9800 }
+  acoesVistas    Json?
   createdAt      DateTime  @default(now())
 
   balanceSnapshots BalanceSnapshot[]

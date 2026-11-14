@@ -1,5 +1,11 @@
 import Link from "next/link";
-import { Megaphone, AlertTriangle, Wallet, ChevronRight } from "lucide-react";
+import {
+  Megaphone,
+  AlertTriangle,
+  Wallet,
+  ChevronRight,
+  ArrowLeft,
+} from "lucide-react";
 import { Voltar } from "@/components/voltar";
 import { Frescor } from "@/components/frescor";
 import { prisma } from "@/lib/prisma";
@@ -342,21 +348,6 @@ export default async function LojaNoMetaAdsPage({
         </div>
       )}
 
-      {/* As três abas do Gerenciador. Trocar de aba NÃO apaga o recorte: quem
-          abriu uma campanha e clicou em "Anúncios" quer os anúncios daquela
-          campanha, não os da conta toda. */}
-      <AbasDaSecao
-        grandes
-        abas={ABAS.map((a) => ({
-          href: href({ nivel: a.valor }),
-          label: a.rotulo,
-          // Quem sabe o nível aberto é esta página, que leu o parâmetro —
-          // o componente sozinho compararia só o caminho, que é igual nas
-          // três, e acenderia sempre a primeira.
-          ativa: nivel === a.valor,
-        }))}
-      />
-
       <SeletorDePeriodo
         caminho={`/meta-ads/${cliente.id}`}
         manter={manter}
@@ -504,6 +495,35 @@ export default async function LojaNoMetaAdsPage({
 
       {(campanhaAberta || conjuntoAberto) && (
         <nav className="flex flex-wrap items-center gap-1.5 text-sm">
+          {/* ── A seta de voltar UM nível ────────────────────────────────
+              A única volta que existia era "Todas as lojas", lá no alto: de
+              dentro dos anúncios de um conjunto, o caminho de volta pros
+              conjuntos daquela campanha era clicar no nome certo da trilha —
+              que exige ler a trilha pra descobrir qual é o certo.
+
+              A seta não exige ler nada: volta um passo, que é o que a pessoa
+              quer em nove de cada dez vezes. A trilha continua ao lado, pra
+              quem quer pular direto pro começo. */}
+          <Link
+            href={
+              conjuntoAberto
+                ? href({ conjunto: undefined, nivel: "conjunto" })
+                : href({
+                    campanha: undefined,
+                    conjunto: undefined,
+                    nivel: "campanha",
+                  })
+            }
+            title={
+              conjuntoAberto
+                ? "Voltar para os conjuntos"
+                : "Voltar para as campanhas"
+            }
+            className="inline-flex items-center justify-center w-9 h-9 -my-1 rounded-lg border border-border text-foreground-muted hover:text-accent hover:bg-surface-muted"
+            aria-label="Voltar um nível"
+          >
+            <ArrowLeft size={15} />
+          </Link>
           <Link
             href={href({
               campanha: undefined,
@@ -567,28 +587,55 @@ export default async function LojaNoMetaAdsPage({
       ) : (
         // O provedor envolve a tabela inteira: as linhas continuam vindo
         // prontas do servidor e só a seleção vive no navegador.
+        // ── Por que as abas descem pra cá ──────────────────────────────
+        //
+        // Elas estavam no alto, acima do seletor de data, e nessa posição
+        // pareciam trocar a tela inteira — quando o que trocam é só o que a
+        // TABELA lista. O Gerenciador põe as três coladas na tabela, como
+        // abas de pasta, e aí a relação fica óbvia sem precisar de legenda.
+        //
+        // Sem gap entre as duas de propósito: o `-mb-px` das abas só encaixa
+        // na borda de cima da tabela se não houver espaço no meio.
         <LoteProvider todos={itens.map((i) => ({ id: i.id, nome: i.nome }))}>
-          <Tabela
-            itens={itens}
-            nivel={nivel}
-            tipoDeLead={tipoDeLead}
-            periodo={periodo.rotulo}
-            href={href}
-            clientId={cliente.id}
-            podeMexer={podeMexer}
-            acoes={
-              podeMexer ? (
-                <BarraDeAcoes
-                  clientId={cliente.id}
-                  nivel={nivel}
-                  // Desligar e arquivar o gestor faz; excluir de vez é da
-                  // direção, porque não tem desfazer. O servidor confere de
-                  // novo — esconder o botão é cortesia, não trava.
-                  podeExcluir={user.role === "ADMIN" || user.role === "GERENTE"}
-                />
-              ) : null
-            }
-          />
+          <div className="flex flex-col">
+            <AbasDaSecao
+              grandes
+              abas={ABAS.map((a) => ({
+                href: href({ nivel: a.valor }),
+                label: a.rotulo,
+                // Quem sabe o nível aberto é esta página, que leu o
+                // parâmetro — o componente sozinho compararia só o caminho,
+                // que é igual nas três, e acenderia sempre a primeira.
+                //
+                // Trocar de aba NÃO apaga o recorte: quem abriu uma campanha
+                // e clica em "Anúncios" quer os anúncios DAQUELA campanha.
+                ativa: nivel === a.valor,
+              }))}
+            />
+            <Tabela
+              itens={itens}
+              nivel={nivel}
+              tipoDeLead={tipoDeLead}
+              periodo={periodo.rotulo}
+              href={href}
+              clientId={cliente.id}
+              podeMexer={podeMexer}
+              acoes={
+                podeMexer ? (
+                  <BarraDeAcoes
+                    clientId={cliente.id}
+                    nivel={nivel}
+                    // Desligar e arquivar o gestor faz; excluir de vez é da
+                    // direção, porque não tem desfazer. O servidor confere de
+                    // novo — esconder o botão é cortesia, não trava.
+                    podeExcluir={
+                      user.role === "ADMIN" || user.role === "GERENTE"
+                    }
+                  />
+                ) : null
+              }
+            />
+          </div>
         </LoteProvider>
       )}
 

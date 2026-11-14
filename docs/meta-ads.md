@@ -655,6 +655,61 @@ Conferido no navegador com uma Z-API falsa: a loja cujo grupo a Z-API recusou
 **não** foi marcada como enviada, e o erro apareceu na linha dela — não num
 aviso genérico no topo, que com quarenta lojas não diria em qual.
 
+### A tela de ligar: Configurações → WhatsApp
+
+Feita pra que ligar isso não dependa de ninguém ter decorado nada. Ela mostra
+um de três estados:
+
+**Falta configurar.** Lista as três variáveis pelo nome, marcando quais já
+estão lá e quais faltam, com onde achar cada valor no painel da Z-API. Esse
+é o único passo que ninguém faz por você: as variáveis moram na Vercel.
+Depois de salvar as três, a Vercel republica e a tela vira sozinha.
+
+**Configurado, mas não conectado.** As variáveis estão lá e a instância não
+tem WhatsApp pareado — ou o celular que hospeda a sessão caiu. É o estado em
+que a falha da Z-API deixa de ser silenciosa: antes, descobria-se quando um
+cliente cobrava o relatório.
+
+**Conectado.** Mostra o NÚMERO pareado. Isso não é enfeite: o combinado é um
+chip dedicado ao robô, e se um dia aparecer aí o número que a equipe usa pra
+atender, é melhor descobrir lendo essa linha do que no dia em que a Meta
+bloquear e levar o atendimento junto.
+
+### Escolher o grupo numa lista, não digitar o id
+
+**Buscar grupos do número** chama `GET /groups` e devolve os grupos em que o
+robô está, pelo nome. Cada loja ganha um seletor.
+
+Por que isso importa mais do que parece: o id era DIGITADO, copiado do painel
+da Z-API, e errar um dígito manda o relatório de uma loja pro grupo de outra
+— gasto, leads e custo de um cliente entregues a outro, sem desfazer. Com a
+lista, ninguém digita.
+
+As travas de antes continuam todas de pé, porque lista não é garantia: o
+formato é conferido, grupo repetido é recusado com o nome da loja que já o
+usa, e `definirGrupoDoWhatsapp` continua sendo quem salva. O que a Z-API
+devolve é tratado como dado de fora: o que não for grupo de verdade, com id
+no formato aceito, não vira opção clicável — senão o telefone pessoal de
+alguém apareceria como destino possível do relatório de uma loja.
+
+### Mandar um teste
+
+Pro próprio número, antes de deixar o robô falar com cliente. Sai pelo mesmo
+caminho do relatório, então se o teste chega, o relatório chega.
+
+### Como isso foi conferido
+
+Contra uma Z-API falsa que grava tudo que recebe. 17 testes do motor mais a
+tela inteira no navegador: a lista recusou um telefone de pessoa e um grupo
+de id torto; ligar um grupo numa loja funcionou; ligar o MESMO grupo numa
+segunda loja foi recusado com "Esse grupo já está cadastrado em Ademicon";
+depois de recarregar, a opção aparece marcada como "já é de Ademicon"; e a
+mensagem de teste chegou na Z-API falsa com o texto certo.
+
+E a trava que mais importa: nada que sai dessas funções — retorno, erro ou
+log — contém a instância, o token ou a URL. Isso é testado, não conferido no
+olho: os testes procuram os três segredos em tudo que as funções devolvem.
+
 ### O que ainda é na mão
 
 O envio é por botão, um de cada vez. Mandar a casa inteira de uma vez, sozinho

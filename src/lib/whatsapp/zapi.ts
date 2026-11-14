@@ -124,8 +124,166 @@ async function chamar(caminho: string, corpo: unknown): Promise<ResultadoDoEnvio
   }
 }
 
+/**
+ * Chama um endpoint de LEITURA da Z-API.
+ *
+ * Gêmea de `chamar`, com as mesmas regras de segredo: a URL nasce e morre
+ * aqui dentro, e nada que sai desta função a contém. Separada porque GET não
+ * leva corpo e porque o que ela devolve é dado, não confirmação de envio.
+ */
+async function buscar<T>(
+  caminho: string,
+  query?: Record<string, string>,
+): Promise<{ ok: true; dados: T } | { ok: false; erro: string }> {
+  const c = credenciais();
+  if (!c) return { ok: false, erro: "WhatsApp não configurado no sistema." };
+
+  const q = query ? `?${new URLSearchParams(query).toString()}` : "";
+  const url = `${BASE}/instances/${c.instancia}/token/${c.token}/${caminho}${q}`;
+
+  let r: Response;
+  try {
+    r = await fetch(url, {
+      headers: { "Client-Token": c.clientToken },
+      signal: AbortSignal.timeout(PRAZO_MS),
+      cache: "no-store",
+    });
+  } catch (erro) {
+    const motivo =
+      erro instanceof Error && erro.name === "TimeoutError"
+        ? "demorou demais"
+        : "não respondeu";
+    return { ok: false, erro: `A Z-API ${motivo}.` };
+  }
+
+  const texto = await r.text();
+  if (!r.ok) {
+    const detalhe = texto.slice(0, 200).replace(/\s+/g, " ").trim();
+    return {
+      ok: false,
+      erro: `A Z-API recusou (${r.status})${detalhe ? `: ${detalhe}` : ""}`,
+    };
+  }
+
+  try {
+    return { ok: true, dados: JSON.parse(texto) as T };
+  } catch {
+    return { ok: false, erro: "A Z-API respondeu uma coisa que não é JSON." };
+  }
+}
+
 /** O formato de id de grupo da Z-API: números e o sufixo "-group". */
 export const FORMATO_DO_GRUPO = /^\d{10,}-group$/;
+
+/** Quantos grupos buscar por página. A casa tem dezenas, não milhares. */
+const GRUPOS_POR_PAGINA = 100;
+
+export interface GrupoDaZapi {
+  /** O id que vai no cadastro da loja: "120363019502650977-group". */
+  id: string;
+  /** O nome do grupo como aparece no WhatsApp. */
+  nome: string;
+}
+
+/**
+ * Os grupos em que o número do robô está.
+ *
+ * ── Por que isto existe ──────────────────────────────────────────────────
+ *
+ * Porque hoje o id do grupo é DIGITADO na ficha da loja, copiado do painel
+ * da Z-API. E o estrago de errar um dígito é o pior que este sistema sabe
+ * fazer: o relatório da loja A — gasto, leads, custo — entregue no grupo da
+ * loja B, sem desfazer.
+ *
+ * Com a lista na tela, ninguém digita: escolhe o grupo pelo nome. A trava de
+ * formato e a de grupo repetido continuam valendo, mas deixam de ser a
+ * única coisa entre um dedo escorregado e um cliente vendo o número de
+ * outro.
+ */
+export async function listarGrupos(): Promise<
+  { ok: true; grupos: GrupoDaZapi[] } | { ok: false; erro: string }
+> {
+  const r = await buscar<unknown>("groups", {
+    page: "1",
+    pageSize: String(GRUPOS_POR_PAGINA),
+  });
+  if (!r.ok) return r;
+
+  // A Z-API devolve um array, mas resposta de serviço de fora não é lugar de
+  // confiar em formato: se vier outra coisa, é lista vazia, não tela quebrada.
+  if (!Array.isArray(r.dados)) return { ok: true, grupos: [] };
+
+  const grupos: GrupoDaZapi[] = [];
+  for (const bruto of r.dados) {
+    if (!bruto || typeof bruto !== "object") continue;
+    const g = bruto as { phone?: unknown; name?: unknown; isGroup?: unknown };
+    const id = typeof g.phone === "string" ? g.phone : null;
+    // Só o que realmente é grupo e tem id no formato que o envio aceita. Um
+    // telefone de pessoa que passasse daqui viraria uma opção clicável de
+    // mandar o relatório da loja pro WhatsApp pessoal de alguém.
+    if (!id || !FORMATO_DO_GRUPO.test(id)) continue;
+    if (g.isGroup === false) continue;
+    grupos.push({
+      id,
+      nome: typeof g.name === "string" && g.name.trim() ? g.name.trim() : id,
+    });
+  }
+
+  grupos.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  return { ok: true, grupos };
+}
+
+export interface Aparelho {
+  numero: string | null;
+  nome: string | null;
+}
+
+/**
+ * Qual número está pendurado na instância.
+ *
+ * Importa porque o combinado é um chip DEDICADO ao robô. Se alguém parear o
+ * número pessoal da agência por engano, o sistema passa a mandar relatório
+ * de cliente pelo WhatsApp que a equipe usa pra tudo — e o bloqueio da Meta,
+ * quando vier, leva junto o atendimento. Ver o número na tela é o que torna
+ * esse engano visível no dia em que acontece.
+ */
+export async function dadosDoAparelho(): Promise<
+  { ok: true; aparelho: Aparelho } | { ok: false; erro: string }
+> {
+  const r = await buscar<{ phone?: unknown; name?: unknown }>("device");
+  if (!r.ok) return r;
+  return {
+    ok: true,
+    aparelho: {
+      numero: typeof r.dados?.phone === "string" ? r.dados.phone : null,
+      nome: typeof r.dados?.name === "string" ? r.dados.name : null,
+    },
+  };
+}
+
+/**
+ * Manda um texto — serve pro teste de que a ligação está de pé.
+ *
+ * Aceita grupo (`...-group`) ou telefone, porque o teste mais honesto é o
+ * que o Guilherme manda pro próprio número antes de deixar o robô falar com
+ * cliente. O envio de relatório continua sendo só por grupo, com a trava de
+ * formato de sempre.
+ */
+export async function enviarTexto(
+  destino: string,
+  mensagem: string,
+): Promise<ResultadoDoEnvio> {
+  const alvo = destino.trim();
+  if (!alvo) return { ok: false, erro: "Diga pra onde mandar." };
+  if (!FORMATO_DO_GRUPO.test(alvo) && !/^\d{10,15}$/.test(alvo)) {
+    return {
+      ok: false,
+      erro: "Destino inválido: ou um grupo (“…-group”) ou um telefone com DDI e DDD, só números.",
+    };
+  }
+  if (!mensagem.trim()) return { ok: false, erro: "A mensagem está vazia." };
+  return chamar("send-text", { phone: alvo, message: mensagem });
+}
 
 /**
  * Manda uma imagem pra um grupo.

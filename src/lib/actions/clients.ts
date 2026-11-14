@@ -24,7 +24,10 @@ const ClientSchema = z.object({
   dueDay: z.coerce
     .number()
     .int()
-    .refine((v) => (PAYMENT_DAYS as readonly number[]).includes(v), "Dia de vencimento inválido.")
+    .refine(
+      (v) => (PAYMENT_DAYS as readonly number[]).includes(v),
+      "Dia de vencimento inválido.",
+    )
     .optional(),
   status: z.enum(["ATIVO", "IMPLANTACAO", "PAUSADO", "CANCELADO"]),
   internalNotes: z.string().optional(),
@@ -51,7 +54,10 @@ function parseClientForm(formData: FormData) {
   });
 }
 
-export async function createClient(_prevState: ClientFormState, formData: FormData): Promise<ClientFormState> {
+export async function createClient(
+  _prevState: ClientFormState,
+  formData: FormData,
+): Promise<ClientFormState> {
   await requireModuleAccess("clientes");
 
   const parsed = parseClientForm(formData);
@@ -87,7 +93,12 @@ export async function createClient(_prevState: ClientFormState, formData: FormDa
   // Comercial automaticamente.
   await prisma.commercialEvent.create({
     // Cliente é da carteira da agência, então a venda dele é da agência.
-    data: { empresa: "AGENCIA", type: "VENDA", companyName: client.companyName, value: client.monthlyValue },
+    data: {
+      empresa: "AGENCIA",
+      type: "VENDA",
+      companyName: client.companyName,
+      value: client.monthlyValue,
+    },
   });
 
   // Cliente ativo com mensalidade já entra automaticamente no Financeiro,
@@ -105,7 +116,7 @@ export async function createClient(_prevState: ClientFormState, formData: FormDa
 export async function updateClient(
   clientId: string,
   _prevState: ClientFormState,
-  formData: FormData
+  formData: FormData,
 ): Promise<ClientFormState> {
   const user = await requireModuleAccess("clientes");
   // A lista e a tela de edição já são recortadas pela carteira, mas o id vem
@@ -120,7 +131,10 @@ export async function updateClient(
   }
   const data = parsed.data;
 
-  const previous = await prisma.client.findUnique({ where: { id: clientId }, select: { status: true, monthlyValue: true } });
+  const previous = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { status: true, monthlyValue: true },
+  });
 
   const client = await prisma.client.update({
     where: { id: clientId },
@@ -135,19 +149,48 @@ export async function updateClient(
   // Comercial automaticamente.
   if (previous?.status !== "CANCELADO" && client.status === "CANCELADO") {
     await prisma.commercialEvent.create({
-      data: { empresa: "AGENCIA", type: "CHURN", companyName: client.companyName, value: client.monthlyValue },
+      data: {
+        empresa: "AGENCIA",
+        type: "CHURN",
+        companyName: client.companyName,
+        value: client.monthlyValue,
+      },
     });
     revalidatePath("/comercial");
   }
 
-  // Saiu de Ativo (cancelado, pausado, etc.) — some do Financeiro: apaga as
-  // cobranças deste mês em diante que ainda não foram pagas, pra não ficar
-  // cobrança fantasma de cliente que não é mais ativo. Meses anteriores não
-  // pagos continuam intactos, como pendência a resolver.
+  // Saiu de Ativo (cancelado, pausado, etc.) — some do Financeiro dos meses
+  // SEGUINTES: apaga as cobranças futuras que ainda não foram pagas, pra não
+  // ficar cobrança fantasma de cliente que não é mais ativo.
+  //
+  // ── Por que o mês corrente fica, e antes não ficava ─────────────────────
+  //
+  // Isto apagava "deste mês em diante", e a conta do mês corrente é dinheiro
+  // que a agência tem a receber: o serviço do mês foi entregue, e o cliente
+  // que sai no dia 14 costuma pagar a mensalidade de novembro assim mesmo —
+  // muitas vezes no dia seguinte.
+  //
+  // Apagar a cobrança do mês em que o cliente saiu fazia três coisas erradas
+  // de uma vez: sumia com a receita do mês no Financeiro, baixava o
+  // faturamento do mês fechado, e tirava da frente a cobrança que alguém
+  // ainda precisa receber. Reaparecer não reaparece: `ensureMonthlyMrrRevenues`
+  // só gera pra quem está na carteira, e ele acabou de sair dela.
+  //
+  // Então o corte passou pro PRIMEIRO DIA DO MÊS SEGUINTE. Se a saída for de
+  // um cliente que não deve o mês corrente, apagar UMA linha na mão no
+  // Financeiro é um clique — recuperar uma cobrança apagada sozinha não é.
   if (previous?.status === "ATIVO" && client.status !== "ATIVO") {
-    const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
+    const agora = new Date();
+    const mesQueVem = new Date(
+      Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() + 1, 1),
+    );
     await prisma.revenue.deleteMany({
-      where: { empresa: "AGENCIA", clientId, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart } },
+      where: {
+        empresa: "AGENCIA",
+        clientId,
+        status: { in: ["PENDENTE", "ATRASADO"] },
+        dueDate: { gte: mesQueVem },
+      },
     });
   }
 
@@ -160,8 +203,12 @@ export async function updateClient(
     client.status === "ATIVO" &&
     Number(previous.monthlyValue) !== Number(client.monthlyValue)
   ) {
-    const monthStart = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1));
-    const monthEnd = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1));
+    const monthStart = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1),
+    );
+    const monthEnd = new Date(
+      Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth() + 1, 1),
+    );
     await prisma.revenue.updateMany({
       where: {
         empresa: "AGENCIA",
@@ -200,7 +247,12 @@ export async function deleteClient(clientId: string) {
   // Cancelado antes (aí o churn já foi contado na hora do cancelamento).
   if (client && client.status !== "CANCELADO") {
     await prisma.commercialEvent.create({
-      data: { empresa: "AGENCIA", type: "CHURN", companyName: client.companyName, value: client.monthlyValue },
+      data: {
+        empresa: "AGENCIA",
+        type: "CHURN",
+        companyName: client.companyName,
+        value: client.monthlyValue,
+      },
     });
     revalidatePath("/comercial");
   }
@@ -209,14 +261,16 @@ export async function deleteClient(clientId: string) {
   redirect("/clientes");
 }
 
-const HistorySchema = z.object({ note: z.string().min(1, "Escreva uma observação.") });
+const HistorySchema = z.object({
+  note: z.string().min(1, "Escreva uma observação."),
+});
 
 export type HistoryFormState = { error?: string } | undefined;
 
 export async function addClientHistory(
   clientId: string,
   _prevState: HistoryFormState,
-  formData: FormData
+  formData: FormData,
 ): Promise<HistoryFormState> {
   const user = await requireModuleAccess("clientes");
   const parsed = HistorySchema.safeParse({ note: formData.get("note") });
@@ -240,7 +294,7 @@ export type AttachmentFormState = { error?: string } | undefined;
 export async function addClientAttachment(
   clientId: string,
   _prevState: AttachmentFormState,
-  formData: FormData
+  formData: FormData,
 ): Promise<AttachmentFormState> {
   const user = await requireModuleAccess("clientes");
   if (!(await clienteEDaCarteira(user, clientId))) {
@@ -260,7 +314,10 @@ export async function addClientAttachment(
   revalidatePath(`/clientes/${clientId}`);
 }
 
-export async function deleteClientAttachment(clientId: string, attachmentId: string) {
+export async function deleteClientAttachment(
+  clientId: string,
+  attachmentId: string,
+) {
   const user = await requireModuleAccess("clientes");
   if (!(await clienteEDaCarteira(user, clientId))) return;
   await prisma.clientAttachment.delete({ where: { id: attachmentId } });

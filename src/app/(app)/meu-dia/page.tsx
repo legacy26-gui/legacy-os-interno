@@ -22,6 +22,7 @@ import { BlocoMetaDoDia } from "./bloco-meta";
 import { BlocoDoRobo } from "./bloco-robo";
 import { BlocoRelatorios } from "./bloco-relatorios";
 import { oQueORoboFez } from "@/lib/meta/o-que-o-robo-fez";
+import { relatoriosQueFalharam } from "@/lib/whatsapp/robo-dos-relatorios";
 
 // Meu Dia: a carteira do gestor numa tela só.
 //
@@ -93,11 +94,15 @@ export default async function MeuDiaPage() {
   // O Meta entra DEPOIS da lista de clientes porque precisa dos ids dela. É
   // uma rodada a mais de consulta, e não dá pra juntar com as de cima.
   const idsDaCarteira = clients.map((c) => c.id);
-  const [painelMeta, roboFez] = await Promise.all([
+  const [painelMeta, roboFez, falhasDoRobo] = await Promise.all([
     montarPainelDoDia(idsDaCarteira, hoje),
     // O que o robô do WhatsApp mexeu. Mesma carteira: cada gestor vê o que
     // foi feito NAS LOJAS DELE, e de mais ninguém.
     oQueORoboFez(idsDaCarteira, hoje),
+    // Lojas que o robô dos relatórios tentou e desistiu nesta semana. Sem
+    // isto elas somem da fila dele sem avisar ninguém, e o cliente fica sem
+    // relatório, calado, até cobrar.
+    relatoriosQueFalharam(idsDaCarteira, hoje),
   ]);
 
   // ── Os relatórios da semana ──────────────────────────────────────────
@@ -247,6 +252,7 @@ export default async function MeuDiaPage() {
         }))}
         diaDaSemana={diaDaSemana}
         zapiLigado={zapiConfigurado()}
+        falhasDoRobo={falhasDoRobo}
       />
 
       {urgentes.length > 0 && (

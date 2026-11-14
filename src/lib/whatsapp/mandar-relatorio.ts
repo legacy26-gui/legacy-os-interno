@@ -1,7 +1,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { GET as desenharRelatorio } from "@/app/api/meta-ads/relatorio/route";
+import { desenharRelatorioDaLoja } from "@/app/api/meta-ads/relatorio/route";
+import { lerIntervalo, PADRAO_DO_RELATORIO } from "@/lib/meta/insights";
 import { enviarImagemAoGrupo, type ResultadoDoEnvio } from "./zapi";
 
 // Pegar o relatório da semana de uma loja e mandar no grupo dela.
@@ -57,13 +58,17 @@ export async function mandarRelatorioNoGrupo(clientId: string): Promise<EnvioDoR
   // 7 dias: é o período do relatório semanal, e é o mesmo que o botão da
   // tela abre. Dois períodos diferentes pro mesmo relatório seria a mesma
   // divergência que o desenho duplicado causaria.
-  const pedido = new Request(
-    `http://interno/api/meta-ads/relatorio?loja=${encodeURIComponent(clientId)}&periodo=7d`
-  );
+  //
+  // Chama o DESENHO, não a rota. A rota confere quem está logado, e quem
+  // chega aqui pelo robô da segunda de manhã não está logado em nada — era
+  // isso que fazia toda loja falhar com "não consegui gerar a imagem". Quem
+  // confere o acesso é quem chamou: o botão da tela passa pela rota, o robô
+  // varre a carteira da casa pelo banco.
+  const periodo = lerIntervalo({ periodo: "7" }, PADRAO_DO_RELATORIO);
 
   let resposta: Response;
   try {
-    resposta = await desenharRelatorio(pedido);
+    resposta = await desenharRelatorioDaLoja(clientId, periodo);
   } catch {
     return { ok: false, erro: "Não consegui gerar a imagem do relatório." };
   }

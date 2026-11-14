@@ -8,6 +8,11 @@
     {
       "path": "/api/alertas/rodar",
       "schedule": "0 11 * * *"
+    },
+    {
+      "comment": "Os relatórios da semana, segunda de manhã. 11h UTC é 8h de Brasília. De cinco em cinco minutos até as 10h porque cada rodada manda poucas lojas, de propósito: quarenta mensagens em rajada de um número não oficial é o jeito mais rápido de a Meta bloqueá-lo. Quando não há mais o que mandar a rota responde na hora e não gasta nada.",
+      "path": "/api/relatorios/mandar",
+      "schedule": "*/5 11-12 * * 1"
     }
   ]
 }

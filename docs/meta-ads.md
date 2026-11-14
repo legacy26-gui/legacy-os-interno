@@ -831,12 +831,76 @@ Compass — os outros onze anúncios continuaram no ar — com uma única chamad
 privada, áudio, corpo ilegível e outra instância ignorados; e segredo errado
 respondeu 404.
 
+### Os relatórios saem sozinhos, segunda de manhã
+
+A partir das 8h de Brasília, sem ninguém apertar nada. O botão continua
+existindo, pra quem quiser mandar antes ou remandar.
+
+**O ritmo é o ponto todo.** A Z-API não é oficial: quarenta mensagens em
+rajada de um número comum é o jeito mais rápido conhecido de a Meta bloqueá-lo,
+e bloqueado o número, para o envio da casa inteira — o chip não volta.
+
+Então o agendador chama a rota **de cinco em cinco minutos, das 8h às 10h de
+segunda**, e cada rodada manda só quatro lojas, com uma pausa **sorteada entre
+6 e 14 segundos** entre uma mensagem e outra. A casa inteira sai em menos de
+uma hora, parecendo gente mandando. A pausa é sorteada porque exatamente dez
+segundos entre quarenta mensagens é a assinatura de um robô.
+
+Dividir em rodadas também resolve outra coisa: uma rodada que morrer no meio
+não perde nada. A próxima continua de onde parou, porque a fila é calculada
+do banco toda vez — quem já recebeu nesta semana não entra.
+
+### Teto de três tentativas, e o porquê
+
+A loja sem leitura boa da Meta falha sempre: o relatório sairia com R$ 0,00 em
+tudo e a função recusa, corretamente. Sem teto ela seria tentada a cada rodada
+por duas horas, e **cada tentativa desenha a imagem** antes de descobrir que
+não vai dar.
+
+Três tentativas e o robô desiste. A loja então vira pendência no Meu Dia, com
+o motivo escrito, porque uma loja que ele desistiu some da fila sem avisar
+ninguém — e aí o cliente simplesmente não recebe, calado, até cobrar.
+
+A contagem é gravada **antes** de tentar. Se a função for cortada no meio
+(tempo esgotado, container reciclado), a loja não fica numa fila que a tenta
+pra sempre.
+
+### A rota exige segredo, sem exceção
+
+`GET /api/relatorios/mandar`, com `Authorization: Bearer $CRON_SECRET`.
+
+A rota dos alertas aceita ser chamada sem segredo, e com razão: o que alguém
+ganharia é nada. **Esta manda mensagem pra cliente**, e mensagem no WhatsApp
+não se desmanda. Sem `CRON_SECRET` configurado ela responde 503 e o envio
+automático simplesmente não existe — os relatórios continuam saindo pelo
+botão, como sempre saíram.
+
+### O defeito que isto destapou, e que teria queimado a segunda
+
+A rota que desenha o relatório conferia `getCurrentUser()` antes de tudo. O
+botão da tela funciona porque o gestor está logado — mas **o robô não é
+ninguém**: acorda por agendador, sem sessão, sem cookie. Toda loja falhava com
+"não consegui gerar a imagem do relatório", e o erro não dizia por quê.
+
+O desenho virou `desenharRelatorioDaLoja(loja, periodo)`, sem conferência
+nenhuma, e o `GET` passou a ser só a porta de quem está logado. A trava não se
+perdeu, mudou de lugar: quem chama o desenho direto é código do servidor que
+já sabe de qual loja está falando — o robô varre a carteira pelo banco, não
+por endereço que alguém digitou.
+
+### Como isso foi conferido
+
+Pela rota de verdade, com Z-API falsa. Sem segredo e com segredo errado: 401.
+Três lojas com grupo: a primeira rodada mandou as três, cada PNG no grupo
+certo, com a legenda certa; a segunda rodada respondeu `nada-pendente` sem
+repetir ninguém. Com duas lojas sem leitura boa da Meta, elas falharam com o
+recado próprio, foram tentadas três vezes e o robô parou — a terceira recebeu
+normalmente no meio disso. O espaçamento medido: ~20s para três mensagens.
+
 ### O que ainda é na mão
 
-O envio é por botão, um de cada vez. Mandar a casa inteira de uma vez, sozinho
-na segunda de manhã, é o passo seguinte — e é o que exige cuidado com ritmo:
-quarenta mensagens em rajada de um número não oficial é o jeito mais rápido de
-ele ser bloqueado.
+Loja sem grupo cadastrado continua sendo enviada pelo botão: sem grupo não há
+pra onde mandar. O Meu Dia diz quantas são.
 
 ## Mudar a verba pelo sistema
 

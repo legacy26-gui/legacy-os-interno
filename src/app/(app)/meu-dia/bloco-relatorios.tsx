@@ -9,6 +9,7 @@ import {
   ExternalLink,
   Send,
   Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import {
   marcarRelatorioEnviado,
@@ -53,17 +54,28 @@ export function BlocoRelatorios({
   lojas,
   diaDaSemana,
   zapiLigado,
+  falhasDoRobo,
 }: {
   lojas: LojaDoRelatorio[];
   /** 1 = segunda. Vem do servidor, no fuso da casa. */
   diaDaSemana: number;
   /** O WhatsApp está configurado no sistema. */
   zapiLigado: boolean;
+  /**
+   * Lojas que o robô tentou e não conseguiu nesta semana.
+   *
+   * Precisa aparecer porque o robô desiste depois de três tentativas — e uma
+   * loja que ele desistiu some da fila dele sem avisar ninguém. Sem esta
+   * lista, o cliente simplesmente não recebe o relatório, calado, até
+   * cobrar.
+   */
+  falhasDoRobo: { clientId: string; loja: string; erro: string }[];
 }) {
   // Carteira sem loja com conta de anúncio não ganha bloco nenhum.
   if (lojas.length === 0) return null;
 
   const faltam = lojas.filter((l) => !l.enviado);
+  const porFalha = new Map(falhasDoRobo.map((f) => [f.clientId, f]));
   const atrasado = diaDaSemana >= 3 && faltam.length > 0;
 
   return (
@@ -103,9 +115,39 @@ export function BlocoRelatorios({
         </p>
       )}
 
+      {/* O robô tentou e desistiu. Vem ANTES da lista porque é a única
+          parte que exige alguém: as outras linhas ou já foram, ou o robô
+          ainda vai pegar na próxima rodada. Estas não — ele já parou. */}
+      {falhasDoRobo.length > 0 && (
+        <div className="rounded-xl border border-red-500/60 bg-red-500/10 px-3 py-2.5 flex flex-col gap-1.5">
+          <p className="text-xs font-semibold text-red-500 flex items-start gap-1.5">
+            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+            {falhasDoRobo.length === 1
+              ? "O robô não conseguiu mandar 1 relatório e desistiu"
+              : `O robô não conseguiu mandar ${falhasDoRobo.length} relatórios e desistiu`}
+          </p>
+          <ul className="flex flex-col gap-1">
+            {falhasDoRobo.map((f) => (
+              <li key={f.clientId} className="text-xs">
+                <strong>{f.loja}</strong>{" "}
+                <span className="text-foreground-muted">— {f.erro}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-foreground-muted">
+            Resolva o motivo e mande pelo botão aqui embaixo.
+          </p>
+        </div>
+      )}
+
       <ul className="flex flex-col divide-y divide-border">
         {lojas.map((l) => (
-          <Linha key={l.id} loja={l} zapiLigado={zapiLigado} />
+          <Linha
+            key={l.id}
+            loja={l}
+            zapiLigado={zapiLigado}
+            falhou={porFalha.has(l.id)}
+          />
         ))}
       </ul>
 
@@ -125,9 +167,12 @@ export function BlocoRelatorios({
 function Linha({
   loja,
   zapiLigado,
+  falhou,
 }: {
   loja: LojaDoRelatorio;
   zapiLigado: boolean;
+  /** O robô tentou esta loja e desistiu — ela precisa de alguém. */
+  falhou: boolean;
 }) {
   const [pendendo, iniciar] = useTransition();
   const [mandando, comecarEnvio] = useTransition();
@@ -170,6 +215,12 @@ function Linha({
         }`}
       >
         <span className="truncate">{loja.nome}</span>
+        {/* O robô já parou de tentar esta. Sem a marca, ela fica igual às
+            que ele ainda vai pegar na próxima rodada — e a diferença entre
+            "espera cinco minutos" e "só sai se você mandar" é toda. */}
+        {falhou && !enviado && (
+          <AlertTriangle size={13} className="text-red-500 shrink-0" />
+        )}
         {!enviado && (
           <ExternalLink size={13} className="text-foreground-muted shrink-0" />
         )}

@@ -100,6 +100,23 @@ async function logoEmbutida(): Promise<string | null> {
   }
 }
 
+/**
+ * A porta de quem está logado: confere quem é, depois desenha.
+ *
+ * O desenho em si mora em `desenharRelatorioDaLoja`, logo abaixo, SEM
+ * conferência de acesso nenhuma.
+ *
+ * ── Por que separado ─────────────────────────────────────────────────────
+ *
+ * Porque o robô que manda os relatórios na segunda de manhã não é ninguém:
+ * ele acorda por um agendador, não tem sessão, não tem cookie. Enquanto o
+ * desenho morava dentro desta função, ele chamava daqui, o getCurrentUser
+ * não achava usuário e TODA loja falhava com "não consegui gerar a imagem".
+ *
+ * A trava não se perdeu, mudou de lugar: quem chama o desenho direto é código
+ * do servidor que já sabe de qual loja está falando — o robô varre a carteira
+ * da casa pelo banco, não por endereço que alguém digitou.
+ */
 export async function GET(req: Request) {
   const user = await getCurrentUser();
   if (!canAccessModule(user.role, "clientes", user.email)) {
@@ -116,12 +133,24 @@ export async function GET(req: Request) {
     return new Response("não encontrada", { status: 404 });
   }
 
-  const periodo = lerIntervalo({
-    periodo: url.searchParams.get("periodo") ?? undefined,
-    de: url.searchParams.get("de") ?? undefined,
-    ate: url.searchParams.get("ate") ?? undefined,
-  }, PADRAO_DO_RELATORIO);
+  return desenharRelatorioDaLoja(
+    loja,
+    lerIntervalo(
+      {
+        periodo: url.searchParams.get("periodo") ?? undefined,
+        de: url.searchParams.get("de") ?? undefined,
+        ate: url.searchParams.get("ate") ?? undefined,
+      },
+      PADRAO_DO_RELATORIO,
+    ),
+  );
+}
 
+/** O desenho. Não confere acesso: quem chama já conferiu. */
+export async function desenharRelatorioDaLoja(
+  loja: string,
+  periodo: ReturnType<typeof lerIntervalo>,
+): Promise<Response> {
   const r = await montarRelatorio(loja, periodo);
   if (!r) return new Response("não encontrada", { status: 404 });
 

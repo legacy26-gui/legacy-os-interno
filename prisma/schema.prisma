@@ -127,6 +127,39 @@ model AcaoDeResgate {
  * a mesma semana que o que mandou na segunda, senão a mesma loja contaria
  * duas vezes e a lista nunca zeraria.
  */
+/**
+ * As tentativas do robô de mandar o relatório da semana.
+ * ── Por que não dá pra viver só com RelatorioEnviado ─────────────────────
+ * Porque aquela tabela só ganha linha quando DEU CERTO. O robô acorda de
+ * cinco em cinco minutos na manhã de segunda; uma loja que falha sempre — a
+ * que não teve leitura boa da Meta, por exemplo — seria tentada de novo a
+ * cada rodada, por horas, e cada tentativa gera a imagem do relatório antes
+ * de descobrir que não vai dar.
+ * Com esta tabela o robô sabe quantas vezes já tentou nesta semana e para
+ * depois do teto. E o erro fica guardado, que é o que o Meu Dia precisa pra
+ * dizer QUAL loja não recebeu e por quê — em vez de só não aparecer.
+ */
+model TentativaDeRelatorio {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  /// A segunda-feira da semana, igual à de RelatorioEnviado.
+  semana DateTime @db.Date
+
+  /// Quantas vezes o robô já tentou esta loja nesta semana.
+  tentativas Int @default(0)
+
+  /// O motivo da última falha, pra aparecer no Meu Dia.
+  ultimoErro String?
+
+  ultimaEm DateTime @default(now())
+
+  @@unique([clientId, semana])
+  @@index([semana])
+  @@map("tentativas_de_relatorio")
+}
+
 model RelatorioEnviado {
   id       String @id @default(cuid())
   clientId String
@@ -474,31 +507,32 @@ model Client {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
 
-  attachments        ClientAttachment[]
-  history            ClientHistory[]
-  revenues           Revenue[]
-  contracts          Contract[]
-  tasks              Task[]
-  campaigns          Campaign[]
-  reports            Report[]
-  contentItems       ContentItem[]
-  supportTickets     SupportTicket[]
-  dailyReviews       DailyReview[]
-  weeklyReviews      WeeklyReview[]
-  campaignChanges    CampaignChange[]
-  sales              ClientSale[]
-  pinnedInfo         ClientPinnedInfo[]
-  onboardings        ClientOnboarding[]
-  cobrancasPuladas   CobrancaPulada[]
-  conferencias       ClienteConferido[]
-  relatoriosEnviados RelatorioEnviado[]
-  studioMarca        StudioMarca?
-  studioArtes        StudioArte[]
-  resgates           AcaoDeResgate[]
-  metaAdAccounts     MetaAdAccount[]
-  gravacoes          Gravacao[]
-  pedidosDeVerba     PedidoDeVerba[]
-  metaAcoes          MetaAcao[]
+  attachments           ClientAttachment[]
+  history               ClientHistory[]
+  revenues              Revenue[]
+  contracts             Contract[]
+  tasks                 Task[]
+  campaigns             Campaign[]
+  reports               Report[]
+  contentItems          ContentItem[]
+  supportTickets        SupportTicket[]
+  dailyReviews          DailyReview[]
+  weeklyReviews         WeeklyReview[]
+  campaignChanges       CampaignChange[]
+  sales                 ClientSale[]
+  pinnedInfo            ClientPinnedInfo[]
+  onboardings           ClientOnboarding[]
+  cobrancasPuladas      CobrancaPulada[]
+  conferencias          ClienteConferido[]
+  relatoriosEnviados    RelatorioEnviado[]
+  tentativasDeRelatorio TentativaDeRelatorio[]
+  studioMarca           StudioMarca?
+  studioArtes           StudioArte[]
+  resgates              AcaoDeResgate[]
+  metaAdAccounts        MetaAdAccount[]
+  gravacoes             Gravacao[]
+  pedidosDeVerba        PedidoDeVerba[]
+  metaAcoes             MetaAcao[]
 
   @@map("clients")
 }

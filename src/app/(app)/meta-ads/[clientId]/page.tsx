@@ -32,6 +32,7 @@ import {
   cpc,
   ctr,
   frequencia,
+  PADRAO_DA_LOJA,
 } from "@/lib/meta/insights";
 import { AbasDaSecao } from "@/components/abas-da-secao";
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
@@ -120,7 +121,7 @@ export default async function LojaNoMetaAdsPage({
     manager: { select: { name: true } },
   });
 
-  const periodo = lerIntervalo(busca);
+  const periodo = lerIntervalo(busca, PADRAO_DA_LOJA);
   const nivel: Nivel = (ABAS.find((a) => a.valor === busca.nivel)?.valor ??
     "campanha") as Nivel;
 

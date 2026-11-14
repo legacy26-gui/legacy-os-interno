@@ -15,6 +15,7 @@ import {
   type Numeros,
   type Intervalo,
   ZERO,
+  PADRAO_DA_LISTA,
 } from "@/lib/meta/insights";
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
 import { Frescor } from "@/components/frescor";
@@ -106,7 +107,7 @@ export default async function MetaAdsPage({
   const user = await requireModuleAccess("clientes");
   const busca = await searchParams;
 
-  const periodo = lerIntervalo(busca);
+  const periodo = lerIntervalo(busca, PADRAO_DA_LISTA);
 
   // Buscar os dados dentro de um try: se o banco recusar alguma coisa, a
   // direção vê a MENSAGEM, não a tela preta do Next.

@@ -15,8 +15,23 @@
 /** Quantos dias de histórico o sistema guarda e busca. */
 export const DIAS_DE_INSIGHT = 30;
 
-/** O período padrão da tela: a última semana, como no Gerenciador. */
-export const DIAS_PADRAO = 7;
+/**
+ * O padrão de quem não escolheu período.
+ *
+ * ── Por que não é o mesmo em todo lugar ──────────────────────────────────
+ *
+ * Porque as telas respondem a perguntas diferentes. Quem abre UMA loja quer
+ * saber o que está acontecendo agora — "a campanha que liguei hoje de manhã
+ * está rodando?" — e sete dias afogam o dia de hoje numa média da semana.
+ * Quem olha a lista de todas as lojas, ou manda o relatório pro cliente,
+ * está comparando desempenho, e aí um dia sozinho é ruído: loja que vendeu
+ * três carros ontem apareceria zerada hoje de manhã.
+ *
+ * Então o padrão vai no lugar de quem chama, à vista, e não escondido aqui.
+ */
+export const PADRAO_DA_LISTA: Atalho = "7";
+export const PADRAO_DA_LOJA: Atalho = "hoje";
+export const PADRAO_DO_RELATORIO: Atalho = "7";
 
 /** Períodos que a tela oferece. "tudo" é a vida inteira da conta. */
 export const PERIODOS = [7, 14, 30] as const;
@@ -213,9 +228,13 @@ export function janelaDeDias(
  * Datas soltas (`de`/`ate`) ganham do atalho: se a pessoa escolheu um
  * intervalo à mão, é esse que vale. Data inválida cai no padrão em vez de
  * quebrar a tela — endereço se edita à mão e se compartilha torto.
+ *
+ * O `padrao` é obrigatório de propósito: cada tela responde a uma pergunta
+ * diferente e precisa dizer qual é a dela. Ver PADRAO_DA_LOJA e vizinhos.
  */
 export function lerIntervalo(
   busca: { periodo?: string; de?: string; ate?: string },
+  padrao: Atalho,
   agora = new Date(),
 ): Intervalo {
   const de = dataDoTexto(busca.de);
@@ -236,9 +255,8 @@ export function lerIntervalo(
     };
   }
 
-  const atalho =
-    ATALHOS.find((a) => a === busca.periodo) ?? String(DIAS_PADRAO);
-  return doAtalho(atalho as Atalho, agora);
+  const atalho = ATALHOS.find((a) => a === busca.periodo) ?? padrao;
+  return doAtalho(atalho, agora);
 }
 
 /**

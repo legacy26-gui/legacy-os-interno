@@ -11,7 +11,12 @@ import { join } from "node:path";
 import { getCurrentUser } from "@/lib/dal";
 import { canAccessModule } from "@/lib/permissions";
 import { clienteEDaCarteira } from "@/lib/carteira";
-import { lerIntervalo, reais, numero } from "@/lib/meta/insights";
+import {
+  lerIntervalo,
+  reais,
+  numero,
+  PADRAO_DO_RELATORIO,
+} from "@/lib/meta/insights";
 import { montarRelatorio } from "@/lib/meta/relatorio";
 
 // O relatório como IMAGEM, na identidade da Legacy.
@@ -115,7 +120,7 @@ export async function GET(req: Request) {
     periodo: url.searchParams.get("periodo") ?? undefined,
     de: url.searchParams.get("de") ?? undefined,
     ate: url.searchParams.get("ate") ?? undefined,
-  });
+  }, PADRAO_DO_RELATORIO);
 
   const r = await montarRelatorio(loja, periodo);
   if (!r) return new Response("não encontrada", { status: 404 });

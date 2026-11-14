@@ -4,7 +4,11 @@ import { Voltar } from "@/components/voltar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CARTEIRA, escopoDaCarteira, clienteEDaCarteira, veTodaACarteira } from "@/lib/carteira";
-import { lerIntervalo, textoDaData } from "@/lib/meta/insights";
+import {
+  lerIntervalo,
+  textoDaData,
+  PADRAO_DO_RELATORIO,
+} from "@/lib/meta/insights";
 import { montarRelatorio } from "@/lib/meta/relatorio";
 import { FormDoRelatorio } from "./form";
 import { BotaoImagem } from "./imprimir";
@@ -44,7 +48,7 @@ export default async function RelatorioPage({
 }) {
   const user = await requireModuleAccess("clientes");
   const busca = await searchParams;
-  const periodo = lerIntervalo(busca);
+  const periodo = lerIntervalo(busca, PADRAO_DO_RELATORIO);
 
   const lojas = await prisma.client.findMany({
     where: { ...CARTEIRA, ...escopoDaCarteira(user) },

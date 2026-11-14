@@ -19,7 +19,9 @@ import { zapiConfigurado } from "@/lib/whatsapp/zapi";
 import { LinhaDoCliente, type ClienteDoDia } from "./linha-do-cliente";
 import type { RevisaoDeHoje } from "../gestao-contas/[id]/daily-review-form";
 import { BlocoMetaDoDia } from "./bloco-meta";
+import { BlocoDoRobo } from "./bloco-robo";
 import { BlocoRelatorios } from "./bloco-relatorios";
+import { oQueORoboFez } from "@/lib/meta/o-que-o-robo-fez";
 
 // Meu Dia: a carteira do gestor numa tela só.
 //
@@ -90,10 +92,13 @@ export default async function MeuDiaPage() {
 
   // O Meta entra DEPOIS da lista de clientes porque precisa dos ids dela. É
   // uma rodada a mais de consulta, e não dá pra juntar com as de cima.
-  const painelMeta = await montarPainelDoDia(
-    clients.map((c) => c.id),
-    hoje,
-  );
+  const idsDaCarteira = clients.map((c) => c.id);
+  const [painelMeta, roboFez] = await Promise.all([
+    montarPainelDoDia(idsDaCarteira, hoje),
+    // O que o robô do WhatsApp mexeu. Mesma carteira: cada gestor vê o que
+    // foi feito NAS LOJAS DELE, e de mais ninguém.
+    oQueORoboFez(idsDaCarteira, hoje),
+  ]);
 
   // ── Os relatórios da semana ──────────────────────────────────────────
   //
@@ -224,6 +229,11 @@ export default async function MeuDiaPage() {
 
       {/* O que não pode passar batido vem antes da lista. */}
       <BlocoMetaDoDia painel={painelMeta} />
+
+      {/* O robô fala no grupo da loja, não com a gente. Sem isto aqui, a
+          única forma de saber o que ele andou desligando seria entrar nos
+          grupos — e ação automática que ninguém revê vira aposta. */}
+      <BlocoDoRobo oQueFez={roboFez} />
 
       {/* Os relatórios aparecem a partir de segunda e ficam até o último ser
           marcado. Antes de segunda não há o que mandar: a semana ainda está

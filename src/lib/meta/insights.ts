@@ -113,7 +113,7 @@ function meioDia(ano: number, mes: number, dia: number) {
  * O "meio-dia" continua: guardar a data no meio do dia é o que impede que
  * somar e subtrair dias caia na hora do horário de verão e ande um dia.
  */
-function hojeUTC(agora = new Date()) {
+export function hojeUTC(agora = new Date()) {
   // en-CA dá "2026-11-14", que é o formato que dá pra fatiar sem ambiguidade.
   const [ano, mes, dia] = agora
     .toLocaleDateString("en-CA", { timeZone: FUSO_DAS_LOJAS })

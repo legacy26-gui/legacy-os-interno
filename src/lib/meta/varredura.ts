@@ -35,14 +35,19 @@ import {
  * Quantas contas ao mesmo tempo.
  *
  * Em fila indiana, 42 lojas × 2 chamadas de ~1,5s dão mais de dois minutos —
- * e aí nenhuma função termina a tempo. De quatro em quatro, cai pra menos de
- * quarenta segundos.
+ * e aí nenhuma função termina a tempo. Em paralelo, cai pra menos de um
+ * minuto.
  *
- * Quatro e não quarenta: a Meta conta as chamadas por token e corta quem
+ * Dois e não quarenta: a Meta conta as chamadas por token e corta quem
  * exagera, e o corte dela dura horas. Melhor demorar meio minuto do que ficar
  * de castigo até de noite.
+ *
+ * Era quatro. Caiu pra dois quando cada conta passou a disparar as suas
+ * cinco buscas juntas: 4 × 5 = 20 chamadas simultâneas por token é pedir pra
+ * levar corte. 2 × 5 = 10 mantém o total parecido com o de antes, e o ganho
+ * de verdade veio de dentro da conta, não de empilhar mais contas.
  */
-const CONCORRENCIA = 4;
+const CONCORRENCIA = 2;
 
 export interface ResultadoDaVarredura {
   /** Contas que buscaram saldo e números sem erro. */
@@ -82,31 +87,44 @@ const CAMPOS: Prisma.MetaAdAccountSelect = {
  */
 async function umaConta(conta: ContaDaVarredura, prazo: Prazo): Promise<boolean> {
   try {
-    const saldo = await sincronizarSaldo(conta);
-    const numeros = await sincronizarInsights(conta, prazo);
-    // A vida inteira é uma chamada só e não paginada na prática; vem por
-    // último porque é a menos urgente das três.
-    const vida = await sincronizarVidaInteira(conta);
+    // ── Por que as cinco buscas vão juntas ──────────────────────────────
+    //
+    // Antes era uma depois da outra: saldo, números, vida inteira, arte,
+    // cadastro. Cinco idas à Meta de ~1,5s dão sete segundos e meio POR
+    // CONTA — e uma loja com duas contas passava de quinze. Era isso o
+    // "atualizar demora muito, muito": o botão de uma loja só esperava a
+    // soma de cinco esperas que não dependem umas das outras.
+    //
+    // Elas são independentes de verdade: nenhuma usa o resultado da outra,
+    // cada uma escreve na sua tabela. Juntas, o tempo da conta passa a ser o
+    // da mais lenta — perto de dois segundos em vez de sete e meio.
+    //
+    // Isto multiplica as chamadas simultâneas por token, e é por isso que a
+    // CONCORRENCIA caiu junto: cinco de uma vez vezes quatro contas seriam
+    // vinte, e a Meta corta quem exagera por horas. Ver a constante lá em
+    // cima.
+    //
+    // allSettled e não all: `all` desiste na primeira que falhar, e aí um
+    // saldo fora do ar levaria embora os números que já tinham voltado.
+    const [saldo, numeros, vida, arte, cadastro] = await Promise.allSettled([
+      sincronizarSaldo(conta),
+      sincronizarInsights(conta, prazo),
+      sincronizarVidaInteira(conta),
+      sincronizarCriativos(conta),
+      sincronizarEstrutura(conta),
+    ]);
 
     // A arte e o cadastro não entram no veredito, de propósito: são enfeite
-    // útil, e não
-    // ter a miniatura não pode pintar a loja de amarelo como se o GASTO
-    // estivesse desatualizado. Falhou, fica sem imagem e pronto.
-    try {
-      await sincronizarCriativos(conta);
-    } catch (erro) {
-      console.error("[meta] falhou a arte de", conta.metaAccountId, erro);
+    // útil, e não ter a miniatura não pode pintar a loja de amarelo como se
+    // o GASTO estivesse desatualizado. Falhou, fica sem imagem e pronto.
+    if (arte.status === "rejected") {
+      console.error("[meta] falhou a arte de", conta.metaAccountId, arte.reason);
+    }
+    if (cadastro.status === "rejected") {
+      console.error("[meta] falhou o cadastro de", conta.metaAccountId, cadastro.reason);
     }
 
-    // O cadastro (campanhas e conjuntos, com status e orçamento) também fica
-    // fora do veredito: cadastro velho é chato, mas não é o gasto errado.
-    try {
-      await sincronizarEstrutura(conta);
-    } catch (erro) {
-      console.error("[meta] falhou o cadastro de", conta.metaAccountId, erro);
-    }
-
-    return saldo.ok && numeros.ok && vida.ok;
+    return [saldo, numeros, vida].every((r) => r.status === "fulfilled" && r.value.ok);
   } catch (erro) {
     console.error("[meta] falhou a conta", conta.metaAccountId, erro);
     return false;

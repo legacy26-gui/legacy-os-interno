@@ -69,16 +69,42 @@ export const ROTULO_DO_ATALHO: Record<Atalho, string> = {
   tudo: "Vida inteira",
 };
 
+/**
+ * O fuso em que as lojas vivem e em que a Meta fecha o dia delas.
+ *
+ * Fixo, e não lido da conta de anúncio: todas as lojas da carteira estão no
+ * Brasil. No dia em que houver uma fora, isto vira um campo da conta — e o
+ * lugar de mexer é este, que é o único que decide que dia é "hoje".
+ */
+const FUSO_DAS_LOJAS = "America/Sao_Paulo";
+
 function meioDia(ano: number, mes: number, dia: number) {
   return new Date(Date.UTC(ano, mes, dia, 12));
 }
 
+/**
+ * Hoje, pelo calendário de Brasília — guardado como meio-dia UTC.
+ *
+ * ── O defeito que isto conserta ──────────────────────────────────────────
+ *
+ * Isto lia o dia do relógio UTC. E o gasto é gravado na data do fuso da
+ * CONTA DE ANÚNCIO, que nas lojas é America/Sao_Paulo, UTC−3.
+ *
+ * Das 21h de Brasília em diante o UTC já virou o dia seguinte. Então quem
+ * abrisse a tela às 21h30 e clicasse em "Hoje" estava pedindo o gasto de
+ * AMANHÃ — e a tela esvaziava inteira, sem erro nenhum, como se a loja não
+ * tivesse gastado nada no dia. Três horas por noite, todas as noites.
+ *
+ * O "meio-dia" continua: guardar a data no meio do dia é o que impede que
+ * somar e subtrair dias caia na hora do horário de verão e ande um dia.
+ */
 function hojeUTC(agora = new Date()) {
-  return meioDia(
-    agora.getUTCFullYear(),
-    agora.getUTCMonth(),
-    agora.getUTCDate(),
-  );
+  // en-CA dá "2026-11-14", que é o formato que dá pra fatiar sem ambiguidade.
+  const [ano, mes, dia] = agora
+    .toLocaleDateString("en-CA", { timeZone: FUSO_DAS_LOJAS })
+    .split("-")
+    .map(Number);
+  return meioDia(ano, mes - 1, dia);
 }
 
 function somarDias(d: Date, n: number) {

@@ -117,12 +117,32 @@ export type ResultadoDaMudanca =
  */
 export async function mudarStatus(opts: {
   clientId: string;
-  quemId: string;
+  /**
+   * Quem clicou — ou `null` quando foi o robô do WhatsApp, que não é
+   * usuário do sistema. Nesse caso quem responde pela ação é o par
+   * `origem` + `pedidoPor`, que diz de qual grupo e de quem partiu.
+   */
+  quemId: string | null;
   nivel: NivelDoObjeto;
   objeto: ObjetoEncontrado;
   ligar: boolean;
+  /** "sistema" (alguém clicou) ou "whatsapp" (o robô agiu). */
+  origem?: string;
+  /** Em origem "whatsapp": nome e telefone de quem escreveu no grupo. */
+  pedidoPor?: string | null;
+  /** Em origem "whatsapp": a frase escrita no grupo, inteira. */
+  pedidoTexto?: string | null;
 }): Promise<ResultadoDaMudanca> {
-  const { clientId, quemId, nivel, objeto, ligar } = opts;
+  const {
+    clientId,
+    quemId,
+    nivel,
+    objeto,
+    ligar,
+    origem = "sistema",
+    pedidoPor = null,
+    pedidoTexto = null,
+  } = opts;
   const statusPedido = ligar ? "ACTIVE" : "PAUSED";
 
   if (!escritaLiberada()) {
@@ -145,6 +165,12 @@ export async function mudarStatus(opts: {
       statusAntes: objeto.statusAntes,
       ok: r.ok,
       erro: r.ok ? null : r.erro.slice(0, 500),
+      origem,
+      pedidoPor,
+      // Cortado porque é texto de fora: mensagem de WhatsApp não tem
+      // tamanho combinado, e coluna de registro não é lugar de receber o
+      // que alguém resolver colar.
+      pedidoTexto: pedidoTexto ? pedidoTexto.slice(0, 2000) : null,
     },
   });
 

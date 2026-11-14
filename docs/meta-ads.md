@@ -710,6 +710,127 @@ E a trava que mais importa: nada que sai dessas funções — retorno, erro ou
 log — contém a instância, o token ou a URL. Isso é testado, não conferido no
 olho: os testes procuram os três segredos em tudo que as funções devolvem.
 
+## O robô que lê o grupo e desliga o carro vendido
+
+Decisão do Guilherme: além de MANDAR relatório, o robô passa a LER o grupo e
+tirar do ar o carro que a loja disser que vendeu.
+
+Isso é de outra categoria de risco que tudo o que veio antes, porque é a
+primeira coisa no sistema que **age sozinha a partir de texto de fora**. O
+desenho inteiro gira em volta de uma regra: **na dúvida, não desliga.**
+Desligar o anúncio errado é a loja perdendo lead do carro que ainda está no
+pátio, calada, até alguém reparar. Perguntar "qual deles?" no grupo custa
+trinta segundos de quem já estava ali.
+
+### As cinco travas, da mais barata pra mais cara
+
+1. **É grupo de alguma loja?** Mensagem de grupo que não é de ninguém é
+   ignorada sem nem ser lida. É isso que impede alguém de criar um grupo,
+   adicionar o robô e mandar "desliga tudo".
+2. **A loja autorizou?** `whatsappDesligaAuto` nasce **false**, por loja, e
+   se liga na tela de Configurações → WhatsApp. Conferido ANTES de
+   interpretar a frase, pra que desligar o interruptor desligue o robô de
+   verdade e não só a última etapa.
+3. **A frase pede pra tirar do ar?** Quase nenhuma pede.
+4. **Dá pra saber QUAL carro, sem dúvida?** Se não, pergunta no grupo.
+5. **Só então mexe na Meta** — e pausa, nunca apaga. Pausar tem volta.
+
+### Por que o entendimento não usa IA
+
+Não é economia: chamada de texto é barata. São duas coisas melhores.
+
+Primeiro, **isto se testa**. Uma regra escrita erra sempre do mesmo jeito, e
+erro que se repete é erro que se conserta. Um modelo que decide desligar
+anúncio erra diferente a cada vez, e aí não há teste que segure.
+
+Segundo, **o problema é pequeno**. A loja não fala de qualquer carro: fala
+dos que estão anunciados, e essa lista o sistema tem. Casar uma frase contra
+trinta nomes conhecidos não precisa de modelo.
+
+Se um dia a frase vier torta demais, o lugar de pôr o modelo é dentro de
+`entender-pedido.ts`, e os testes continuam valendo.
+
+### Como ele escolhe o carro
+
+Cada palavra da frase que aparece num anúncio vale pontos, e vale **mais
+quanto menos anúncios a contiverem**. "onix" numa loja com um Onix só vale
+muito; "hyundai" numa loja que só vende Hyundai não vale nada.
+
+Ele só desliga sozinho com as três coisas juntas: um único anúncio pontuou
+(ou o primeiro valeu o dobro do segundo), a palavra que o escolheu é
+**exclusiva** dele, e essa palavra não é cor nem palavra de ligação.
+
+Por isso **"vendeu o prata" nunca desliga nada** — cor não distingue carro —
+e **dois Onix viram pergunta**, não chute.
+
+E há a lista de desmentidos: "ainda não vendeu", "se vender", "quando
+vender". Sem ela, a frase que diz exatamente o contrário desligaria o
+anúncio. Pergunta também não é ordem: "já vendeu o Compass?" não faz nada.
+
+**Armadilha já pisada aqui:** um desmentido escrito `"vendeu?"` vira
+`"vendeu"` depois que a pontuação é tirada, e passou a desmentir TODA frase
+com a palavra — inclusive o pedido de verdade. Pergunta é tratada pelo ponto
+de interrogação no fim, não por entrada na lista.
+
+### Ele sempre responde no grupo
+
+"Pronto, tirei *Compass Longitude 2022 Prata* do ar. Se não era esse, me
+avisa aqui que a gente liga de volta na hora."
+
+Isso é o que torna o erro corrigível. Um robô que desliga calado deixa a loja
+descobrir em uma semana, pelo lead que não veio. Um que diz o que fez é
+corrigido em trinta segundos por quem leu.
+
+### A porta de entrada, e por que ela é diferente
+
+`POST /api/whatsapp/recebido/{segredo}`.
+
+As outras portas abertas daqui (o robô dos alertas, a varredura) toleram ser
+chamadas por qualquer um, porque o que alguém ganharia é nada. **Esta muda
+coisa.** Quem a chamasse forjaria uma mensagem do grupo de uma loja e
+desligaria os anúncios dela. Então aqui não existe o modo "sem segredo
+configurado, aceita assim mesmo": sem `ZAPI_WEBHOOK_SECRET` (mínimo de 16
+caracteres), a porta responde 404 — e 404, não 401, porque 401 confirmaria
+que há algo ali.
+
+O segredo vai no **caminho** porque a Z-API só deixa configurar uma URL: não
+há cabeçalho próprio nem assinatura do corpo. Então o endereço inteiro vale
+como senha, igual ao da própria Z-API, e não pode aparecer em log nenhum.
+
+Quase tudo responde **200** de propósito: a Z-API reenvia o que falha, e uma
+mensagem ignorada que devolvesse erro voltaria pra sempre. 200 quer dizer
+"chegou e eu decidi". O único erro de verdade é o segredo errado.
+
+### Um grupo serve a uma loja — agora no banco
+
+A regra já era conferida ao salvar pela tela, mas **só ali**. Um teste pôs o
+mesmo grupo em duas lojas por outro caminho e o banco aceitou. Com duas
+linhas iguais, quem procura "de qual loja é este grupo" recebe uma delas, a
+que o banco devolver primeiro — e o robô desligaria o anúncio de uma loja por
+pedido de outra. Agora é índice único em `clients.whatsappGrupoId`.
+
+### O registro
+
+Toda ação do robô grava `origem = "whatsapp"`, quem pediu (nome e telefone
+dentro do grupo) e **a frase inteira**. Quando alguém reclamar que o carro
+errado saiu do ar, a defesa — ou a culpa — está exatamente no que foi escrito
+no grupo, e memória de ninguém serve pra isso.
+
+### Como isso foi conferido
+
+30 testes do entendimento, 17 do atendimento e o webhook inteiro por HTTP,
+contra Meta e Z-API falsas.
+
+O que passou: grupo desconhecido ignorado; loja sem autorização ignorada;
+"bom dia" e "o Compass tá voando de lead" sem ação; "ainda não vendeu" e "já
+vendeu?" sem ação; dois Onix viraram pergunta com os dois nomes; "vendeu o
+prata" virou pergunta; "vendeu o Compass, pode tirar" desligou **só** o
+Compass — os outros onze anúncios continuaram no ar — com uma única chamada
+`POST /v26.0/ad-compass status=PAUSED`; mensagem do próprio robô ignorada
+(senão a resposta "tirei o Onix do ar" viraria um novo pedido); conversa
+privada, áudio, corpo ilegível e outra instância ignorados; e segredo errado
+respondeu 404.
+
 ### O que ainda é na mão
 
 O envio é por botão, um de cada vez. Mandar a casa inteira de uma vez, sozinho

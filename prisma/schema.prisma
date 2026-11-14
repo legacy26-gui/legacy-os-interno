@@ -438,22 +438,41 @@ model Client {
    * botão de marcar, mas sem o de enviar. Melhor isso do que um envio
    * silencioso pro lugar errado.
    */
-  whatsappGrupoId String?
+  /// Único no BANCO, e não só na tela.
+  ///
+  /// A regra "um grupo não serve a duas lojas" já era conferida ao salvar,
+  /// mas só ali. Um teste pôs o mesmo grupo em duas lojas por outro caminho
+  /// e o banco aceitou — e com duas linhas iguais, quem procura a loja de um
+  /// grupo recebe UMA DELAS, a que o banco devolver primeiro. O robô
+  /// desligaria o anúncio de uma loja por pedido de outra.
+  ///
+  /// Nulo não conta pro índice no Postgres, então loja sem grupo continua
+  /// podendo ser quantas forem.
+  whatsappGrupoId String? @unique
+
+  /// O robô pode desligar anúncio sozinho quando alguém pedir no grupo?
+  ///
+  /// Nasce DESLIGADO, e é por loja. Desligar o anúncio errado é a loja
+  /// perdendo lead do carro que ainda está no pátio, calada — então isto é
+  /// coisa que se liga olhando, loja por loja, depois de ver o robô acertar
+  /// algumas vezes. Ligado em massa no primeiro dia seria confiar antes de
+  /// conferir.
+  whatsappDesligaAuto Boolean   @default(false)
   // Último dia em que alguém da casa foi na loja. Vazio = nunca registrou
   // visita — que não é o mesmo que "nunca foi", é só que ninguém marcou.
   // Guarda só a data, não o histórico: o que se quer saber é há quanto tempo
   // não se aparece lá.
-  ultimaVisitaEm  DateTime?
+  ultimaVisitaEm      DateTime?
   // Se esta conta entra no Controle de Vendas. Nem todo cliente é loja de
   // carro — consórcio, banco e afins não têm "carro vendido" pra cobrar, e
   // ficavam no vermelho pra sempre poluindo a tela. Tirar daqui não mexe em
   // mais nada do cliente: ele continua normal no resto do sistema.
-  controlaVendas  Boolean   @default(true)
-  internalNotes   String?
-  managerId       String?
-  manager         User?     @relation("ClientManager", fields: [managerId], references: [id])
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  controlaVendas      Boolean   @default(true)
+  internalNotes       String?
+  managerId           String?
+  manager             User?     @relation("ClientManager", fields: [managerId], references: [id])
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   attachments        ClientAttachment[]
   history            ClientHistory[]
@@ -550,6 +569,26 @@ model MetaAcao {
   /// A frase da Meta quando deu errado. Nunca carrega token: ver
   /// semSegredo() em cliente-graph.ts.
   erro String?
+
+  /// De onde partiu a ação: "sistema" quando alguém clicou numa tela,
+  /// "whatsapp" quando o robô agiu sozinho por causa de uma mensagem no
+  /// grupo da loja.
+  ///
+  /// Existe porque ação de robô precisa ser separável das outras SEM ler o
+  /// resto da linha. No dia em que um anúncio aparecer desligado e ninguém
+  /// souber por quê, a primeira pergunta é "fui eu ou foi ele?".
+  origem String @default("sistema")
+
+  /// Em origem "whatsapp": quem pediu, como dá pra saber de um grupo — nome
+  /// e telefone de quem escreveu.
+  pedidoPor String?
+
+  /// Em origem "whatsapp": a frase que foi escrita no grupo, inteira.
+  ///
+  /// Inteira de propósito. Quando alguém reclamar que o carro errado saiu do
+  /// ar, a defesa (ou a culpa) está exatamente no que foi escrito, e memória
+  /// de ninguém serve pra isso.
+  pedidoTexto String? @db.Text
 
   criadoEm DateTime @default(now())
 
@@ -1464,8 +1503,8 @@ model MetaAdAccount {
   /// tela, e o segundo passa meses sem ninguém perceber.
   ///
   /// Formato: { "offsite_conversion.fb_pixel_purchase": 412, "link_click": 9800 }
-  acoesVistas    Json?
-  createdAt      DateTime  @default(now())
+  acoesVistas Json?
+  createdAt   DateTime @default(now())
 
   balanceSnapshots BalanceSnapshot[]
   insights         MetaInsightDaily[]

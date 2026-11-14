@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { randomBytes } from "node:crypto";
 import { requireModuleAccess } from "@/lib/dal";
 import { prisma } from "@/lib/prisma";
 import {
@@ -133,4 +134,83 @@ export async function mandarTesteNoWhatsapp(
   if (!r.ok) return { erro: r.erro };
   revalidatePath("/configuracoes/whatsapp");
   return { ok: "Mensagem mandada. Confira se chegou antes de confiar nela." };
+}
+
+/**
+ * Liga ou desliga o robô numa loja.
+ *
+ * ── Por que é por loja, e por que nasce desligado ────────────────────────
+ *
+ * Porque a confiança nisto se constrói olhando. O robô acerta a frase comum
+ * ("vendeu o Compass, pode tirar") e pergunta quando tem dúvida, mas a loja
+ * que escreve "saiu o da prata" todo dia vai ser uma sucessão de perguntas
+ * — e a que tem dois carros do mesmo modelo nunca vai ter certeza.
+ *
+ * Ligar tudo no primeiro dia seria confiar antes de conferir. Ligar uma,
+ * ver funcionar por uma semana e ligar as outras é o caminho que permite
+ * voltar atrás sem ter estragado nada.
+ */
+export async function definirDesligaAuto(
+  clientId: string,
+  ligado: boolean,
+): Promise<WhatsappState> {
+  await requireModuleAccess("configuracoes");
+
+  const loja = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { companyName: true, whatsappGrupoId: true },
+  });
+  if (!loja) return { erro: "Loja não encontrada." };
+
+  // Sem grupo o robô não tem como ser acionado: a mensagem chega e o sistema
+  // não sabe de qual loja é. Ligar aqui prometeria algo que não acontece.
+  if (ligado && !loja.whatsappGrupoId) {
+    return {
+      erro: "Escolha o grupo desta loja primeiro — é por ele que o robô sabe de quem é a mensagem.",
+    };
+  }
+
+  await prisma.client.update({
+    where: { id: clientId },
+    data: { whatsappDesligaAuto: ligado },
+  });
+  revalidatePath("/configuracoes/whatsapp");
+  return {
+    ok: ligado
+      ? `O robô passa a desligar anúncio da ${loja.companyName} quando pedirem no grupo.`
+      : `O robô não mexe mais em nada da ${loja.companyName}.`,
+  };
+}
+
+/**
+ * O endereço que a Z-API tem que chamar quando chega mensagem.
+ *
+ * O segredo vai no CAMINHO porque a Z-API só deixa configurar uma URL — não
+ * há cabeçalho nem assinatura. Então o endereço inteiro vale como senha, e
+ * esta função só o devolve pra quem já é ADMIN desta tela.
+ *
+ * Sem segredo configurado devolve `null` e uma sugestão de valor, porque o
+ * próximo passo de quem vê isso é inventar um — e inventar segredo à mão é
+ * como nascem segredos de seis letras.
+ */
+export async function verEnderecoDoWebhook(): Promise<{
+  url: string | null;
+  sugestao: string | null;
+}> {
+  await requireModuleAccess("configuracoes");
+
+  const segredo = process.env.ZAPI_WEBHOOK_SECRET?.trim();
+  const base =
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    (process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : null);
+
+  if (!segredo || segredo.length < 16) {
+    return { url: null, sugestao: randomBytes(24).toString("base64url") };
+  }
+  return {
+    url: `${base ?? ""}/api/whatsapp/recebido/${segredo}`,
+    sugestao: null,
+  };
 }

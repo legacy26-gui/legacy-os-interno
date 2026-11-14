@@ -9,10 +9,14 @@ import {
   Send,
   Users,
   Link2,
+  MessageCircle,
+  Copy,
+  Check,
 } from "lucide-react";
 import {
   buscarGruposDaZapi,
   mandarTesteNoWhatsapp,
+  definirDesligaAuto,
 } from "@/lib/actions/whatsapp";
 import type { EstadoDaLigacao, GrupoNaTela } from "@/lib/whatsapp/ligacao";
 import { definirGrupoDoWhatsapp } from "@/lib/actions/meta-ads";
@@ -21,15 +25,19 @@ interface Loja {
   id: string;
   nome: string;
   grupoId: string | null;
+  /** O robô pode desligar anúncio desta loja sozinho? */
+  desligaAuto: boolean;
 }
 
 export function PainelDoWhatsapp({
   estado,
   variaveis,
+  webhook,
   lojas: lojasIniciais,
 }: {
   estado: EstadoDaLigacao;
   variaveis: { nome: string; onde: string }[];
+  webhook: { url: string | null; sugestao: string | null };
   lojas: Loja[];
 }) {
   const [lojas, setLojas] = useState(lojasIniciais);
@@ -126,6 +134,8 @@ export function PainelDoWhatsapp({
               </p>
             )}
           </section>
+
+          <Recebimento webhook={webhook} />
 
           <Teste conectado={estado.conectado} />
         </>
@@ -253,6 +263,7 @@ function LinhaDaLoja({
 }) {
   const [pendente, comecar] = useTransition();
   const [msg, setMsg] = useState<{ ok?: string; erro?: string } | null>(null);
+  const [auto, setAuto] = useState(loja.desligaAuto);
 
   const atual = grupos?.find((g) => g.id === loja.grupoId) ?? null;
 
@@ -306,6 +317,33 @@ function LinhaDaLoja({
         <span className="text-xs text-foreground-muted">
           Hoje vai para <strong>{atual.nome}</strong>
         </span>
+      )}
+
+      {/* O interruptor do robô. Só aparece com grupo escolhido, porque sem
+          grupo ele não tem como ser acionado — e um interruptor que não faz
+          nada é pior que interruptor nenhum. */}
+      {loja.grupoId && (
+        <label className="flex items-start gap-2 text-xs cursor-pointer w-fit">
+          <input
+            type="checkbox"
+            checked={auto}
+            disabled={pendente}
+            onChange={(e) => {
+              const quer = e.target.checked;
+              setAuto(quer);
+              setMsg(null);
+              comecar(async () => {
+                const r = await definirDesligaAuto(loja.id, quer);
+                setMsg(r.erro ? { erro: r.erro } : { ok: r.ok });
+                if (r.erro) setAuto(!quer);
+              });
+            }}
+            className="mt-0.5 accent-current"
+          />
+          <span className={auto ? "text-foreground" : "text-foreground-muted"}>
+            Desligar anúncio sozinho quando pedirem neste grupo
+          </span>
+        </label>
       )}
       {msg?.ok && (
         <span className="text-xs text-emerald-600 dark:text-emerald-400">
@@ -377,6 +415,112 @@ function Teste({ conectado }: { conectado: boolean }) {
         Esta mensagem sai pelo mesmo caminho do relatório. Se ela chegar, o
         relatório também chega.
       </p>
+    </section>
+  );
+}
+
+/**
+ * O cartão de receber mensagem.
+ *
+ * Separado do resto porque é a única parte que ABRE uma porta: até aqui o
+ * sistema só falava, e a partir daqui ele ouve. Quem liga isso merece ler,
+ * na mesma tela, o que passa a acontecer e o que protege.
+ */
+function Recebimento({
+  webhook,
+}: {
+  webhook: { url: string | null; sugestao: string | null };
+}) {
+  const [copiado, setCopiado] = useState(false);
+
+  async function copiar(texto: string) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2500);
+    } catch {
+      // Navegador que recusa: o texto está na tela pra copiar na mão.
+    }
+  }
+
+  return (
+    <section className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3">
+      <div>
+        <h2 className="font-semibold flex items-center gap-2">
+          <MessageCircle size={16} /> Ler o que escrevem no grupo
+        </h2>
+        <p className="text-sm text-foreground-muted mt-0.5">
+          Com isto ligado, &ldquo;vendeu o Compass, pode tirar do ar&rdquo; no
+          grupo da loja desliga o anúncio — e o robô responde ali dizendo o
+          que desligou.
+        </p>
+      </div>
+
+      {webhook.url ? (
+        <>
+          <p className="text-sm text-foreground-muted">
+            No painel da Z-API, em <strong>Webhooks → Ao receber</strong>, cole
+            este endereço:
+          </p>
+          <div className="flex gap-2 flex-wrap items-center">
+            <code
+              className="flex-1 min-w-[16rem] px-3 py-2.5 rounded-lg bg-surface-muted border border-border
+                font-mono text-xs break-all"
+            >
+              {webhook.url}
+            </code>
+            <button
+              type="button"
+              onClick={() => copiar(webhook.url!)}
+              className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg border border-border
+                bg-surface-muted text-sm font-medium hover:bg-surface"
+            >
+              {copiado ? <Check size={15} /> : <Copy size={15} />}
+              {copiado ? "Copiado" : "Copiar"}
+            </button>
+          </div>
+          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
+            <AlertTriangle size={12} className="shrink-0 mt-0.5" />
+            Este endereço vale como senha: quem o tiver consegue fingir uma
+            mensagem vinda do grupo de uma loja. Cole só no painel da Z-API,
+            nunca em conversa.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm text-foreground-muted">
+            Falta uma quarta variável na Vercel. Ela é o segredo que fica
+            dentro do endereço do webhook, e é ela que impede qualquer um de
+            mandar ordem pro sistema. Crie{" "}
+            <code className="px-1.5 py-0.5 rounded bg-surface-muted font-mono text-xs">
+              ZAPI_WEBHOOK_SECRET
+            </code>{" "}
+            com este valor:
+          </p>
+          <div className="flex gap-2 flex-wrap items-center">
+            <code
+              className="flex-1 min-w-[16rem] px-3 py-2.5 rounded-lg bg-surface-muted border border-border
+                font-mono text-xs break-all"
+            >
+              {webhook.sugestao}
+            </code>
+            <button
+              type="button"
+              onClick={() => copiar(webhook.sugestao!)}
+              className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg border border-border
+                bg-surface-muted text-sm font-medium hover:bg-surface"
+            >
+              {copiado ? <Check size={15} /> : <Copy size={15} />}
+              {copiado ? "Copiado" : "Copiar"}
+            </button>
+          </div>
+          <p className="text-xs text-foreground-muted">
+            Sorteado agora, só pra facilitar — qualquer texto longo serve.
+            Depois de salvar na Vercel, recarregue esta tela e ela mostra o
+            endereço pronto pra colar na Z-API.
+          </p>
+        </>
+      )}
     </section>
   );
 }

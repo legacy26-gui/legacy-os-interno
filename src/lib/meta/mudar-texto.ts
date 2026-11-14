@@ -79,7 +79,7 @@ interface CriativoCompleto {
 /** Só o que de fato mudou, aparado e dentro dos tetos. */
 export function mudancasDeVerdade(
   atual: TextoDoAnuncio,
-  pedido: Mudancas
+  pedido: Mudancas,
 ): { campos: CampoDeTexto[]; limpo: Mudancas; erro?: string } {
   const limpo: Mudancas = {};
   const campos: CampoDeTexto[] = [];
@@ -128,10 +128,13 @@ async function tentarNoLugar(creativeId: string, limpo: Mudancas) {
  */
 async function criarNovoEReapontar(
   atual: TextoDoAnuncio,
-  limpo: Mudancas
+  limpo: Mudancas,
 ): Promise<{ ok: true; creativeId: string } | { ok: false; erro: string }> {
   if (!atual.creativeId) {
-    return { ok: false, erro: "Não sabemos qual é o criativo deste anúncio. Atualize a loja." };
+    return {
+      ok: false,
+      erro: "Não sabemos qual é o criativo deste anúncio. Atualize a loja.",
+    };
   }
 
   const leitura = await buscarNaGraph<CriativoCompleto>(atual.creativeId, {
@@ -154,7 +157,18 @@ async function criarNovoEReapontar(
   const link = novoSpec.link_data as Record<string, unknown> | undefined;
   const video = novoSpec.video_data as Record<string, unknown> | undefined;
   if (!link && !video) {
-    return { ok: false, erro: "O criativo deste anúncio tem um formato que ainda não sabemos editar." };
+    // Advantage+ e dinâmicos guardam o texto em `asset_feed_spec`, em listas
+    // de variações. Dá pra LER (a tela mostra a primeira) e não dá pra
+    // reescrever por aqui: um criativo novo teria que remontar a lista
+    // inteira, e escolher qual variação a edição substitui é decisão de
+    // quem escreveu, não minha.
+    return {
+      ok: false,
+      erro:
+        "Este anúncio usa criativo Advantage+ (várias legendas que a Meta combina sozinha). " +
+        "Dá pra ver o texto aqui, mas trocar só pelo Gerenciador — aqui eu teria que escolher " +
+        "qual das variações substituir, e essa escolha é sua.",
+    };
   }
 
   for (const [campo, valor] of Object.entries(limpo)) {
@@ -163,15 +177,21 @@ async function criarNovoEReapontar(
     if (video) video[onde.video] = valor;
   }
 
-  const criado = await escreverNaGraph<{ id?: string }>(`${atual.contaMeta}/adcreatives`, {
-    name: `${leitura.dados.name ?? atual.nome} — texto ${new Date().toISOString().slice(0, 10)}`,
-    object_story_spec: JSON.stringify(novoSpec),
-  });
+  const criado = await escreverNaGraph<{ id?: string }>(
+    `${atual.contaMeta}/adcreatives`,
+    {
+      name: `${leitura.dados.name ?? atual.nome} — texto ${new Date().toISOString().slice(0, 10)}`,
+      object_story_spec: JSON.stringify(novoSpec),
+    },
+  );
   if (!criado.ok) return { ok: false, erro: criado.erro };
 
   const novoId = criado.dados?.id;
   if (!novoId) {
-    return { ok: false, erro: "A Meta criou o criativo mas não disse o id dele." };
+    return {
+      ok: false,
+      erro: "A Meta criou o criativo mas não disse o id dele.",
+    };
   }
 
   // Reaponta o anúncio. Se isto falhar, fica um criativo solto na conta —
@@ -192,7 +212,9 @@ async function criarNovoEReapontar(
 
 /** O post do anúncio, perguntado à Meta agora. */
 async function postAgora(adId: string): Promise<string | null> {
-  const r = await buscarNaGraph<{ creative?: { effective_object_story_id?: string } }>(adId, {
+  const r = await buscarNaGraph<{
+    creative?: { effective_object_story_id?: string };
+  }>(adId, {
     fields: "creative{effective_object_story_id}",
   });
   return r.ok ? (r.dados.creative?.effective_object_story_id ?? null) : null;
@@ -215,13 +237,20 @@ export async function mudarTexto(opts: {
   const { clientId, quemId, adId, mudancas, confirmadoCriarNovo } = opts;
 
   if (!escritaLiberada()) {
-    return { ok: false, erro: "A chave de escrita da Meta não está configurada no sistema." };
+    return {
+      ok: false,
+      erro: "A chave de escrita da Meta não está configurada no sistema.",
+    };
   }
 
   const atual = await textoDoAnuncio(clientId, adId);
-  if (!atual) return { ok: false, erro: "Este anúncio não está no cadastro desta loja." };
+  if (!atual)
+    return { ok: false, erro: "Este anúncio não está no cadastro desta loja." };
   if (!atual.creativeId) {
-    return { ok: false, erro: "Ainda não sabemos qual é o criativo deste anúncio. Atualize a loja." };
+    return {
+      ok: false,
+      erro: "Ainda não sabemos qual é o criativo deste anúncio. Atualize a loja.",
+    };
   }
 
   const { campos, limpo, erro } = mudancasDeVerdade(atual, mudancas);
@@ -242,7 +271,9 @@ export async function mudarTexto(opts: {
     }
     noLugar = false;
     const novo = await criarNovoEReapontar(atual, limpo);
-    resposta = novo.ok ? { ok: true, dados: {} } : { ok: false, erro: novo.erro };
+    resposta = novo.ok
+      ? { ok: true, dados: {} }
+      : { ok: false, erro: novo.erro };
     if (novo.ok) creativeIdFinal = novo.creativeId;
   }
 
@@ -251,7 +282,9 @@ export async function mudarTexto(opts: {
   const postDepois = resposta.ok ? await postAgora(adId) : null;
 
   const resumo = (t: TextoDoAnuncio | Mudancas) =>
-    campos.map((c) => `${c}: ${(t as Record<string, unknown>)[c] ?? ""}`).join("\n");
+    campos
+      .map((c) => `${c}: ${(t as Record<string, unknown>)[c] ?? ""}`)
+      .join("\n");
 
   await prisma.metaAcao.create({
     data: {

@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   createContext,
   useContext,
@@ -134,10 +136,13 @@ export function CaixaDeTodos() {
   );
 }
 
-const ROTULO_DO_NIVEL: Record<string, string> = {
-  campanha: "campanha",
-  conjunto: "conjunto",
-  anuncio: "anúncio",
+// Campanha é feminina, conjunto e anúncio são masculinos. Sem isto a barra
+// escreve "1 campanha selecionado", que é o tipo de errinho que faz o sistema
+// parecer feito às pressas.
+const ROTULO_DO_NIVEL: Record<string, { nome: string; feminino: boolean }> = {
+  campanha: { nome: "campanha", feminino: true },
+  conjunto: { nome: "conjunto", feminino: false },
+  anuncio: { nome: "anúncio", feminino: false },
 };
 
 /** A barra de ações, acima da tabela, como no Gerenciador. */
@@ -164,7 +169,10 @@ export function BarraDeAcoes({
   const ids = [...ctx.marcados.keys()];
   const quantos = ids.length;
   const nada = quantos === 0;
-  const rotulo = ROTULO_DO_NIVEL[nivel] ?? "item";
+  const termo = ROTULO_DO_NIVEL[nivel] ?? { nome: "item", feminino: false };
+  const rotulo = termo.nome + (quantos === 1 ? "" : "s");
+  const selecionado =
+    "selecionad" + (termo.feminino ? "a" : "o") + (quantos === 1 ? "" : "s");
 
   function mandar(acao: string, confirmado: boolean) {
     setErro(null);
@@ -238,8 +246,8 @@ export function BarraDeAcoes({
             </span>
           ) : (
             <>
-              <strong className="text-foreground">{quantos}</strong> {rotulo}
-              {quantos === 1 ? "" : "s"} selecionado{quantos === 1 ? "" : "s"}{" "}
+              <strong className="text-foreground">{quantos}</strong> {rotulo}{" "}
+              {selecionado}{" "}
               <button
                 type="button"
                 onClick={ctx.limpar}
@@ -301,6 +309,109 @@ export function BarraDeAcoes({
       {ok && (
         <p className="text-xs text-emerald-600 dark:text-emerald-400">{ok}</p>
       )}
+    </div>
+  );
+}
+
+/** A ordem dos níveis. Descer é ir pra um número maior. */
+const FUNDURA: Record<string, number> = {
+  campanha: 0,
+  conjunto: 1,
+  anuncio: 2,
+};
+
+/**
+ * As três abas, sabendo o que está marcado.
+ *
+ * ── Por que elas precisam ler a seleção ──────────────────────────────────
+ *
+ * Porque é assim que o Gerenciador funciona, e é o que a cabeça de quem usa
+ * espera: marca a campanha, clica em "Conjuntos de anúncios", e vê os
+ * conjuntos DAQUELA campanha.
+ *
+ * Antes a aba era um link comum, montado no servidor, que só trocava o
+ * `nivel`. A marcação ficava pra trás — ela vive no navegador — e a tela
+ * recarregava mostrando TODOS os conjuntos da conta, com as caixinhas
+ * limpas. Parecia que o clique tinha desfeito o trabalho.
+ *
+ * Agora o link se monta aqui no navegador, com o que está marcado dentro
+ * dele. A marcação em si continua se perdendo na navegação — é outra tela,
+ * outra lista, outros itens — mas o FILTRO vai junto, que é o que a pessoa
+ * queria quando marcou.
+ *
+ * Só com UM item marcado. Com dois, "os conjuntos daquela campanha" não quer
+ * dizer nada, e o endereço só guarda uma campanha: filtrar pela primeira
+ * seria escolher por conta própria e errar metade das vezes.
+ *
+ * E só pra DESCER. Clicar em "Campanhas" estando nos anúncios é voltar pro
+ * começo; levar um filtro pra cima prenderia a pessoa num recorte que ela
+ * não pediu.
+ */
+export function AbasDoNivel({
+  nivel,
+  abas,
+}: {
+  nivel: string;
+  abas: { valor: string; rotulo: string }[];
+}) {
+  const ctx = useContext(Contexto);
+  const caminho = usePathname();
+  const params = useSearchParams();
+
+  const marcados = ctx ? [...ctx.marcados.keys()] : [];
+  const umSo = marcados.length === 1 ? marcados[0] : null;
+
+  function endereco(destino: string) {
+    const q = new URLSearchParams(params.toString());
+    if (destino === "campanha") q.delete("nivel");
+    else q.set("nivel", destino);
+
+    if (umSo && FUNDURA[destino] > FUNDURA[nivel]) {
+      if (nivel === "campanha") {
+        q.set("campanha", umSo);
+        // O conjunto de antes não vale mais: era de outra campanha.
+        q.delete("conjunto");
+      } else if (nivel === "conjunto") {
+        q.set("conjunto", umSo);
+      }
+    }
+
+    const busca = q.toString();
+    return busca ? `${caminho}?${busca}` : caminho;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {abas.map((a) => {
+        const acesa = nivel === a.valor;
+        const leva = umSo !== null && FUNDURA[a.valor] > FUNDURA[nivel];
+        return (
+          <Link
+            key={a.valor}
+            href={endereco(a.valor)}
+            aria-current={acesa ? "page" : undefined}
+            title={
+              leva
+                ? "Abre só o que está dentro do item que você marcou"
+                : undefined
+            }
+            className={`px-5 py-3 rounded-t-xl text-sm font-semibold border border-b-0 -mb-px transition-colors ${
+              acesa
+                ? "bg-surface text-accent border-border"
+                : "bg-transparent text-foreground-muted border-transparent hover:bg-surface-muted"
+            }`}
+          >
+            {a.rotulo}
+            {/* O pontinho avisa, ANTES do clique, que esta aba vai abrir só o
+                que está dentro do item marcado. Sem ele a pessoa descobre
+                depois — e descobrir depois, numa lista de quarenta, é ter que
+                voltar. */}
+            {leva && (
+              <span className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-accent align-middle" />
+            )}
+          </Link>
+        );
+      })}
     </div>
   );
 }

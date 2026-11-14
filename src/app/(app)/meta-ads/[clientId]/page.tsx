@@ -46,6 +46,7 @@ import {
   CaixaDeSelecao,
   CaixaDeTodos,
   BarraDeAcoes,
+  AbasDoNivel,
 } from "./lote";
 import { veiculacaoDe, type Gravidade } from "@/lib/meta/veiculacao";
 import {
@@ -596,22 +597,26 @@ export default async function LojaNoMetaAdsPage({
         //
         // Sem gap entre as duas de propósito: o `-mb-px` das abas só encaixa
         // na borda de cima da tabela se não houver espaço no meio.
-        <LoteProvider todos={itens.map((i) => ({ id: i.id, nome: i.nome }))}>
+        // ── Por que a chave ──────────────────────────────────────────────
+        //
+        // Pra FORÇAR a seleção a zerar quando o nível ou o recorte muda.
+        //
+        // Sem ela o provedor sobrevive à navegação — o Next troca o conteúdo
+        // sem remontar o componente — e a marcação de uma campanha continuava
+        // viva na tela de conjuntos. A barra dizia "2 conjuntos selecionados"
+        // com um só marcado, e o id da campanha entraria numa ação em lote
+        // como se fosse um conjunto. A trava de carteira recusaria, mas o
+        // lugar de resolver isso não é lá.
+        <LoteProvider
+          key={`${nivel}:${campanhaAberta ?? ""}:${conjuntoAberto ?? ""}`}
+          todos={itens.map((i) => ({ id: i.id, nome: i.nome }))}
+        >
           <div className="flex flex-col">
-            <AbasDaSecao
-              grandes
-              abas={ABAS.map((a) => ({
-                href: href({ nivel: a.valor }),
-                label: a.rotulo,
-                // Quem sabe o nível aberto é esta página, que leu o
-                // parâmetro — o componente sozinho compararia só o caminho,
-                // que é igual nas três, e acenderia sempre a primeira.
-                //
-                // Trocar de aba NÃO apaga o recorte: quem abriu uma campanha
-                // e clica em "Anúncios" quer os anúncios DAQUELA campanha.
-                ativa: nivel === a.valor,
-              }))}
-            />
+            {/* As abas são de navegador porque precisam LER a seleção: quem
+                marca uma campanha e clica em "Conjuntos de anúncios" quer os
+                conjuntos daquela campanha, como no Gerenciador. Montadas no
+                servidor, elas não teriam como saber o que está marcado. */}
+            <AbasDoNivel nivel={nivel} abas={[...ABAS]} />
             <Tabela
               itens={itens}
               nivel={nivel}

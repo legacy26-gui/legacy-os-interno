@@ -156,7 +156,7 @@ export function Legenda({
                 </span>
               ) : (
                 (aviso ??
-                  "A Meta pode não deixar trocar o texto neste anúncio sem refazê-lo, e aí nasce um post novo.")
+                "A Meta pode não deixar trocar o texto neste anúncio sem refazê-lo, e aí nasce um post novo.")
               )}
             </span>
           </p>

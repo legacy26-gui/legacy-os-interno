@@ -74,7 +74,11 @@ function meioDia(ano: number, mes: number, dia: number) {
 }
 
 function hojeUTC(agora = new Date()) {
-  return meioDia(agora.getUTCFullYear(), agora.getUTCMonth(), agora.getUTCDate());
+  return meioDia(
+    agora.getUTCFullYear(),
+    agora.getUTCMonth(),
+    agora.getUTCDate(),
+  );
 }
 
 function somarDias(d: Date, n: number) {
@@ -114,8 +118,10 @@ function doAtalho(a: Atalho, agora: Date): Intervalo {
   const hoje = hojeUTC(agora);
   const rotulo = ROTULO_DO_ATALHO[a];
 
-  if (a === "tudo") return { de: null, ate: null, rotulo, chave: a, vidaInteira: true };
-  if (a === "hoje") return { de: hoje, ate: hoje, rotulo, chave: a, vidaInteira: false };
+  if (a === "tudo")
+    return { de: null, ate: null, rotulo, chave: a, vidaInteira: true };
+  if (a === "hoje")
+    return { de: hoje, ate: hoje, rotulo, chave: a, vidaInteira: false };
   if (a === "ontem") {
     const o = somarDias(hoje, -1);
     return { de: o, ate: o, rotulo, chave: a, vidaInteira: false };
@@ -130,10 +136,18 @@ function doAtalho(a: Atalho, agora: Date): Intervalo {
     };
   }
   if (a === "mes-passado") {
-    const primeiroDesteMes = meioDia(agora.getUTCFullYear(), agora.getUTCMonth(), 1);
+    const primeiroDesteMes = meioDia(
+      agora.getUTCFullYear(),
+      agora.getUTCMonth(),
+      1,
+    );
     const ultimoDoPassado = somarDias(primeiroDesteMes, -1);
     return {
-      de: meioDia(ultimoDoPassado.getUTCFullYear(), ultimoDoPassado.getUTCMonth(), 1),
+      de: meioDia(
+        ultimoDoPassado.getUTCFullYear(),
+        ultimoDoPassado.getUTCMonth(),
+        1,
+      ),
       ate: ultimoDoPassado,
       rotulo,
       chave: a,
@@ -142,7 +156,13 @@ function doAtalho(a: Atalho, agora: Date): Intervalo {
   }
   // 7, 14, 30: inclui hoje, então 7 dias é hoje e os 6 anteriores.
   const n = Number(a);
-  return { de: somarDias(hoje, -(n - 1)), ate: hoje, rotulo, chave: a, vidaInteira: false };
+  return {
+    de: somarDias(hoje, -(n - 1)),
+    ate: hoje,
+    rotulo,
+    chave: a,
+    vidaInteira: false,
+  };
 }
 
 /**
@@ -153,7 +173,10 @@ function doAtalho(a: Atalho, agora: Date): Intervalo {
  * puxaria a média pra baixo e faria o saldo parecer durar mais do que dura.
  * Para a conta que importa aqui, errar pra baixo é o lado perigoso.
  */
-export function janelaDeDias(n: number, agora = new Date()): { de: Date; ate: Date } {
+export function janelaDeDias(
+  n: number,
+  agora = new Date(),
+): { de: Date; ate: Date } {
   const ontem = somarDias(hojeUTC(agora), -1);
   return { de: somarDias(ontem, -(n - 1)), ate: ontem };
 }
@@ -167,7 +190,7 @@ export function janelaDeDias(n: number, agora = new Date()): { de: Date; ate: Da
  */
 export function lerIntervalo(
   busca: { periodo?: string; de?: string; ate?: string },
-  agora = new Date()
+  agora = new Date(),
 ): Intervalo {
   const de = dataDoTexto(busca.de);
   const ate = dataDoTexto(busca.ate);
@@ -187,7 +210,8 @@ export function lerIntervalo(
     };
   }
 
-  const atalho = ATALHOS.find((a) => a === busca.periodo) ?? String(DIAS_PADRAO);
+  const atalho =
+    ATALHOS.find((a) => a === busca.periodo) ?? String(DIAS_PADRAO);
   return doAtalho(atalho as Atalho, agora);
 }
 
@@ -204,7 +228,10 @@ export const TIPOS_DE_LEAD: { valor: string; rotulo: string }[] = [
     rotulo: "Conversa iniciada no WhatsApp/Direct",
   },
   { valor: "lead", rotulo: "Formulário de cadastro (Lead Ads)" },
-  { valor: "onsite_conversion.lead_grouped", rotulo: "Lead (agrupado pela Meta)" },
+  {
+    valor: "onsite_conversion.lead_grouped",
+    rotulo: "Lead (agrupado pela Meta)",
+  },
   { valor: "offsite_conversion.fb_pixel_lead", rotulo: "Lead no site (Pixel)" },
   { valor: "link_click", rotulo: "Clique no link (quando não há conversão)" },
 ];
@@ -278,7 +305,7 @@ export function gastoEmCentavos(spend: string | undefined): number {
 /** Quantas vezes a ação configurada como lead aconteceu. */
 export function contarLeads(
   actions: LinhaCrua["actions"],
-  tipoDeLead: string
+  tipoDeLead: string,
 ): number {
   if (!actions?.length) return 0;
   return actions
@@ -287,8 +314,13 @@ export function contarLeads(
 }
 
 /** A ação configurada apareceu nesta resposta? Serve pra avisar na tela. */
-export function temOTipoDeLead(linhas: LinhaCrua[], tipoDeLead: string): boolean {
-  return linhas.some((l) => l.actions?.some((a) => a.action_type === tipoDeLead));
+export function temOTipoDeLead(
+  linhas: LinhaCrua[],
+  tipoDeLead: string,
+): boolean {
+  return linhas.some((l) =>
+    l.actions?.some((a) => a.action_type === tipoDeLead),
+  );
 }
 
 /**
@@ -297,7 +329,10 @@ export function temOTipoDeLead(linhas: LinhaCrua[], tipoDeLead: string): boolean
  * Linha sem adset_id ou sem data é descartada: sem os dois não dá pra gravar
  * (é a chave da tabela) e inventar um valor ali seria pior que perder a linha.
  */
-export function limparLinhas(linhas: LinhaCrua[], tipoDeLead: string): LinhaLimpa[] {
+export function limparLinhas(
+  linhas: LinhaCrua[],
+  tipoDeLead: string,
+): LinhaLimpa[] {
   const limpas: LinhaLimpa[] = [];
   for (const l of linhas) {
     if (!l.ad_id || !l.adset_id || !l.date_start) continue;
@@ -355,7 +390,10 @@ function comoData(texto: string | undefined): Date | null {
   return new Date(Date.UTC(ano, mes - 1, dia, 12));
 }
 
-export function limparVidaInteira(linhas: LinhaCrua[], tipoDeLead: string): VidaInteira[] {
+export function limparVidaInteira(
+  linhas: LinhaCrua[],
+  tipoDeLead: string,
+): VidaInteira[] {
   const limpas: VidaInteira[] = [];
   for (const l of linhas) {
     if (!l.ad_id || !l.adset_id) continue;
@@ -415,7 +453,7 @@ export function somar(linhas: Numeros[]): Numeros {
       linkClicks: t.linkClicks + l.linkClicks,
       leads: t.leads + l.leads,
     }),
-    { ...ZERO }
+    { ...ZERO },
   );
 }
 
@@ -436,9 +474,50 @@ export function ctr(n: Numeros): number | null {
   return n.impressions > 0 ? (n.linkClicks / n.impressions) * 100 : null;
 }
 
+// ── As colunas que o Gerenciador mostra e aqui faltavam ──────────────────
+//
+// Nenhuma delas custa chamada nova: gasto, impressões, alcance e cliques já
+// vêm na varredura, e as três abaixo são conta em cima disso. Faltavam na
+// tela, não no banco.
+//
+// Todas devolvem null em vez de zero quando não dá pra calcular. Zero é um
+// número — "custou zero por clique" — e é mentira quando o que houve foi
+// "não teve clique nenhum". O traço na tela diz a verdade: não há o que
+// dividir.
+
+/** Custo por mil impressões, em centavos. */
+export function cpm(n: Numeros): number | null {
+  return n.impressions > 0 ? (n.spendCents / n.impressions) * 1000 : null;
+}
+
+/**
+ * Custo por clique no link, em centavos.
+ *
+ * No clique NO LINK e não em `clicks`: `clicks` da Meta conta qualquer toque
+ * no anúncio — curtida, ver mais, abrir a foto, tocar no nome da página. Um
+ * CPC calculado em cima disso sai barato e não quer dizer nada sobre quanta
+ * gente foi parar na conversa.
+ */
+export function cpc(n: Numeros): number | null {
+  return n.linkClicks > 0 ? n.spendCents / n.linkClicks : null;
+}
+
+/**
+ * Quantas vezes, em média, a mesma pessoa viu.
+ *
+ * É a conta que denuncia público pequeno demais: frequência subindo com
+ * resultado caindo é a mesma gente vendo o mesmo anúncio até enjoar.
+ */
+export function frequencia(n: Numeros): number | null {
+  return n.reach > 0 ? n.impressions / n.reach : null;
+}
+
 /** Centavos → "R$ 1.142,78". */
 export function reais(centavos: number): string {
-  return (centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return (centavos / 100).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 /** Número grande com ponto de milhar: 12345 → "12.345". */
@@ -449,7 +528,7 @@ export function numero(n: number): string {
 /** O primeiro dia do período, às 12h UTC (mesma âncora das datas gravadas). */
 export function desdeQuando(dias: number, hoje = new Date()): Date {
   const d = new Date(
-    Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), hoje.getUTCDate(), 12)
+    Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth(), hoje.getUTCDate(), 12),
   );
   d.setUTCDate(d.getUTCDate() - (dias - 1));
   return d;

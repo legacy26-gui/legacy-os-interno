@@ -65,7 +65,13 @@ export function Verba({
     setConfirmar(null);
     const antes = mostrado;
     comecar(async () => {
-      const r = await definirVerba(clientId, nivel, objetoId, valor, confirmado);
+      const r = await definirVerba(
+        clientId,
+        nivel,
+        objetoId,
+        valor,
+        confirmado,
+      );
       if (r?.precisaConfirmar) {
         setConfirmar(r.precisaConfirmar);
         return;
@@ -108,7 +114,9 @@ export function Verba({
             </button>
           )}
         </span>
-        <span className="block text-xs text-foreground-muted">{diario ? "Diário" : "Total"}</span>
+        <span className="block text-xs text-foreground-muted">
+          {diario ? "Diário" : "Total"}
+        </span>
         {erro && (
           <span className="block text-xs text-red-600 dark:text-red-400 text-right max-w-[14rem]">
             {erro}
@@ -198,5 +206,8 @@ export function Verba({
 
 function comoReais(c: number | null): string {
   if (c === null) return "—";
-  return (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return (c / 100).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }

@@ -44,7 +44,9 @@ export function AcoesDaLoja({
         <button
           type="button"
           disabled={pendente}
-          onClick={() => comecar(async () => setEstado(await atualizarLojaAgora(clientId)))}
+          onClick={() =>
+            comecar(async () => setEstado(await atualizarLojaAgora(clientId)))
+          }
           className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted disabled:opacity-60"
         >
           <RefreshCw size={14} className={pendente ? "animate-spin" : ""} />
@@ -61,7 +63,11 @@ export function AcoesDaLoja({
         )}
       </div>
 
-      {estado.erro && <p className="text-xs text-red-500 max-w-md sm:text-right">{estado.erro}</p>}
+      {estado.erro && (
+        <p className="text-xs text-red-500 max-w-md sm:text-right">
+          {estado.erro}
+        </p>
+      )}
       {estado.ok && (
         <p className="text-xs text-emerald-600 dark:text-emerald-400 max-w-md sm:text-right">
           {estado.ok}
@@ -76,10 +82,14 @@ export function AcoesDaLoja({
         <div className="w-full sm:w-[26rem] rounded-xl border border-border bg-surface p-4 flex flex-col gap-5 text-left">
           {contas.map((c) => (
             <div key={c.id} className="flex flex-col gap-3">
-              <p className="text-xs font-mono text-foreground-muted">{c.metaAccountId}</p>
+              <p className="text-xs font-mono text-foreground-muted">
+                {c.metaAccountId}
+              </p>
 
               <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium">Como esta conta é paga</span>
+                <span className="text-xs font-medium">
+                  Como esta conta é paga
+                </span>
                 <div className="inline-flex self-start rounded-lg border border-border overflow-hidden">
                   <BotaoForma
                     ativo={c.isPrepay}
@@ -88,7 +98,9 @@ export function AcoesDaLoja({
                     pendente={pendente}
                     onClick={() =>
                       comecar(async () =>
-                        setEstado(await definirFormaDePagamento(clientId, c.id, true))
+                        setEstado(
+                          await definirFormaDePagamento(clientId, c.id, true),
+                        ),
                       )
                     }
                   />
@@ -99,25 +111,31 @@ export function AcoesDaLoja({
                     pendente={pendente}
                     onClick={() =>
                       comecar(async () =>
-                        setEstado(await definirFormaDePagamento(clientId, c.id, false))
+                        setEstado(
+                          await definirFormaDePagamento(clientId, c.id, false),
+                        ),
                       )
                     }
                   />
                 </div>
                 <span className="text-xs text-foreground-muted">
-                  Só conta de Pix tem saldo a acompanhar. No cartão o número que a Meta devolve é
-                  limite de crédito, que é outra conversa.
+                  Só conta de Pix tem saldo a acompanhar. No cartão o número que
+                  a Meta devolve é limite de crédito, que é outra conversa.
                 </span>
               </div>
 
               <label className="flex flex-col gap-1.5">
-                <span className="text-xs font-medium">O que conta como lead</span>
+                <span className="text-xs font-medium">
+                  O que conta como lead
+                </span>
                 <select
                   defaultValue={c.leadActionType}
                   disabled={pendente}
                   onChange={(e) =>
                     comecar(async () =>
-                      setEstado(await definirTipoDeLead(clientId, c.id, e.target.value))
+                      setEstado(
+                        await definirTipoDeLead(clientId, c.id, e.target.value),
+                      ),
                     )
                   }
                   className="px-3 py-2 rounded-lg border border-border bg-background text-sm"
@@ -129,8 +147,8 @@ export function AcoesDaLoja({
                   ))}
                 </select>
                 <span className="text-xs text-foreground-muted">
-                  Trocar não reescreve o que já está gravado — aperte “Atualizar agora” depois pra
-                  recontar os 30 dias.
+                  Trocar não reescreve o que já está gravado — aperte “Atualizar
+                  agora” depois pra recontar os 30 dias.
                 </span>
               </label>
             </div>
@@ -149,7 +167,13 @@ export function AcoesDaLoja({
  * está olhando é a palavra "cartão" no lugar do saldo. O controle tem que
  * estar embaixo da palavra errada, não a dois cliques dela.
  */
-export function TrocarPraPix({ clientId, contaIds }: { clientId: string; contaIds: string[] }) {
+export function TrocarPraPix({
+  clientId,
+  contaIds,
+}: {
+  clientId: string;
+  contaIds: string[];
+}) {
   const [pendente, comecar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
 

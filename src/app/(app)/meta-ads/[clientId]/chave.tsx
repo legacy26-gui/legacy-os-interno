@@ -103,10 +103,14 @@ export function ChaveDeStatus({
       >
         <span
           className={`absolute top-0.5 w-4 h-4 rounded-full transition-all flex items-center justify-center ${
-            mostrando ? "left-[1.1rem] bg-white" : "left-0.5 bg-foreground-muted"
+            mostrando
+              ? "left-[1.1rem] bg-white"
+              : "left-0.5 bg-foreground-muted"
           }`}
         >
-          {pendente && <Loader2 size={10} className="animate-spin text-accent" />}
+          {pendente && (
+            <Loader2 size={10} className="animate-spin text-accent" />
+          )}
         </span>
       </button>
 
@@ -125,11 +129,13 @@ export function ChaveDeStatus({
           <span className="text-xs text-foreground-muted">
             {nivel === "campanha" ? (
               <>
-                Pausar a campanha para <strong>tudo que está dentro dela</strong>
+                Pausar a campanha para{" "}
+                <strong>tudo que está dentro dela</strong>
                 {levaJunto > 0 && (
                   <>
                     {" "}
-                    — são {levaJunto} {levaJunto === 1 ? "conjunto ativo" : "conjuntos ativos"}
+                    — são {levaJunto}{" "}
+                    {levaJunto === 1 ? "conjunto ativo" : "conjuntos ativos"}
                   </>
                 )}
                 . A loja deixa de entregar.
@@ -140,7 +146,9 @@ export function ChaveDeStatus({
                 {levaJunto > 0 && (
                   <>
                     {" "}
-                    — com {levaJunto} {levaJunto === 1 ? "anúncio ativo" : "anúncios ativos"} dentro
+                    — com {levaJunto}{" "}
+                    {levaJunto === 1 ? "anúncio ativo" : "anúncios ativos"}{" "}
+                    dentro
                   </>
                 )}
                 . O resto da campanha continua.

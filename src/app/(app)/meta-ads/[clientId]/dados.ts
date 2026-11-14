@@ -11,7 +11,11 @@ import {
   type Intervalo,
 } from "@/lib/meta/insights";
 import { DIAS_DO_RITMO } from "@/lib/meta/estado-da-loja";
-import { diagnosticar, DIAS_DA_JANELA, type Diagnostico } from "@/lib/meta/criativo-cansado";
+import {
+  diagnosticar,
+  DIAS_DA_JANELA,
+  type Diagnostico,
+} from "@/lib/meta/criativo-cansado";
 
 // De onde vêm as linhas da tela da loja.
 //
@@ -85,7 +89,7 @@ const CAMPOS = {
 
 export async function linhasDaLoja(
   idsDasContas: string[],
-  periodo: Intervalo
+  periodo: Intervalo,
 ): Promise<LinhaCrua[]> {
   if (idsDasContas.length === 0) return [];
 
@@ -119,9 +123,10 @@ export async function linhasDaLoja(
  * menor e o saldo parecer durar sete vezes mais do que dura.
  */
 export async function ritmoDaLoja(
-  idsDasContas: string[]
+  idsDasContas: string[],
 ): Promise<{ gastoRecenteCents: number; diasComDado: number }> {
-  if (idsDasContas.length === 0) return { gastoRecenteCents: 0, diasComDado: 0 };
+  if (idsDasContas.length === 0)
+    return { gastoRecenteCents: 0, diasComDado: 0 };
 
   const janela = janelaDeDias(DIAS_DO_RITMO);
   const porDia = await prisma.metaInsightDaily.groupBy({
@@ -151,7 +156,7 @@ export async function ritmoDaLoja(
  */
 export async function cansacoDosAnuncios(
   idsDasContas: string[],
-  agora = new Date()
+  agora = new Date(),
 ): Promise<Map<string, Diagnostico>> {
   const mapa = new Map<string, Diagnostico>();
   if (idsDasContas.length === 0) return mapa;
@@ -173,17 +178,25 @@ export async function cansacoDosAnuncios(
   const [agoraLinhas, antesLinhas] = await Promise.all([
     prisma.metaInsightDaily.groupBy({
       by: ["adId"],
-      where: { adAccountId: { in: idsDasContas }, date: { gte: recente.de, lte: recente.ate } },
+      where: {
+        adAccountId: { in: idsDasContas },
+        date: { gte: recente.de, lte: recente.ate },
+      },
       _sum: SOMAS,
     }),
     prisma.metaInsightDaily.groupBy({
       by: ["adId"],
-      where: { adAccountId: { in: idsDasContas }, date: { gte: anterior.de, lte: fimDoAnterior } },
+      where: {
+        adAccountId: { in: idsDasContas },
+        date: { gte: anterior.de, lte: fimDoAnterior },
+      },
       _sum: SOMAS,
     }),
   ]);
 
-  const soma = (g: { _sum: Partial<Record<keyof typeof SOMAS, number | null>> }): Numeros => ({
+  const soma = (g: {
+    _sum: Partial<Record<keyof typeof SOMAS, number | null>>;
+  }): Numeros => ({
     spendCents: g._sum.spendCents ?? 0,
     impressions: g._sum.impressions ?? 0,
     reach: g._sum.reach ?? 0,
@@ -265,7 +278,10 @@ function somarPor(linhas: LinhaCrua[], chave: (l: LinhaCrua) => string) {
   return new Map([...caixas.entries()].map(([k, ls]) => [k, somar(ls)]));
 }
 
-function completar(n: Numeros, extras: Omit<LinhaDaTela, keyof Numeros>): LinhaDaTela {
+function completar(
+  n: Numeros,
+  extras: Omit<LinhaDaTela, keyof Numeros>,
+): LinhaDaTela {
   return { ...n, ...extras, cpl: custoPorLead(n), ctrLink: ctr(n) };
 }
 
@@ -280,22 +296,31 @@ export function montarNivel(
   cadastro: Cadastro,
   numeros: LinhaCrua[],
   filtro: { campanha?: string | null; conjunto?: string | null },
-  cansaco?: Map<string, Diagnostico>
+  cansaco?: Map<string, Diagnostico>,
 ): LinhaDaTela[] {
   if (nivel === "campanha") {
     const porId = somarPor(numeros, (l) => l.campaignId ?? "sem-campanha");
     // Nome vindo dos números, pra campanha que já saiu do cadastro mas tem
     // gasto no período: ela precisa aparecer, senão o total não fecha.
     const nomesSoltos = new Map(
-      numeros.filter((l) => l.campaignId).map((l) => [l.campaignId!, l.campaignName ?? l.campaignId!])
+      numeros
+        .filter((l) => l.campaignId)
+        .map((l) => [l.campaignId!, l.campaignName ?? l.campaignId!]),
     );
-    const ids = new Set([...cadastro.campanhas.map((c) => c.campaignId), ...porId.keys()]);
-    const porCadastro = new Map(cadastro.campanhas.map((c) => [c.campaignId, c]));
+    const ids = new Set([
+      ...cadastro.campanhas.map((c) => c.campaignId),
+      ...porId.keys(),
+    ]);
+    const porCadastro = new Map(
+      cadastro.campanhas.map((c) => [c.campaignId, c]),
+    );
 
     return [...ids]
       .map((id) => {
         const c = porCadastro.get(id);
-        const dentro = cadastro.conjuntos.filter((s) => s.campaignId === id).length;
+        const dentro = cadastro.conjuntos.filter(
+          (s) => s.campaignId === id,
+        ).length;
         return completar(porId.get(id) ?? { ...ZERO }, {
           id,
           nome: c?.name ?? nomesSoltos.get(id) ?? "Campanha sem nome",
@@ -314,7 +339,9 @@ export function montarNivel(
 
   if (nivel === "conjunto") {
     const doFiltro = filtro.campanha
-      ? numeros.filter((l) => (l.campaignId ?? "sem-campanha") === filtro.campanha)
+      ? numeros.filter(
+          (l) => (l.campaignId ?? "sem-campanha") === filtro.campanha,
+        )
       : numeros;
     const porId = somarPor(doFiltro, (l) => l.adsetId);
     const conjuntos = filtro.campanha
@@ -348,7 +375,9 @@ export function montarNivel(
   const doFiltro = filtro.conjunto
     ? numeros.filter((l) => l.adsetId === filtro.conjunto)
     : filtro.campanha
-      ? numeros.filter((l) => (l.campaignId ?? "sem-campanha") === filtro.campanha)
+      ? numeros.filter(
+          (l) => (l.campaignId ?? "sem-campanha") === filtro.campanha,
+        )
       : numeros;
   const porId = somarPor(doFiltro, (l) => l.adId);
   const anuncios = filtro.conjunto
@@ -387,18 +416,43 @@ export function montarNivel(
 }
 
 /**
- * Quem gastou mais primeiro; entre os que não gastaram, por nome.
+ * Entregando em cima, parado embaixo; dentro de cada grupo, quem gastou mais.
  *
- * Gasto zero empatado é a maioria numa conta com muita campanha velha — sem o
- * desempate por nome a ordem mudaria a cada carregamento, e lista que se
- * mexe sozinha ninguém consegue usar.
+ * ── Por que a separação vem antes de tudo ────────────────────────────────
+ *
+ * Porque pausado no meio de ativo engana. Numa lista de vinte campanhas, uma
+ * pausada entre duas que rodam passa batido — a chavinha cinza é pequena e o
+ * olho está lendo nome e gasto, não a chave. E o erro que isso esconde é o
+ * caro: a campanha que alguém desligou "só hoje" e ficou três semanas parada.
+ *
+ * Com os parados juntos embaixo, "o que está no ar" é um bloco que se lê de
+ * uma vez, e o que está parado vira uma lista curta que dá pra conferir.
+ *
+ * Isto é a PRIMEIRA regra, e continua valendo quando alguém ordena por
+ * outra coluna: a coluna escolhida ordena dentro de cada grupo. Foi pedido
+ * assim — "pausado sempre abaixo dos ativos" — e "sempre" quer dizer
+ * inclusive quando a ordem é outra.
+ *
+ * ── E por que o desempate é por nome ─────────────────────────────────────
+ *
+ * Gasto zero empatado é a maioria numa conta com muita campanha velha. Sem o
+ * desempate a ordem mudaria a cada carregamento, e lista que se mexe sozinha
+ * ninguém consegue usar.
  */
 function ordenar(a: LinhaDaTela, b: LinhaDaTela) {
-  return b.spendCents - a.spendCents || a.nome.localeCompare(b.nome, "pt-BR");
+  return (
+    Number(estaLigado(b)) - Number(estaLigado(a)) ||
+    b.spendCents - a.spendCents ||
+    a.nome.localeCompare(b.nome, "pt-BR")
+  );
 }
 
 /** O nome de uma campanha ou conjunto, pro caminho de volta. */
-export function nomeNoCadastro(cadastro: Cadastro, nivel: "campanha" | "conjunto", id: string) {
+export function nomeNoCadastro(
+  cadastro: Cadastro,
+  nivel: "campanha" | "conjunto",
+  id: string,
+) {
   if (nivel === "campanha") {
     return cadastro.campanhas.find((c) => c.campaignId === id)?.name ?? null;
   }

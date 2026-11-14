@@ -21,6 +21,13 @@ import {
 import { FORMATO_DO_GRUPO } from "@/lib/whatsapp/zapi";
 import { mudarTexto, type Mudancas } from "@/lib/meta/mudar-texto";
 import {
+  acaoEmLote,
+  naoTemVolta,
+  ROTULO_DA_ACAO,
+  MAXIMO_POR_LOTE,
+  type AcaoEmLote,
+} from "@/lib/meta/acao-em-lote";
+import {
   textoDoAnuncio,
   provaSocialDoPost,
   avisoDaProvaSocial,
@@ -922,4 +929,121 @@ export async function definirTexto(
     revalidar(clientId);
     return { ok: `Mudei ${quais} de ${r.nome}.${sobreOPost}` };
   });
+}
+
+/**
+ * Desligar, arquivar ou excluir vários de uma vez.
+ *
+ * ── O pedágio é proporcional ao estrago ──────────────────────────────────
+ *
+ * Desligar não pergunta nada: é reversível com um clique, e perguntar em
+ * toda vez ensina a clicar em "sim" sem ler — o que estraga a pergunta que
+ * importa.
+ *
+ * Arquivar pergunta uma vez, porque some da lista e nem todo mundo sabe que
+ * dá pra desarquivar.
+ *
+ * Excluir pergunta com os nomes na frente e diz, na própria frase, que não
+ * volta. Não é "tem certeza?": é a lista do que vai sumir.
+ */
+export async function acaoEmLoteNaMeta(
+  clientId: string,
+  nivel: string,
+  ids: string[],
+  acao: string,
+  confirmado: boolean,
+): Promise<MetaAdsState & { precisaConfirmar?: string }> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Esta loja não está na sua carteira." };
+    }
+    if (user.role !== "ADMIN" && user.role !== "GERENTE" && acao === "excluir") {
+      // Desligar e arquivar o gestor de tráfego faz: é o trabalho dele.
+      // Apagar de vez é da direção, porque não tem como desfazer depois.
+      return { erro: "Só a direção pode excluir. Você pode desligar ou arquivar." };
+    }
+
+    const quais: AcaoEmLote[] = ["desligar", "arquivar", "excluir"];
+    if (!quais.includes(acao as AcaoEmLote)) return { erro: "Ação desconhecida." };
+    const escolhida = acao as AcaoEmLote;
+
+    const niveis = ["campanha", "conjunto", "anuncio"];
+    if (!niveis.includes(nivel)) return { erro: "Nível desconhecido." };
+
+    const limpos = [...new Set(ids.filter((i) => typeof i === "string" && i.trim() !== ""))];
+    if (limpos.length === 0) return { erro: "Nenhum item selecionado." };
+    if (limpos.length > MAXIMO_POR_LOTE) {
+      return {
+        erro: `São ${limpos.length} itens de uma vez. O máximo é ${MAXIMO_POR_LOTE} — faça em partes.`,
+      };
+    }
+
+    if (!confirmado && escolhida !== "desligar") {
+      // Os nomes entram na pergunta, e não só a contagem: "7 anúncios" não
+      // deixa ninguém perceber que o errado entrou na seleção.
+      const nomes = await nomesDoLote(clientId, nivel as NivelDoObjeto, limpos);
+      const lista = nomes.slice(0, 6).join(", ") + (nomes.length > 6 ? `, e mais ${nomes.length - 6}` : "");
+      return {
+        precisaConfirmar: naoTemVolta(escolhida)
+          ? `Excluir ${limpos.length} ${ROTULO_DO_NIVEL[nivel as NivelDoObjeto]}${limpos.length === 1 ? "" : "s"} na Meta: ${lista}. ` +
+            "Isso NÃO tem desfazer — nem aqui, nem no Gerenciador. Arquivar tira da lista do mesmo jeito e deixa voltar atrás."
+          : `Arquivar ${limpos.length} ${ROTULO_DO_NIVEL[nivel as NivelDoObjeto]}${limpos.length === 1 ? "" : "s"}: ${lista}. ` +
+            "Eles saem da lista e o histórico de gasto continua nos relatórios. Dá pra desarquivar depois.",
+      };
+    }
+
+    const r = await acaoEmLote({
+      clientId,
+      quemId: user.id,
+      nivel: nivel as NivelDoObjeto,
+      ids: limpos,
+      acao: escolhida,
+    });
+    if ("erro" in r) return { erro: r.erro };
+
+    revalidar(clientId);
+
+    const verbo = ROTULO_DA_ACAO[escolhida].toLowerCase();
+    if (r.falhos.length === 0) {
+      return { ok: `${r.feitos.length} ${r.feitos.length === 1 ? "item" : "itens"}: ${verbo} na Meta.` };
+    }
+    // Falha parcial não pode virar "deu certo" nem "deu erro": os dois
+    // mentem. A frase diz quantos foram, quais não foram, e por quê.
+    const detalhe = r.falhos.map((f) => `${f.nome} (${f.erro})`).join(" · ");
+    return {
+      erro:
+        `${r.feitos.length} de ${r.feitos.length + r.falhos.length} deu certo. ` +
+        `Não deu em: ${detalhe}`,
+    };
+  });
+}
+
+/** Os nomes do que foi selecionado, pra confirmação dizer o que vai sumir. */
+async function nomesDoLote(clientId: string, nivel: NivelDoObjeto, ids: string[]) {
+  const contas = await prisma.metaAdAccount.findMany({
+    where: { clientId, active: true },
+    select: { id: true },
+  });
+  const dentro = { in: contas.map((c) => c.id) };
+
+  if (nivel === "campanha") {
+    const l = await prisma.metaCampaign.findMany({
+      where: { campaignId: { in: ids }, adAccountId: dentro },
+      select: { name: true },
+    });
+    return l.map((x) => x.name);
+  }
+  if (nivel === "conjunto") {
+    const l = await prisma.metaAdset.findMany({
+      where: { adsetId: { in: ids }, adAccountId: dentro },
+      select: { name: true },
+    });
+    return l.map((x) => x.name);
+  }
+  const l = await prisma.metaAdCreative.findMany({
+    where: { adId: { in: ids }, adAccountId: dentro },
+    select: { adName: true },
+  });
+  return l.map((x) => x.adName);
 }

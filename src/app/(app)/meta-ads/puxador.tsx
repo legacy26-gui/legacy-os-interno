@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition, useRef } from "react";
-import { BarChart3, FileText, RefreshCw, Send, Undo2, Check, Wallet } from "lucide-react";
+import { BarChart3, FileText, RefreshCw, Send, Undo2, Check } from "lucide-react";
 import {
   marcarVerbaEnviada,
   desmarcarVerbaEnviada,
@@ -10,7 +10,6 @@ import {
   type MetaAdsState,
 } from "@/lib/actions/meta-ads";
 import { FAIXA_DA_LOJA, type TomDaLoja } from "@/lib/meta/tons";
-import { JanelaDeCobranca } from "./cobranca";
 
 // A faixa colorida na beirada da linha, que puxa as ações da loja.
 //
@@ -38,29 +37,14 @@ export function PuxadorDaLoja({
   tom,
   temPedidoAberto,
   podeAtualizar,
-  cobranca,
 }: {
   clientId: string;
   tom: TomDaLoja;
   /** Já existe um link marcado como enviado e esperando a verba. */
   temPedidoAberto: boolean;
   podeAtualizar: boolean;
-  /**
-   * O que a janela de cobrança precisa saber desta loja. Vem pronto do
-   * servidor, que já fez essas contas pra pintar a linha — refazer aqui
-   * seria a mesma conta em dois lugares, que é como duas telas passam a
-   * discordar sobre o mesmo número.
-   */
-  cobranca: {
-    loja: string;
-    saldoCents: number | null;
-    diasDeSaldo: number | null;
-    gastoDiarioCents: number | null;
-    link: string | null;
-  } | null;
 }) {
   const [aberto, setAberto] = useState(false);
-  const [cobrando, setCobrando] = useState(false);
   const [estado, setEstado] = useState<MetaAdsState>({});
   const [pendente, comecar] = useTransition();
   // Um respiro antes de fechar: sem ele, o caminho do mouse da faixa até o
@@ -137,22 +121,6 @@ export function PuxadorDaLoja({
           className="absolute left-3 top-10 z-20 w-max max-w-[16rem] rounded-xl border border-border-forte
             bg-surface shadow-xl p-1.5 flex flex-col gap-0.5 text-left"
         >
-          {/* Montar a cobrança vem primeiro porque é o que resolve a loja.
-              "Marquei que mandei" é para quem já cobrou por fora — continua
-              existindo, mas deixou de ser o caminho principal. */}
-          {cobranca && !temPedidoAberto && (
-            <Acao
-              icone={Wallet}
-              texto="Cobrar verba"
-              destaque
-              pendente={pendente}
-              onClick={() => {
-                setAberto(false);
-                setCobrando(true);
-              }}
-            />
-          )}
-
           {temPedidoAberto ? (
             <Acao
               icone={Undo2}
@@ -163,7 +131,8 @@ export function PuxadorDaLoja({
           ) : (
             <Acao
               icone={Send}
-              texto="Já cobrei por fora"
+              texto="Marquei: link de verba enviado"
+              destaque
               pendente={pendente}
               onClick={() => rodar(() => marcarVerbaEnviada(clientId))}
             />
@@ -193,18 +162,6 @@ export function PuxadorDaLoja({
             </p>
           )}
         </div>
-      )}
-
-      {cobrando && cobranca && (
-        <JanelaDeCobranca
-          clientId={clientId}
-          loja={cobranca.loja}
-          saldoCents={cobranca.saldoCents}
-          diasDeSaldo={cobranca.diasDeSaldo}
-          gastoDiarioCents={cobranca.gastoDiarioCents}
-          link={cobranca.link}
-          aoFechar={() => setCobrando(false)}
-        />
       )}
     </div>
   );

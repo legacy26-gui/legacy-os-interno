@@ -19,7 +19,6 @@ import {
 import { SeletorDePeriodo } from "@/components/seletor-de-periodo";
 import { Frescor } from "@/components/frescor";
 import { desdeOEnvio } from "@/lib/meta/pedido-de-verba";
-import { linkDeCobranca } from "@/lib/meta/cobranca-de-verba";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import {
   avaliarLoja,
@@ -186,15 +185,6 @@ export default async function MetaAdsPage({
         erro,
         veredito,
         pedido: c.pedidosDeVerba[0] ?? null,
-        // Só com UMA conta pré-paga: com duas, o link abriria a cobrança de
-        // uma delas e o cliente poria o dinheiro na conta errada sem nunca
-        // saber. Nesse caso a mensagem vai só com o caminho na mão, que o
-        // obriga a escolher a conta vendo o nome.
-        // metaAccountId e NÃO id: o primeiro é o "act_123456" da Meta, o
-        // segundo é a chave daqui de dentro. Trocar os dois faria um link
-        // que abre a cobrança de conta nenhuma.
-        linkDeCobranca:
-          prePagas.length === 1 ? linkDeCobranca(prePagas[0].metaAccountId) : null,
       };
     })
     // ── A ordem: quem para primeiro aparece primeiro ────────────────────
@@ -519,19 +509,6 @@ export default async function MetaAdsPage({
                             tom={tom}
                             temPedidoAberto={l.veredito.pedido !== null}
                             podeAtualizar
-                            // Só loja de Pix tem verba a cobrar: no cartão a
-                            // Meta cobra sozinha e não há o que pedir.
-                            cobranca={
-                              l.prePagas > 0
-                                ? {
-                                    loja: c.companyName,
-                                    saldoCents: l.saldo,
-                                    diasDeSaldo: l.veredito.diasDeSaldo,
-                                    gastoDiarioCents: l.veredito.gastoDiarioCents,
-                                    link: l.linkDeCobranca,
-                                  }
-                                : null
-                            }
                           />
                         ) : (
                           <div className={`w-2 h-full min-h-[4.5rem] ${FAIXA_DA_LOJA[tom]}`} />

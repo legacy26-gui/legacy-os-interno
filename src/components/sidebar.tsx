@@ -101,6 +101,11 @@ const EMPLOYEE_ITEMS: NavLeaf[] = [
   // Saldo da conta de anúncio é trabalho do gestor de tráfego: conta zerada
   // para a campanha dele. Vê só as lojas dele, pela regra de carteira.
   { href: "/meta-ads", label: "Meta Ads", icon: Megaphone, module: "clientes" },
+  // O Copiloto estava só no menu completo, ou seja, invisível pra quem mais
+  // usaria. "Onde estou perdendo dinheiro" e "qual campanha gasta mais" são
+  // perguntas do gestor de tráfego, não da direção — e ele já podia abrir a
+  // tela pelo endereço, só não tinha como descobrir que ela existe.
+  { href: "/copiloto", label: "Copiloto", icon: Bot, module: "clientes" },
 ];
 
 function NavLink({ href, label, icon: Icon, active, onClick }: NavLeaf & { active: boolean; onClick: () => void }) {

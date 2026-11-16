@@ -3,6 +3,17 @@ import { mandarRelatoriosDaSemana } from "@/lib/whatsapp/robo-dos-relatorios";
 
 // A porta que o agendador usa na manhã de segunda.
 //
+// ── O horário, que não cabe no vercel.json ───────────────────────────────
+//
+// Lá está `*/5 11-12 * * 1`: de cinco em cinco minutos, das 11h às 12h59
+// UTC, segunda-feira. Em Brasília isso é das 8h às 9h59.
+//
+// A explicação mora AQUI porque o vercel.json não aceita comentário. JSON
+// não tem, e a Vercel valida o arquivo de forma estrita: qualquer chave que
+// ela não conhece — um "comment" que alguém pôs pra se explicar — derruba o
+// deploy inteiro, com erro de configuração e não de código. Foi o que
+// aconteceu quando este cron nasceu, e por isso esta nota existe.
+//
 // ── Esta rota exige segredo, sem exceção ─────────────────────────────────
 //
 // A rota dos alertas aceita ser chamada sem CRON_SECRET, e com razão: o que

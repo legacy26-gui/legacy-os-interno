@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
+  Bot,
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
@@ -52,6 +53,9 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
       { href: "/controle-vendas", label: "Controle de Vendas", icon: TrendingUp, module: "gestao-contas" },
       { href: "/meta-ads", label: "Meta Ads", icon: Megaphone, module: "clientes" },
+      // Logo abaixo do Meta Ads porque é sobre os números dele que se
+      // pergunta, e porque quem abre um costuma querer o outro.
+      { href: "/copiloto", label: "Copiloto", icon: Bot, module: "clientes" },
       { href: "/calendario", label: "Calendário", icon: CalendarClock, module: "calendario" },
       { href: "/gravacoes", label: "Gravações", icon: Video, module: "gravacoes" },
       // O Studio fica no Operacional e não num grupo próprio: quem usa é a

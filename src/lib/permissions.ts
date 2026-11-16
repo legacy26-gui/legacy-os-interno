@@ -94,6 +94,10 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   // como "clientes" não está liberado pro Treinamentos, esta tela fica fora de
   // lá automaticamente.
   { prefix: "/meta-ads", module: "clientes" },
+  // O Copiloto responde sobre os mesmos números do Meta Ads, com a mesma
+  // trava de carteira. Módulo próprio criaria uma segunda régua pra dizer
+  // a mesma coisa — e duas réguas é como se abre buraco.
+  { prefix: "/copiloto", module: "clientes" },
   { prefix: "/formularios", module: "formularios" },
   { prefix: "/financeiro", module: "financeiro" },
   { prefix: "/contratos", module: "contratos" },

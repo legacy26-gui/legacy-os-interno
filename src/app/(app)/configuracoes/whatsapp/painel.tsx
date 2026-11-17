@@ -33,11 +33,14 @@ export function PainelDoWhatsapp({
   estado,
   variaveis,
   webhook,
+  envioAutomatico,
   lojas: lojasIniciais,
 }: {
   estado: EstadoDaLigacao;
   variaveis: { nome: string; onde: string }[];
   webhook: { url: string | null; sugestao: string | null };
+  /** O relatório automático de segunda depende do CRON_SECRET. */
+  envioAutomatico: { ligado: boolean; sugestao: string | null };
   lojas: Loja[];
 }) {
   const [lojas, setLojas] = useState(lojasIniciais);
@@ -134,6 +137,8 @@ export function PainelDoWhatsapp({
               </p>
             )}
           </section>
+
+          <EnvioAutomatico estado={envioAutomatico} />
 
           <Recebimento webhook={webhook} />
 
@@ -521,6 +526,85 @@ function Recebimento({
           </p>
         </>
       )}
+    </section>
+  );
+}
+
+/**
+ * O aviso do envio automático de segunda.
+ *
+ * Existe porque esta é a falha mais silenciosa do sistema inteiro: sem
+ * CRON_SECRET a rota recusa, nada sai, e ninguém descobre até o cliente
+ * cobrar o relatório na terça. Um cartão verde ou âmbar nesta tela custa
+ * nada e transforma "não aconteceu" em "está faltando isto".
+ */
+function EnvioAutomatico({
+  estado,
+}: {
+  estado: { ligado: boolean; sugestao: string | null };
+}) {
+  const [copiado, setCopiado] = useState(false);
+
+  if (estado.ligado) {
+    return (
+      <section className="rounded-2xl border border-emerald-500/50 bg-emerald-500/10 px-4 py-3">
+        <p className="text-sm text-emerald-700 dark:text-emerald-400 flex items-start gap-2">
+          <CheckCircle2 size={15} className="shrink-0 mt-0.5" />
+          <span>
+            <strong>Envio automático ligado.</strong> Segunda a partir das 8h,
+            os relatórios saem sozinhos — poucos por vez, espaçados, pra não
+            queimar o número.
+          </span>
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-amber-500/50 bg-amber-500/10 p-5 flex flex-col gap-3">
+      <h2 className="font-semibold flex items-center gap-2 text-amber-700 dark:text-amber-400">
+        <AlertTriangle size={16} /> O envio automático de segunda está parado
+      </h2>
+      <p className="text-sm text-foreground-muted">
+        Falta a variável{" "}
+        <code className="px-1.5 py-0.5 rounded bg-surface-muted font-mono text-xs">
+          CRON_SECRET
+        </code>{" "}
+        <strong>neste projeto</strong> da Vercel. É ela que prova que quem
+        chamou o envio foi o agendador, e não alguém de fora — sem ela a rota
+        recusa de propósito, porque uma porta aberta que manda mensagem pra
+        cliente não pode existir.
+      </p>
+      <p className="text-sm text-foreground-muted">
+        Crie com este valor, sorteado agora:
+      </p>
+      <div className="flex gap-2 flex-wrap items-center">
+        <code className="flex-1 min-w-[16rem] px-3 py-2.5 rounded-lg bg-surface-muted border border-border font-mono text-xs break-all">
+          {estado.sugestao}
+        </code>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(estado.sugestao ?? "");
+              setCopiado(true);
+              setTimeout(() => setCopiado(false), 2500);
+            } catch {
+              // O valor está na tela pra copiar na mão.
+            }
+          }}
+          className="inline-flex items-center gap-2 min-h-11 px-4 rounded-lg border border-border
+            bg-surface-muted text-sm font-medium hover:bg-surface"
+        >
+          {copiado ? <Check size={15} /> : <Copy size={15} />}
+          {copiado ? "Copiado" : "Copiar"}
+        </button>
+      </div>
+      <p className="text-xs text-foreground-muted">
+        Cuidado com o projeto certo: a Vercel guarda variáveis por projeto, e
+        uma que existe em outro projeto da mesma conta não vale aqui. Enquanto
+        isso, o botão de mandar cada relatório na mão continua funcionando.
+      </p>
     </section>
   );
 }

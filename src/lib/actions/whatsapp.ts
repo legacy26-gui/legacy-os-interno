@@ -214,3 +214,29 @@ export async function verEnderecoDoWebhook(): Promise<{
     sugestao: null,
   };
 }
+
+/**
+ * O envio automático de segunda está destravado?
+ *
+ * ── Por que esta pergunta mora aqui ──────────────────────────────────────
+ *
+ * Porque a rota que manda os relatórios EXIGE CRON_SECRET, sem o modo
+ * tolerante que a dos alertas tem — ela manda mensagem pra cliente, e
+ * mensagem mandada não se desmanda. Sem o segredo ela responde 503 e o envio
+ * automático simplesmente não acontece, em silêncio, até alguém reparar na
+ * segunda que o cliente não recebeu.
+ *
+ * Silêncio é o pior jeito de uma coisa dessas falhar. Então a tela pergunta,
+ * e quando falta, entrega um valor sorteado pronto pra colar — em vez de
+ * mandar a pessoa inventar um segredo à mão, que é como nascem segredos de
+ * seis letras.
+ */
+export async function verEnvioAutomatico(): Promise<{
+  ligado: boolean;
+  sugestao: string | null;
+}> {
+  await requireModuleAccess("configuracoes");
+  const segredo = process.env.CRON_SECRET?.trim();
+  if (segredo) return { ligado: true, sugestao: null };
+  return { ligado: false, sugestao: randomBytes(24).toString("base64url") };
+}

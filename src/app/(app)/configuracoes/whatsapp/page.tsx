@@ -5,7 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { veTodasAsEmpresas } from "@/lib/empresa";
 import { CARTEIRA } from "@/lib/carteira";
-import { verEstadoDaLigacao, verEnderecoDoWebhook } from "@/lib/actions/whatsapp";
+import {
+  verEstadoDaLigacao,
+  verEnderecoDoWebhook,
+  verEnvioAutomatico,
+} from "@/lib/actions/whatsapp";
 import { VARIAVEIS_DA_ZAPI } from "@/lib/whatsapp/ligacao";
 import { PainelDoWhatsapp } from "./painel";
 
@@ -36,9 +40,10 @@ export default async function WhatsappPage() {
   if (user.role !== "ADMIN") redirect("/dashboard?erro=acesso-negado");
   if (!veTodasAsEmpresas(user.empresas)) redirect("/dashboard?erro=so-grupo");
 
-  const [estado, webhook] = await Promise.all([
+  const [estado, webhook, envioAutomatico] = await Promise.all([
     verEstadoDaLigacao(),
     verEnderecoDoWebhook(),
+    verEnvioAutomatico(),
   ]);
 
   const lojas = await prisma.client.findMany({
@@ -72,6 +77,7 @@ export default async function WhatsappPage() {
         estado={estado}
         variaveis={[...VARIAVEIS_DA_ZAPI]}
         webhook={webhook}
+        envioAutomatico={envioAutomatico}
         lojas={lojas.map((l) => ({
           id: l.id,
           nome: l.companyName,

@@ -1162,3 +1162,34 @@ A correção não foi retirar a loja: foi trocar o tipo de resultado em
 reflexo de esconder a loja que incomoda é mais rápido que o de perguntar por
 que ela incomoda — e aqui o alerta estava certo, era a configuração que
 estava errada.
+
+## Aviso de arte cansada: desligado em 17/11/2026
+
+A pedido do Guilherme — "ainda não está legal".
+
+**Está desligado por um interruptor, não apagado:**
+`AVISOS_DE_CANSACO_LIGADOS` em `lib/meta/criativo-cansado.ts`. Pra religar,
+`true` ali e só ali.
+
+A conta em si não é o problema: comparar sete dias com os sete anteriores
+está certo, e os testes continuam valendo. O que precisa de ajuste é a
+régua — o que conta como "cansado", quanto de volume exigir antes de abrir a
+boca, e quantos avisos aparecem de uma vez. Apagar jogaria fora a parte boa
+junto com a que precisa de calibragem.
+
+**O diagnóstico continua sendo calculado**, só não aparece. É de propósito:
+é ele que vai permitir calibrar com dado real em vez de no chute.
+
+**Some de dois lugares:** a etiqueta na linha do anúncio (via
+`ETIQUETA_DO_CRIATIVO`, que fica toda nula) e a lista do Meu Dia. Nenhum dos
+dois precisou de `if` novo no desenho — quem desenha já tratava nulo e lista
+vazia.
+
+**Não confundir com o Resgate**, que é outra coisa: lá "Arte nova / Começando
+a cansar / Arte gasta" mede TEMPO SEM RENOVAR, não desempenho. Continua
+ligado.
+
+**Conferido:** com dados em que o custo por lead quadruplicou de uma semana
+pra outra, `diagnosticar` segue devolvendo "cansado" e nenhuma etiqueta
+aparece; nas duas telas não há nenhuma menção a cansaço; e o anúncio continua
+listado normalmente, só sem o selo.

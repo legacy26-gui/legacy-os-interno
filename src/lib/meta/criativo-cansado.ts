@@ -29,6 +29,29 @@
 
 import { custoPorLead, ctr, type Numeros } from "./insights";
 
+/**
+ * O aviso está ligado?
+ *
+ * Desligado em 17/11/2026, a pedido do Guilherme: "ainda não está legal".
+ *
+ * ── Por que um interruptor e não apagar o código ─────────────────────────
+ *
+ * Porque a conta em si não é o problema — a ideia de comparar sete dias com
+ * os sete anteriores está certa, e os testes dela continuam valendo. O que
+ * não está bom é a régua: o que conta como "cansado", quanto de volume
+ * exigir antes de abrir a boca, e provavelmente quantos avisos aparecem de
+ * uma vez. Apagar jogaria fora a parte boa junto com a que precisa de
+ * ajuste.
+ *
+ * O que ele desliga é a APARIÇÃO: a etiqueta na linha do anúncio e a lista
+ * do Meu Dia. O diagnóstico continua sendo calculado — fica em memória, não
+ * aparece — porque é ele que vai permitir calibrar a régua com dado real em
+ * vez de no chute.
+ *
+ * Pra religar: `true` aqui, e só aqui.
+ */
+export const AVISOS_DE_CANSACO_LIGADOS = false;
+
 /** O tamanho de cada janela. Sete dias pega a semana inteira de uma vez. */
 export const DIAS_DA_JANELA = 7;
 
@@ -142,15 +165,22 @@ export function comoVariacao(v: number | null): string | null {
 }
 
 export const ETIQUETA_DO_CRIATIVO: Record<EstadoDoCriativo, { texto: string; classe: string } | null> =
-  {
-    cansado: {
-      texto: "Arte cansada",
-      classe: "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/60",
-    },
-    cansando: {
-      texto: "Cansando",
-      classe: "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/60",
-    },
-    firme: null,
-    "sem-base": null,
-  };
+  AVISOS_DE_CANSACO_LIGADOS
+    ? {
+        cansado: {
+          texto: "Arte cansada",
+          classe:
+            "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/60",
+        },
+        cansando: {
+          texto: "Cansando",
+          classe:
+            "bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/60",
+        },
+        firme: null,
+        "sem-base": null,
+      }
+    : // Desligado: nenhum estado tem etiqueta, então a linha do anúncio não
+      // mostra nada. Quem desenha a tela já trata null — não precisou de um
+      // "if" novo em lugar nenhum.
+      { cansado: null, cansando: null, firme: null, "sem-base": null };

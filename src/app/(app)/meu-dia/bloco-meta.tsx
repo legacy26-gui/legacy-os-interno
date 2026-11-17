@@ -8,7 +8,10 @@ import {
 } from "lucide-react";
 import { reais } from "@/lib/meta/insights";
 import { comoPorcentagem } from "@/lib/meta/ritmo-do-combinado";
-import { comoVariacao } from "@/lib/meta/criativo-cansado";
+import {
+  comoVariacao,
+  AVISOS_DE_CANSACO_LIGADOS,
+} from "@/lib/meta/criativo-cansado";
 import { desdeOEnvio } from "@/lib/meta/pedido-de-verba";
 import type { PainelDoDia, LojaNoDia } from "@/lib/meta/painel-do-dia";
 
@@ -45,9 +48,12 @@ export function BlocoMetaDoDia({ painel }: { painel: PainelDoDia }) {
     (l) => l.projecao.ritmo === "acelerado",
   );
   const parado = painel.lojas.filter((l) => l.projecao.ritmo === "parado");
-  const artes = painel.criativos.filter(
-    (c) => c.diagnostico.estado === "cansado",
-  );
+  // Com o aviso desligado a lista nasce vazia, e o bloco inteiro some
+  // sozinho quando não sobra mais nada — ver `temAlgo` logo abaixo. Não
+  // precisou de "if" no desenho. Ver AVISOS_DE_CANSACO_LIGADOS.
+  const artes = AVISOS_DE_CANSACO_LIGADOS
+    ? painel.criativos.filter((c) => c.diagnostico.estado === "cansado")
+    : [];
 
   const temAlgo =
     semSaldo.length +

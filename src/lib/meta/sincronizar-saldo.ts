@@ -76,11 +76,33 @@ export async function sincronizarSaldo(
   const centavos = parseSaldoEmCentavos(texto);
   if (centavos === null) {
     // A Meta respondeu, mas o texto não tinha valor em reais que dê pra ler
-    // com segurança. Pode ser conta sem forma de pagamento, pode ser a Meta
-    // tendo mudado a frase. Nos dois casos: erro gravado, número nenhum.
+    // com segurança. Erro gravado, número nenhum.
+    //
+    // ── Por que a frase do campo vazio é tão específica ───────────────────
+    //
+    // Quando `funding_source_details` vem VAZIO, a frase antiga dizia "A Meta
+    // não informou a forma de pagamento desta conta" — o que se lê como "esta
+    // conta não tem forma de pagamento". Isso é falso, e dá pra provar: a
+    // conta está GASTANDO. Conta sem forma de pagamento não veicula.
+    //
+    // O campo vem vazio por um de dois motivos, e os dois têm conserto do
+    // nosso lado da mesa:
+    //
+    //   1. O usuário do token não é ADMINISTRADOR daquela conta. A Meta
+    //      esconde dados de cobrança de quem tem acesso só de anunciante ou
+    //      de análise — e esconde CALADA, devolvendo o campo vazio em vez de
+    //      um erro de permissão. É por isso que os números do período chegam
+    //      normalmente e só o saldo falta: insight o anunciante vê, cobrança
+    //      não. Este é o caso de longe mais comum.
+    //
+    //   2. A conta é no cartão e está marcada como pré-paga aqui. Aí não há
+    //      saldo pra buscar, e o conserto é um clique na ficha da loja.
+    //
+    // Uma frase que não diz qual dos dois é vira aviso permanente que
+    // ninguém resolve — exatamente o que aconteceu com a R2.
     const erro = texto
       ? "A Meta respondeu, mas não deu pra ler o saldo no texto que ela devolveu."
-      : "A Meta não informou a forma de pagamento desta conta.";
+      : "ou falta acesso de administrador nessa conta na Meta, ou ela é no cartão — nesse caso marque 'Cartão' na ficha e o aviso some.";
     await registrarErro(conta.id, erro);
     return { ok: false, erro };
   }

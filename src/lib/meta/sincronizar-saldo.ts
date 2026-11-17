@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { buscarNaGraph } from "./cliente-graph";
 import { parseSaldoEmCentavos } from "./saldo";
+import { problemaDaConta } from "./estado-da-conta";
 
 // Buscar o saldo de uma conta e guardar o que foi lido.
 //
@@ -37,6 +38,7 @@ interface RespostaDaConta {
   funding_source_details?: {
     display_string?: string;
   };
+  account_status?: number;
 }
 
 /**
@@ -52,13 +54,25 @@ interface RespostaDaConta {
 export async function sincronizarSaldo(
   conta: ContaPraSincronizar
 ): Promise<ResultadoDaSincronizacao> {
+  // `account_status` vem na mesma pergunta, sem custo nenhum: é um campo a
+  // mais na mesma chamada. E é ele que separa "pausamos a campanha" de "a
+  // Meta tirou a conta do ar" — ver estado-da-conta.ts.
   const resposta = await buscarNaGraph<RespostaDaConta>(conta.metaAccountId, {
-    fields: "funding_source_details",
+    fields: "funding_source_details,account_status",
   });
 
   if (!resposta.ok) {
     await registrarErro(conta.id, resposta.erro);
     return { ok: false, erro: resposta.erro };
+  }
+
+  // A conta estar fora do ar vem ANTES de tudo, e vale também pra conta no
+  // cartão. É a notícia maior: enquanto ela estiver assim, a loja não veicula,
+  // e discutir saldo ou forma de pagamento é discutir o detalhe errado.
+  const foraDoAr = problemaDaConta(resposta.dados.account_status);
+  if (foraDoAr) {
+    await registrarErro(conta.id, foraDoAr);
+    return { ok: false, erro: foraDoAr };
   }
 
   const texto = resposta.dados.funding_source_details?.display_string ?? null;

@@ -54,6 +54,14 @@ export function PainelDoWhatsapp({
     <div className="flex flex-col gap-6">
       <Conexao estado={estado} variaveis={variaveis} />
 
+      {/* Fora do bloco da Z-API de propósito.
+          Ele morava lá dentro, e isso deixou o valor gerado invisível pra
+          quem ainda não tinha ligado o WhatsApp — justamente quem precisa
+          dele, porque as duas variáveis vão pra Vercel na mesma sentada.
+          São dois segredos independentes: um liga o envio, o outro liga o
+          WhatsApp. Nenhum depende do outro pra ser criado. */}
+      <EnvioAutomatico estado={envioAutomatico} />
+
       {estado.configurado && (
         <>
           {/* ── Os grupos ───────────────────────────────────────────────── */}
@@ -137,8 +145,6 @@ export function PainelDoWhatsapp({
               </p>
             )}
           </section>
-
-          <EnvioAutomatico estado={envioAutomatico} />
 
           <Recebimento webhook={webhook} />
 

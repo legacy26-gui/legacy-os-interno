@@ -34,12 +34,20 @@ export function Conversa({
   variavelDaChave,
   provedor,
   modelo,
+  compacto = false,
 }: {
-  lojas: string[];
+  /**
+   * Só pra dizer, na tela vazia, quais lojas ele enxerga. Opcional porque a
+   * bolha flutuante não faz essa consulta em toda página que você abre —
+   * lá o espaço é curto e a frase não cabia de qualquer jeito.
+   */
+  lojas?: string[];
   temChave: boolean;
   variavelDaChave: string;
   provedor: string;
   modelo: string;
+  /** Na bolha o espaço é curto: menos texto de apoio, tudo mais junto. */
+  compacto?: boolean;
 }) {
   const [turnos, setTurnos] = useState<TurnoNaTela[]>([]);
   const [texto, setTexto] = useState("");
@@ -110,12 +118,20 @@ export function Conversa({
   return (
     <div className="flex flex-col gap-4">
       {turnos.length === 0 && (
-        <section className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3">
-          <p className="text-sm text-foreground-muted">
-            Ele enxerga as {lojas.length}{" "}
-            {lojas.length === 1 ? "loja" : "lojas"} da sua carteira:{" "}
-            <span className="text-foreground">{lojas.join(", ")}</span>.
-          </p>
+        <section
+          className={`flex flex-col gap-3 ${
+            compacto
+              ? ""
+              : "rounded-2xl border border-border bg-surface p-5"
+          }`}
+        >
+          {lojas && lojas.length > 0 && (
+            <p className="text-sm text-foreground-muted">
+              Ele enxerga as {lojas.length}{" "}
+              {lojas.length === 1 ? "loja" : "lojas"} da sua carteira:{" "}
+              <span className="text-foreground">{lojas.join(", ")}</span>.
+            </p>
+          )}
           <div className="flex flex-col gap-2">
             {PERGUNTAS_PRONTAS.map((p) => (
               <button
@@ -188,10 +204,12 @@ export function Conversa({
             )}
           </button>
         </div>
-        <p className="text-[11px] text-foreground-muted mt-1.5 px-1">
-          A conversa some ao recarregar a página. Os números vêm do banco a
-          cada pergunta.
-        </p>
+        {!compacto && (
+          <p className="text-[11px] text-foreground-muted mt-1.5 px-1">
+            A conversa some ao recarregar a página. Os números vêm do banco a
+            cada pergunta.
+          </p>
+        )}
       </div>
     </div>
   );

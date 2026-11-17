@@ -110,3 +110,35 @@ descarte da ação sobre loja de outro.
 O que NÃO foi conferido: a qualidade da resposta de um modelo de verdade.
 Sem chave, não há como. O que está provado é que ele só recebe dado real e
 que nada que ele sugerir escapa das travas.
+
+## A bolha flutuante
+
+O Copiloto também existe como uma bolha com rosto, em qualquer tela do
+sistema. A página inteira continua lá, pra conversa longa; a bolha é pro
+"pera, deixa eu checar uma coisa".
+
+**Por que:** a pergunta nasce olhando outra coisa. "Por que essa loja está
+vermelha?" acontece na tela do Meta Ads; "quem vai ficar sem verba?" acontece
+no Meu Dia. Exigir sair da tela pra perguntar é exigir perder o contexto que
+gerou a pergunta — e aí ninguém pergunta.
+
+**Por que ela se move:** qualquer canto fixo tapa algo importante em alguma
+tela. À direita cobre a coluna "lido"; à esquerda, o menu. Em vez de
+adivinhar, ela se arrasta e lembra onde foi deixada, no navegador de quem usa
+— é preferência de tela de uma pessoa, não dado da agência. Tudo em
+try/catch: aba anônima recusa guardar, e isso não pode derrubar a tela.
+
+**Detalhes que importam pouco e aparecem muito:** arrastar não abre a
+conversa (só conta como clique quando o dedo quase não andou); ela se prende
+dentro da tela quando o celular gira; o painel abre pro lado onde há espaço;
+e ela some sozinha na página do Copiloto, onde seria o mesmo pela segunda
+vez.
+
+O rosto é SVG e não emoji por dois motivos: emoji muda de cara em cada
+sistema, e assim ele acompanha o tema em vez de ser figura colada. Pisca de
+vez em quando, e para de piscar enquanto está sendo arrastado ou com a
+conversa aberta — aí ele está ocupado, e piscadinha vira distração.
+
+**Conferido no navegador:** existe no Meta Ads, arrastou de (1320, 820) para
+(271, 371), arrastar não abriu a conversa, lembrou a posição depois de
+recarregar, o clique abriu, e na página do Copiloto ela não aparece.

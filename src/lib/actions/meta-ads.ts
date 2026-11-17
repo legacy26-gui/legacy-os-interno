@@ -771,6 +771,96 @@ export async function definirForaDoMetaAds(
   });
 }
 
+/**
+ * Desliga a loja do Meta Ads DE VEZ: tira todas as contas de anúncio dela.
+ *
+ * ── A diferença entre isto e "tirar do acompanhamento" ───────────────────
+ *
+ * Tirar do acompanhamento esconde e guarda: a loja some das telas e volta
+ * num clique, com o histórico inteiro.
+ *
+ * Isto APAGA. Insights, lifetime, criativos, leituras de saldo — tudo que foi
+ * buscado por causa daquelas contas vai junto, porque é cópia do que está na
+ * Meta e guardar número de conta que não é mais desta loja é pior que
+ * perder. Não tem desfazer: pra voltar, é vincular de novo e esperar a
+ * varredura reconstruir o que a Meta ainda tiver.
+ *
+ * Por isso exige `confirmado`, e por isso a tela mostra ANTES quantas contas
+ * e quantos dias de número vão embora. Botão de apagar que não diz o tamanho
+ * do estrago é botão que vai ser apertado sem querer.
+ *
+ * A loja continua cliente: continua no Financeiro, no Controle de Vendas, em
+ * tudo. O que acaba é a ligação com o Meta Ads.
+ */
+export async function desligarLojaDoMetaAds(
+  clientId: string,
+  confirmado: boolean,
+): Promise<MetaAdsState & { precisaConfirmar?: string }> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (user.role !== "ADMIN" && user.role !== "GERENTE") {
+      return { erro: "Só a direção desliga uma loja do Meta Ads." };
+    }
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Essa loja não está na sua lista." };
+    }
+
+    const loja = await prisma.client.findUnique({
+      where: { id: clientId },
+      select: {
+        companyName: true,
+        metaAdAccounts: { select: { id: true, metaAccountId: true } },
+      },
+    });
+    if (!loja) return { erro: "Loja não encontrada." };
+
+    const ids = loja.metaAdAccounts.map((c) => c.id);
+    if (ids.length === 0) {
+      return { erro: `${loja.companyName} não tem conta de anúncio vinculada.` };
+    }
+
+    if (!confirmado) {
+      // O tamanho do estrago, contado agora e dito na cara: é a única coisa
+      // que transforma "tem certeza?" em uma pergunta de verdade.
+      const dias = await prisma.metaInsightDaily.count({
+        where: { adAccountId: { in: ids } },
+      });
+      return {
+        precisaConfirmar:
+          `Isto apaga ${dias.toLocaleString("pt-BR")} ${dias === 1 ? "registro" : "registros"} de número ` +
+          `${ids.length === 1 ? "da conta" : `das ${ids.length} contas`} de ${loja.companyName} ` +
+          `(${loja.metaAdAccounts.map((c) => c.metaAccountId).join(", ")}). ` +
+          `Não tem desfazer. A loja continua cliente — o que acaba é a ligação com o Meta Ads.`,
+      };
+    }
+
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.metaInsightDaily.deleteMany({ where: { adAccountId: { in: ids } } });
+        await tx.metaLifetime.deleteMany({ where: { adAccountId: { in: ids } } });
+        await tx.metaAdCreative.deleteMany({ where: { adAccountId: { in: ids } } });
+        await tx.balanceSnapshot.deleteMany({ where: { adAccountId: { in: ids } } });
+        await tx.metaAdAccount.deleteMany({ where: { id: { in: ids } } });
+        // Sai também do estado de "retirada": sem conta nenhuma ela não
+        // aparece em lista alguma, e deixar a marca ligada só confundiria
+        // quem vinculasse uma conta nova depois.
+        await tx.client.update({
+          where: { id: clientId },
+          data: { foraDoMetaAds: false },
+        });
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    );
+
+    revalidar(clientId);
+    revalidatePath("/meta-ads");
+    revalidatePath("/meta-ads/vincular");
+    return {
+      ok: `${loja.companyName} saiu do Meta Ads. ${ids.length === 1 ? "A conta foi desvinculada" : `As ${ids.length} contas foram desvinculadas`} e os números apagados.`,
+    };
+  });
+}
+
 /** Desfaz um vínculo — e leva junto o que foi buscado por causa dele. */
 export async function desvincularConta(contaId: string): Promise<MetaAdsState> {
   return semQuebrar(async () => {

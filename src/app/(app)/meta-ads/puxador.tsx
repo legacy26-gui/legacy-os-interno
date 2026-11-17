@@ -11,12 +11,15 @@ import {
   Check,
   EyeOff,
   Eye,
+  Unplug,
+  AlertTriangle,
 } from "lucide-react";
 import {
   marcarVerbaEnviada,
   desmarcarVerbaEnviada,
   atualizarLojaAgora,
   definirForaDoMetaAds,
+  desligarLojaDoMetaAds,
   type MetaAdsState,
 } from "@/lib/actions/meta-ads";
 import { FAIXA_DA_LOJA, type TomDaLoja } from "@/lib/meta/tons";
@@ -49,6 +52,7 @@ export function PuxadorDaLoja({
   podeAtualizar,
   foraDoMetaAds = false,
   podeRetirar = false,
+  podeDesligar = false,
 }: {
   clientId: string;
   tom: TomDaLoja;
@@ -59,9 +63,22 @@ export function PuxadorDaLoja({
   foraDoMetaAds?: boolean;
   /** Só a direção tira loja do acompanhamento. */
   podeRetirar?: boolean;
+  /**
+   * Oferece o "desligar de vez", que APAGA os números.
+   *
+   * Só na aba das retiradas, de propósito: quem chegou lá já decidiu que
+   * não acompanha esta loja. Pôr um botão que apaga histórico ao lado de
+   * "buscar números agora", na lista do dia a dia, é esperar o acidente.
+   */
+  podeDesligar?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [estado, setEstado] = useState<MetaAdsState>({});
+  // A frase de confirmação do desligar de vez. Vem do servidor com o
+  // tamanho do estrago contado — quantos registros, quantas contas.
+  const [confirmarDesligar, setConfirmarDesligar] = useState<string | null>(
+    null,
+  );
   const [pendente, comecar] = useTransition();
   // Um respiro antes de fechar: sem ele, o caminho do mouse da faixa até o
   // painel passa por um pixel de fora e o painel some no meio do movimento.
@@ -72,6 +89,15 @@ export function PuxadorDaLoja({
     setAberto(true);
   }
   function soltar() {
+    // Com uma confirmação de apagar na tela, o painel NÃO fecha sozinho.
+    //
+    // Clicar num botão aqui dentro dispara blur no contêiner, e o blur
+    // agenda o fechamento. Pras ações de um clique isso nunca importou —
+    // elas fechavam o painel de qualquer jeito ao terminar. Mas a confirmação
+    // de "desligar de vez" aparece DEPOIS do primeiro clique: sem esta
+    // guarda, ela surgia e sumia em 250 ms, e o segundo clique nunca era
+    // possível.
+    if (confirmarDesligar) return;
     if (relogio.current) clearTimeout(relogio.current);
     relogio.current = setTimeout(() => setAberto(false), FECHA_DEPOIS_MS);
   }
@@ -186,6 +212,66 @@ export function PuxadorDaLoja({
                   rodar(() => definirForaDoMetaAds(clientId, !foraDoMetaAds))
                 }
               />
+            </>
+          )}
+
+          {/* Desligar de vez: APAGA os números. Fica em vermelho e por
+              último, e o segundo clique só aparece depois que o servidor
+              disse o tamanho do estrago. */}
+          {podeDesligar && (
+            <>
+              {confirmarDesligar ? (
+                <div className="px-2.5 py-2 flex flex-col gap-2 max-w-[15rem]">
+                  <p className="text-xs text-red-500 flex items-start gap-1.5">
+                    <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                    {confirmarDesligar}
+                  </p>
+                  <div className="flex gap-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      disabled={pendente}
+                      onClick={() => {
+                        setConfirmarDesligar(null);
+                        rodar(() => desligarLojaDoMetaAds(clientId, true));
+                      }}
+                      className="min-h-10 px-3 rounded-lg bg-red-600 text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                    >
+                      Apagar mesmo assim
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmarDesligar(null)}
+                      className="min-h-10 px-3 rounded-lg border border-border text-xs text-foreground-muted hover:text-foreground"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={pendente}
+                  onClick={() => {
+                    // O blur deste mesmo clique já agendou o fechamento.
+                    // Cancela antes de pedir a confirmação ao servidor.
+                    segurarAberto();
+                    setEstado({});
+                    comecar(async () => {
+                      const r = await desligarLojaDoMetaAds(clientId, false);
+                      if (r?.precisaConfirmar) {
+                        setConfirmarDesligar(r.precisaConfirmar);
+                        return;
+                      }
+                      setEstado(r);
+                    });
+                  }}
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm text-left whitespace-nowrap
+                    text-red-600 dark:text-red-400 hover:bg-red-500/10 disabled:opacity-60"
+                >
+                  <Unplug size={14} className="shrink-0" />
+                  Desligar do Meta Ads de vez
+                </button>
+              )}
             </>
           )}
 

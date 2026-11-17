@@ -1193,3 +1193,57 @@ ligado.
 pra outra, `diagnosticar` segue devolvendo "cansado" e nenhuma etiqueta
 aparece; nas duas telas não há nenhuma menção a cansaço; e o anúncio continua
 listado normalmente, só sem o selo.
+
+## Desligar a loja do Meta Ads de vez
+
+Na aba **Retiradas**, e só lá: **Desligar do Meta Ads de vez**.
+
+### A diferença entre as três coisas
+
+| | O que faz | Tem volta? |
+|---|---|---|
+| **Tirar do acompanhamento** | Esconde das telas e dos alertas | Sim, um clique |
+| **Desligar de vez** | Apaga os números e desvincula as contas | Não |
+| **Cancelar o cliente** | Tira da carteira inteira, inclusive do Financeiro | É outro lugar |
+
+Desligar de vez apaga insights, lifetime, criativos e leituras de saldo de
+TODAS as contas da loja, numa transação só. São cópia do que está na Meta, e
+guardar número de conta que não é mais desta loja é pior que perder.
+
+**A loja continua cliente**: continua no Financeiro, no Controle de Vendas,
+em tudo. O que acaba é a ligação com o Meta Ads.
+
+### Por que só na aba das retiradas
+
+Quem chegou lá já decidiu que não acompanha aquela loja. Um botão que apaga
+histórico ao lado de "Buscar números agora", na lista do dia a dia, é esperar
+o acidente.
+
+### A confirmação diz o tamanho do estrago
+
+Antes de apagar, o servidor conta e devolve a frase:
+
+> Isto apaga 7 registros de número da conta de Rustic (act_cta4). Não tem
+> desfazer. A loja continua cliente — o que acaba é a ligação com o Meta Ads.
+
+Botão de apagar que não diz quanto vai levar é botão apertado sem querer.
+
+### Uma armadilha que custou duas rodadas de teste
+
+Clicar em qualquer botão daquele painel dispara `blur` no contêiner, e o
+`blur` agenda o fechamento em 250 ms. Pras ações de um clique isso nunca
+importou — elas fechavam o painel de qualquer jeito. Mas a confirmação
+aparece DEPOIS do primeiro clique: sem uma guarda, ela surgia e sumia antes
+de dar pra clicar de novo. Agora `soltar()` recusa fechar enquanto há
+confirmação pendente.
+
+### Conferido
+
+O botão não existe na lista do dia a dia e existe na aba das retiradas; a
+confirmação apareceu com o número certo e ficou na tela; "Cancelar" existe ao
+lado; e depois de confirmar, os 7 registros viraram 0, a conta vinculada
+virou 0, e a loja continuou cliente com status intacto.
+
+**O que ainda não está bom:** depois de apagar não aparece mensagem de
+sucesso — a linha simplesmente some da lista, porque a tela recarrega e a
+loja não está mais lá. Funciona, mas o retorno é por ausência.

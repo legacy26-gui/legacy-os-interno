@@ -563,6 +563,11 @@ export default async function MetaAdsPage({
                             podeAtualizar
                             foraDoMetaAds={c.foraDoMetaAds}
                             podeRetirar={ehDirecao}
+                            // Só na aba das retiradas: quem chegou lá já
+                            // decidiu que não acompanha esta loja. Um botão
+                            // que apaga histórico na lista do dia a dia é
+                            // esperar o acidente.
+                            podeDesligar={ehDirecao && vendoRetiradas}
                           />
                         ) : (
                           <div className={`w-2 h-full min-h-[4.5rem] ${FAIXA_DA_LOJA[tom]}`} />

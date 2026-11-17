@@ -3,6 +3,9 @@ import { getCurrentUser } from "@/lib/dal";
 import { empresaAtual, minhasEmpresas } from "@/lib/empresa-atual";
 import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
+import { BolhaDoCopiloto } from "@/components/copiloto-bolha";
+import { canAccessModule } from "@/lib/permissions";
+import { aiApiKey, nomeDaVariavelDaChave, AI_CONFIG } from "@/lib/ai/config";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -26,6 +29,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
+
+      {/* O Copiloto em qualquer tela. A pergunta nasce olhando outra coisa —
+          "por que essa loja está vermelha?" acontece no Meta Ads — e exigir
+          sair da tela pra perguntar é exigir perder o contexto que gerou a
+          pergunta. Ele some sozinho na página dele, que é a conversa longa. */}
+      {canAccessModule(user.role, "clientes", user.email) && (
+        <BolhaDoCopiloto
+          temChave={aiApiKey() !== null}
+          variavelDaChave={nomeDaVariavelDaChave()}
+          provedor={AI_CONFIG.provider}
+          modelo={AI_CONFIG.model}
+        />
+      )}
     </div>
   );
 }

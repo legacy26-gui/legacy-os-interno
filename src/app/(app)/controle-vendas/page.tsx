@@ -21,6 +21,7 @@ import {
 } from "@/lib/controle-vendas";
 import { voltarAoControleDeVendas } from "@/lib/actions/controle-vendas";
 import { TirarDoControle } from "./tirar-do-controle";
+import { AbasDoControle } from "./abas";
 
 // Controle de vendas: uma linha por loja, ordenada pela que está há mais tempo
 // sem vender. A tela existe pra responder uma pergunta só, de longe: quem
@@ -128,6 +129,8 @@ export default async function ControleVendasPage({
           {!vêTudo && " Aqui estão as lojas sob a sua gestão."}
         </p>
       </div>
+
+      <AbasDoControle ativa="/controle-vendas" />
 
       {contagem.critico > 0 && (
         <div className="rounded-2xl border border-amber-400/40 bg-zinc-950 px-5 py-4 flex items-start gap-3">

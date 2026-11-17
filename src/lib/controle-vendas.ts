@@ -109,3 +109,128 @@ export const ESTILO_SECUNDARIO: Record<TomDaVenda, string> = {
   vermelho: "text-foreground-muted",
   critico: "text-red-100",
 };
+
+// ─────────────────────── Venda a venda, por dia ───────────────────────────
+//
+// A tela "Por loja" acima responde "quem parou de vender?". Esta parte serve
+// a outra pergunta, que o Guilherme pediu depois: "o que foi vendido, da mais
+// recente pra mais antiga, e quanto deu em cada data".
+//
+// São duas perguntas diferentes e por isso duas abas, não uma tela só: a
+// primeira é sobre a LOJA e tem uma linha por loja; esta é sobre a VENDA e
+// tem uma linha por venda.
+//
+// A regra de agrupar mora aqui, pura, pelo mesmo motivo que o resto deste
+// arquivo: dá pra testar o total de um dia sem subir banco nem tela.
+
+/** O mínimo que uma venda precisa ter pra entrar na conta de um dia. */
+export interface VendaParaAgrupar {
+  soldAt: Date;
+  /** Em reais. A conversão de Decimal pra número acontece antes de chegar aqui. */
+  value: number;
+  /** Quanto foi investido em anúncio pra vender aquilo. */
+  adSpend: number;
+}
+
+export interface DiaDeVendas<V> {
+  /** "2026-11-17" — serve de chave de lista e de identidade do dia. */
+  chave: string;
+  dia: Date;
+  qtd: number;
+  total: number;
+  investido: number;
+  vendas: V[];
+}
+
+/**
+ * Junta as vendas por data, da mais recente pra mais antiga.
+ *
+ * ── Por que UTC em tudo ──────────────────────────────────────────────────
+ *
+ * Porque `soldAt` é `@db.Date`: uma data sem hora, que chega aqui como
+ * meia-noite UTC. Ler o dia pelo fuso de quem está olhando faria a venda do
+ * dia 17 aparecer no dia 16 pra quem está em Brasília — e o total de um dia
+ * cairia no dia anterior. `formatDate` já imprime em UTC pelo mesmo motivo;
+ * a chave daqui tem que combinar com ela.
+ *
+ * ── Por que ordenar aqui dentro ──────────────────────────────────────────
+ *
+ * O banco já devolve ordenado, mas quem lê esta função não deveria precisar
+ * saber disso pra confiar no resultado. A ordenação é estável, então a ordem
+ * que o chamador escolheu DENTRO de um mesmo dia (a mais recém-lançada
+ * primeiro) é preservada.
+ */
+export function agruparPorDia<V extends VendaParaAgrupar>(
+  vendas: V[],
+): DiaDeVendas<V>[] {
+  const porDia = new Map<string, DiaDeVendas<V>>();
+
+  for (const v of [...vendas].sort(
+    (a, b) => b.soldAt.getTime() - a.soldAt.getTime(),
+  )) {
+    const chave = v.soldAt.toISOString().slice(0, 10);
+    let dia = porDia.get(chave);
+    if (!dia) {
+      dia = { chave, dia: v.soldAt, qtd: 0, total: 0, investido: 0, vendas: [] };
+      porDia.set(chave, dia);
+    }
+    dia.qtd += 1;
+    dia.total += v.value;
+    dia.investido += v.adSpend;
+    dia.vendas.push(v);
+  }
+
+  // O Map guarda a ordem de inserção, e a inserção já veio ordenada.
+  return [...porDia.values()];
+}
+
+/** O total do período inteiro: o que vai na faixa de cima. */
+export function somarVendas(vendas: VendaParaAgrupar[]) {
+  const total = vendas.reduce((s, v) => s + v.value, 0);
+  const investido = vendas.reduce((s, v) => s + v.adSpend, 0);
+  return {
+    qtd: vendas.length,
+    total,
+    investido,
+    // Ticket médio e custo por venda só existem com venda: dividir por zero
+    // daria Infinity na tela, que não é número nenhum.
+    ticket: vendas.length > 0 ? total / vendas.length : null,
+    custoPorVenda: vendas.length > 0 ? investido / vendas.length : null,
+  };
+}
+
+/**
+ * A faixa de `soldAt` que corresponde a um intervalo da tela.
+ *
+ * ── O defeito que isto evita ─────────────────────────────────────────────
+ *
+ * O seletor de período é o mesmo do Meta Ads, e lá o intervalo é ancorado ao
+ * MEIO-DIA UTC — de propósito, pra somar e subtrair dias não escorregar na
+ * hora do horário de verão (ver hojeUTC em meta/insights.ts).
+ *
+ * Mas `soldAt` é `@db.Date`: data pura, que chega e volta como MEIA-NOITE
+ * UTC. Usar o intervalo cru no `where` compararia meia-noite com meio-dia, e
+ * a venda do primeiro dia da faixa ficaria de fora — a de HOJE, inclusive,
+ * em "Hoje" e em "7 dias". A tela não acusaria nada: mostraria uma venda a
+ * menos, calada, justamente a mais recente.
+ *
+ * Então os dois extremos descem pra meia-noite do próprio dia. Como `soldAt`
+ * está sempre exatamente na meia-noite, `gte` e `lte` pegam os dois dias
+ * inteiros.
+ *
+ * Devolve `{}` quando não há começo nem fim ("vida inteira"), pra espalhar
+ * direto no `where` sem condicional na tela.
+ */
+export function faixaDeDatas(intervalo: {
+  de: Date | null;
+  ate: Date | null;
+}): { gte?: Date; lte?: Date } {
+  const chao = (d: Date) =>
+    new Date(
+      Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0),
+    );
+  const faixa: { gte?: Date; lte?: Date } = {};
+  if (intervalo.de) faixa.gte = chao(intervalo.de);
+  if (intervalo.ate) faixa.lte = chao(intervalo.ate);
+  return faixa;
+}

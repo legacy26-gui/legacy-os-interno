@@ -718,6 +718,59 @@ export async function vincularVarias(
   });
 }
 
+/**
+ * Tira a loja do acompanhamento do Meta Ads — ou traz de volta.
+ *
+ * ── Por que isto não é "desvincular" ─────────────────────────────────────
+ *
+ * Desvincular APAGA: insights, criativos, saldo, tudo que foi buscado por
+ * causa daquela conta. Serve pra conta que foi vinculada errado.
+ *
+ * Isto aqui não apaga nada. A loja continua cliente, continua no Financeiro,
+ * e os números continuam no banco — ela só some das telas e dos alertas do
+ * Meta Ads. Serve pra loja que a casa simplesmente não acompanha por aqui, e
+ * que ficava acendendo alerta que ninguém ia tratar. Alerta que ninguém
+ * trata ensina todo mundo a ignorar alerta.
+ *
+ * A varredura continua buscando os números dela de propósito: é barato, e é
+ * o que faz trazer de volta ser um clique sem buraco no histórico.
+ *
+ * Direção, e não gestor: quem tira uma loja do acompanhamento está decidindo
+ * que ninguém mais vai olhar o saldo dela — e isso é decisão de quem
+ * responde pela casa.
+ */
+export async function definirForaDoMetaAds(
+  clientId: string,
+  fora: boolean,
+): Promise<MetaAdsState> {
+  return semQuebrar(async () => {
+    const user = await requireModuleAccess("clientes");
+    if (user.role !== "ADMIN" && user.role !== "GERENTE") {
+      return { erro: "Só a direção tira uma loja do acompanhamento." };
+    }
+    if (!(await clienteEDaCarteira(user, clientId))) {
+      return { erro: "Essa loja não está na sua lista." };
+    }
+
+    const loja = await prisma.client.update({
+      where: { id: clientId },
+      data: { foraDoMetaAds: fora },
+      select: { companyName: true },
+    });
+
+    revalidar(clientId);
+    revalidatePath("/meta-ads");
+    revalidatePath("/meu-dia");
+    revalidatePath("/alertas");
+
+    return {
+      ok: fora
+        ? `${loja.companyName} saiu do acompanhamento. Os números continuam guardados — é só trazer de volta quando quiser.`
+        : `${loja.companyName} voltou pro acompanhamento.`,
+    };
+  });
+}
+
 /** Desfaz um vínculo — e leva junto o que foi buscado por causa dele. */
 export async function desvincularConta(contaId: string): Promise<MetaAdsState> {
   return semQuebrar(async () => {

@@ -1090,3 +1090,75 @@ e o sistema sabe quando foi pago. É decisão de negócio, não de código.
 O que continua existindo é o que já funcionava: a loja sem saldo acende
 vermelho, o botão **"Marquei: link de verba enviado"** tira ela da fila por
 18 horas, e o pedido se fecha sozinho quando o saldo sobe.
+
+## Tirar uma loja do acompanhamento
+
+Nem toda loja da casa é acompanhada por aqui, e uma loja que ninguém olha
+ficava acendendo alerta que ninguém ia tratar. Alerta que ninguém trata
+ensina todo mundo a ignorar alerta.
+
+Na faixa colorida da linha, **Tirar do acompanhamento**. Só a direção.
+
+### O que NÃO é
+
+Não é cancelar o cliente, e não é desvincular a conta.
+
+**Desvincular apaga**: insights, criativos, saldo, tudo que foi buscado por
+causa daquela conta, numa transação só. Serve pra conta vinculada errado.
+
+**Tirar do acompanhamento não apaga nada.** A loja continua cliente,
+continua no Financeiro e no faturamento, e os números continuam no banco.
+
+### Onde ela some
+
+Em cinco lugares, e isso é o ponto: meia retirada é pior que não retirar — a
+loja sumiria da tela e continuaria mandando relatório pro cliente.
+
+- a lista do Meta Ads
+- o alerta de relatório não enviado
+- o relatório automático de segunda
+- o Meu Dia
+- o Copiloto
+
+Todos filtram pelo mesmo pedaço, `CARTEIRA_NO_META` em `lib/carteira.ts`. Se
+nascer um sexto lugar que olha Meta Ads, é esse pedaço que ele usa.
+
+### A varredura continua buscando
+
+De propósito. É barato — a conta já entra no lote paralelo — e é o que faz
+trazer de volta ser um clique sem buraco no histórico. Uma loja que voltasse
+depois de um mês parada teria um mês de nada no gráfico.
+
+### O caminho de volta existe e é visível
+
+Com alguma loja retirada, aparece **Retiradas (n)** no topo. Sem isso,
+"tirar" seria um caminho sem volta na prática: a loja sumiria e ninguém
+saberia onde procurar. O botão só existe pra direção e só quando há alguma —
+botão que leva a lista vazia é ruído.
+
+### Conferido
+
+8 testes: sumiu da lista e do Copiloto, saiu da fila do relatório
+automático, continuou cliente na carteira, os 7 registros de número
+continuaram no banco, e voltou inteira. E o ciclo no navegador: o painel da
+loja ofereceu "Tirar do acompanhamento", ela sumiu, o botão virou
+"Retiradas (1)", a aba mostrou só ela oferecendo "Trazer de volta", e ela
+voltou pra lista.
+
+### O caso que gerou isto
+
+A Rustic aparecia amarela por esta regra em `estado-da-loja.ts`:
+
+```
+if (s.gastoDoPeriodoCents > 0 && s.leads === 0) return pronto("atencao");
+```
+
+Gastou e não trouxe resultado. Só que lá o resultado é **compra no site**, e
+a conta estava configurada pra contar conversa no WhatsApp — que nunca
+acontece. O número certo existia e não era contado.
+
+A correção não foi retirar a loja: foi trocar o tipo de resultado em
+**Ajustes da conta**, que já existe desde 14/11. Fica registrado porque o
+reflexo de esconder a loja que incomoda é mais rápido que o de perguntar por
+que ela incomoda — e aqui o alerta estava certo, era a configuração que
+estava errada.

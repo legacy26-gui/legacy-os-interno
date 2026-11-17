@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { CARTEIRA } from "@/lib/carteira";
+import { CARTEIRA, CARTEIRA_NO_META } from "@/lib/carteira";
 import { estadoDaVenda, diasEntre, type TomDaVenda } from "@/lib/controle-vendas";
 import { TOTAL_DE_ETAPAS } from "@/lib/etapas-implantacao";
 import { formatCurrency } from "@/lib/labels";
@@ -301,7 +301,7 @@ async function relatoriosNaoEnviados(hoje: Date): Promise<Alerta[]> {
 
   const lojas = await prisma.client.findMany({
     where: {
-      ...CARTEIRA,
+      ...CARTEIRA_NO_META,
       // Sem conta vinculada não há número, e sem número não há relatório.
       metaAdAccounts: { some: { active: true } },
       // A ausência do registro É a pendência. Nada a dar baixa, nada a

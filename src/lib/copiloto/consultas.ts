@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { CARTEIRA, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
+import { CARTEIRA_NO_META, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
 import {
   lerIntervalo,
   somar,
@@ -54,7 +54,7 @@ export interface ResultadoDaConsulta {
 /** As lojas da carteira de quem perguntou, com as contas de anúncio. */
 async function lojasDoUsuario(user: PessoaDaCasa) {
   return prisma.client.findMany({
-    where: { ...CARTEIRA, ...escopoDaCarteira(user) },
+    where: { ...CARTEIRA_NO_META, ...escopoDaCarteira(user) },
     orderBy: { companyName: "asc" },
     select: {
       id: true,

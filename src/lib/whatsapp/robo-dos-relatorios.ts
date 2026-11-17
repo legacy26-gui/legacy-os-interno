@@ -1,7 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { CARTEIRA } from "@/lib/carteira";
+import { CARTEIRA_NO_META } from "@/lib/carteira";
 import { segundaDaSemana } from "@/lib/dia-da-casa";
 import { mandarRelatorioNoGrupo } from "./mandar-relatorio";
 import { zapiConfigurado } from "./zapi";
@@ -79,7 +79,7 @@ export async function mandarRelatoriosDaSemana(
   // As lojas da casa que têm grupo. Sem grupo não há pra onde mandar, e
   // listá-las aqui só geraria falha toda semana por algo que não é falha.
   const lojas = await prisma.client.findMany({
-    where: { ...CARTEIRA, whatsappGrupoId: { not: null } },
+    where: { ...CARTEIRA_NO_META, whatsappGrupoId: { not: null } },
     orderBy: { companyName: "asc" },
     select: { id: true, companyName: true },
   });

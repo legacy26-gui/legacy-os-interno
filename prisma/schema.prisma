@@ -481,6 +481,21 @@ model Client {
   ///
   /// Nulo não conta pro índice no Postgres, então loja sem grupo continua
   /// podendo ser quantas forem.
+  /// Tirada do acompanhamento do Meta Ads.
+  ///
+  /// Não é cancelamento nem desvínculo: a loja continua cliente, continua no
+  /// Financeiro, e os números já buscados continuam no banco. Ela só some da
+  /// tela do Meta Ads, dos alertas de saldo, do Meu Dia, do relatório
+  /// automático e do Copiloto.
+  ///
+  /// Existe porque nem toda loja da casa é acompanhada por aqui, e uma loja
+  /// que ninguém olha ficava gerando alerta que ninguém trata — e alerta que
+  /// ninguém trata ensina todo mundo a ignorar alerta.
+  ///
+  /// A varredura CONTINUA buscando os números dela, de propósito: é barato,
+  /// e é o que faz trazer de volta ser um clique sem buraco no histórico.
+  foraDoMetaAds Boolean @default(false)
+
   whatsappGrupoId String? @unique
 
   /// O robô pode desligar anúncio sozinho quando alguém pedir no grupo?

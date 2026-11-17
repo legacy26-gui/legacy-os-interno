@@ -2,7 +2,12 @@ import Link from "next/link";
 import { Megaphone, AlertTriangle, Plus } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
-import { CARTEIRA, escopoDaCarteira, veTodaACarteira } from "@/lib/carteira";
+import {
+  CARTEIRA,
+  CARTEIRA_NO_META,
+  escopoDaCarteira,
+  veTodaACarteira,
+} from "@/lib/carteira";
 import { saldoEmReais, tempoDesde } from "@/lib/meta/saldo";
 import {
   somar,
@@ -38,7 +43,17 @@ import {
 import { BotaoAtualizarTudo } from "./atualizar-tudo";
 import { AtualizarLoja } from "./atualizar-loja";
 import { PuxadorDaLoja } from "./puxador";
-import { Link2, FileBarChart, Wallet, TrendingUp, Users, Target, KeyRound } from "lucide-react";
+import {
+  Link2,
+  FileBarChart,
+  Wallet,
+  TrendingUp,
+  Users,
+  Target,
+  KeyRound,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 
 // Meta Ads: a carteira inteira numa tela — saldo e resultado de cada loja.
 //
@@ -102,12 +117,28 @@ const linhaDe = (tom: TomDaLoja) =>
 export default async function MetaAdsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ periodo?: string; de?: string; ate?: string }>;
+  searchParams: Promise<{
+    periodo?: string;
+    de?: string;
+    ate?: string;
+    retiradas?: string;
+  }>;
 }) {
   const user = await requireModuleAccess("clientes");
   const busca = await searchParams;
 
   const periodo = lerIntervalo(busca, PADRAO_DA_LISTA);
+  // A lista das retiradas é outra tela, pedida pela URL. Só a direção tira e
+  // traz de volta, então só ela precisa enxergar essa lista.
+  const ehDirecao = user.role === "ADMIN" || user.role === "GERENTE";
+  const vendoRetiradas = ehDirecao && busca.retiradas === "1";
+  // Quantas estão fora, pro botão saber se vale aparecer. Consulta barata:
+  // é um count numa coluna com índice de chave primária por trás.
+  const quantasRetiradas = ehDirecao
+    ? await prisma.client.count({
+        where: { ...CARTEIRA, foraDoMetaAds: true, ...escopoDaCarteira(user) },
+      })
+    : 0;
 
   // Buscar os dados dentro de um try: se o banco recusar alguma coisa, a
   // direção vê a MENSAGEM, não a tela preta do Next.
@@ -118,7 +149,7 @@ export default async function MetaAdsPage({
   // fazer algo com ela.
   let dados: Awaited<ReturnType<typeof carregar>>;
   try {
-    dados = await carregar(user, periodo);
+    dados = await carregar(user, periodo, vendoRetiradas);
   } catch (erro) {
     const detalhe = erro instanceof Error ? erro.message : String(erro);
     return (
@@ -339,6 +370,26 @@ export default async function MetaAdsPage({
           >
             <FileBarChart size={15} /> Relatório
           </Link>
+          {/* O caminho de volta pras retiradas. Só aparece pra direção, e só
+              quando existe alguma — botão que leva a uma lista vazia é ruído.
+              Sem ele, "tirar do acompanhamento" seria um caminho sem volta na
+              prática: a loja sumiria e ninguém saberia onde achar. */}
+          {ehDirecao && (vendoRetiradas || quantasRetiradas > 0) && (
+            <Link
+              href={vendoRetiradas ? "/meta-ads" : "/meta-ads?retiradas=1"}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-surface border border-border rounded-lg text-sm font-medium hover:bg-surface-muted"
+            >
+              {vendoRetiradas ? (
+                <>
+                  <Eye size={15} /> Voltar pra lista
+                </>
+              ) : (
+                <>
+                  <EyeOff size={15} /> Retiradas ({quantasRetiradas})
+                </>
+              )}
+            </Link>
+          )}
           <BotaoAtualizarTudo />
         </div>
       </div>
@@ -510,6 +561,8 @@ export default async function MetaAdsPage({
                             tom={tom}
                             temPedidoAberto={l.veredito.pedido !== null}
                             podeAtualizar
+                            foraDoMetaAds={c.foraDoMetaAds}
+                            podeRetirar={ehDirecao}
                           />
                         ) : (
                           <div className={`w-2 h-full min-h-[4.5rem] ${FAIXA_DA_LOJA[tom]}`} />
@@ -682,14 +735,24 @@ export default async function MetaAdsPage({
  * As duas consultas da tela, num lugar só pra poderem ser protegidas por um
  * try/catch sem embrulhar o desenho da página junto.
  */
-async function carregar(user: Parameters<typeof escopoDaCarteira>[0], periodo: Intervalo) {
+async function carregar(
+  user: Parameters<typeof escopoDaCarteira>[0],
+  periodo: Intervalo,
+  // Com ?retiradas=1 a tela mostra SÓ as que foram tiradas do
+  // acompanhamento. Separado e não misturado: a lista do dia a dia tem que
+  // continuar sendo só o que alguém olha, senão retirar não serve pra nada.
+  retiradas = false,
+) {
   const clientes = await prisma.client.findMany({
-    where: { ...CARTEIRA, ...escopoDaCarteira(user) },
+    where: retiradas
+      ? { ...CARTEIRA, foraDoMetaAds: true, ...escopoDaCarteira(user) }
+      : { ...CARTEIRA_NO_META, ...escopoDaCarteira(user) },
     orderBy: { companyName: "asc" },
     select: {
       id: true,
       companyName: true,
       gastoMensalPrevistoCents: true,
+      foraDoMetaAds: true,
       manager: { select: { name: true } },
       // O último pedido de verba, só. O histórico existe no banco e é pra
       // outra pergunta ("essa loja atrasa sempre?"); aqui o que importa é se

@@ -22,6 +22,22 @@ export const CARTEIRA: Prisma.ClientWhereInput = {
   status: { in: ["ATIVO", "PAUSADO", "IMPLANTACAO"] },
 };
 
+/**
+ * A carteira que o Meta Ads acompanha.
+ *
+ * É a carteira inteira MENOS as lojas tiradas do acompanhamento. Existe como
+ * um pedaço só, e não repetido em cada consulta, porque "retirada" tem que
+ * valer em TODO lugar que olha Meta Ads: a lista, os alertas de saldo, o Meu
+ * Dia, o relatório automático e o Copiloto.
+ *
+ * Meia retirada é pior que não retirar: a loja sumiria da tela e continuaria
+ * mandando relatório pro cliente, ou acendendo alerta que ninguém vai tratar.
+ */
+export const CARTEIRA_NO_META: Prisma.ClientWhereInput = {
+  ...CARTEIRA,
+  foraDoMetaAds: false,
+};
+
 // Quem recebe cobrança mensal é a carteira inteira. Quem foi pulado num mês
 // específico sai pela tabela cobrancas_puladas, que depende do mês — por isso
 // não dá pra filtrar aqui.

@@ -2,11 +2,21 @@
 
 import Link from "next/link";
 import { useState, useTransition, useRef } from "react";
-import { BarChart3, FileText, RefreshCw, Send, Undo2, Check } from "lucide-react";
+import {
+  BarChart3,
+  FileText,
+  RefreshCw,
+  Send,
+  Undo2,
+  Check,
+  EyeOff,
+  Eye,
+} from "lucide-react";
 import {
   marcarVerbaEnviada,
   desmarcarVerbaEnviada,
   atualizarLojaAgora,
+  definirForaDoMetaAds,
   type MetaAdsState,
 } from "@/lib/actions/meta-ads";
 import { FAIXA_DA_LOJA, type TomDaLoja } from "@/lib/meta/tons";
@@ -37,12 +47,18 @@ export function PuxadorDaLoja({
   tom,
   temPedidoAberto,
   podeAtualizar,
+  foraDoMetaAds = false,
+  podeRetirar = false,
 }: {
   clientId: string;
   tom: TomDaLoja;
   /** Já existe um link marcado como enviado e esperando a verba. */
   temPedidoAberto: boolean;
   podeAtualizar: boolean;
+  /** Já está fora do acompanhamento? Então a ação é trazer de volta. */
+  foraDoMetaAds?: boolean;
+  /** Só a direção tira loja do acompanhamento. */
+  podeRetirar?: boolean;
 }) {
   const [aberto, setAberto] = useState(false);
   const [estado, setEstado] = useState<MetaAdsState>({});
@@ -151,6 +167,27 @@ export function PuxadorDaLoja({
 
           <Atalho href={`/meta-ads/${clientId}`} icone={BarChart3} texto="Campanhas da loja" />
           <Atalho href={`/clientes/${clientId}`} icone={FileText} texto="Ficha do cliente" />
+
+          {/* Tirar do acompanhamento fica por último e sem destaque: é
+              decisão rara e de direção, não ação do dia a dia. Não apaga
+              nada — ver definirForaDoMetaAds. */}
+          {podeRetirar && (
+            <>
+              <div className="border-t border-border my-0.5" />
+              <Acao
+                icone={foraDoMetaAds ? Eye : EyeOff}
+                texto={
+                  foraDoMetaAds
+                    ? "Trazer de volta pro Meta Ads"
+                    : "Tirar do acompanhamento"
+                }
+                pendente={pendente}
+                onClick={() =>
+                  rodar(() => definirForaDoMetaAds(clientId, !foraDoMetaAds))
+                }
+              />
+            </>
+          )}
 
           {estado.erro && (
             <p className="text-xs text-red-500 px-2.5 py-1.5 max-w-[15rem]">{estado.erro}</p>

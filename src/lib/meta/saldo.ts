@@ -87,6 +87,34 @@ export function tempoDesde(quando: Date, agora = new Date()): string {
 // Está em src/lib/meta/estado-da-loja.ts, que é onde ela pode usar o gasto
 // real da loja. Aqui ficou só a leitura do número.
 
+/**
+ * Encurta e descaracteriza a descrição de cobrança da Meta, pra ela poder
+ * aparecer na tela quando o saldo não foi lido.
+ *
+ * ── Por que mostrar o texto cru ──────────────────────────────────────────
+ *
+ * Porque sem ele o diagnóstico vira adivinhação. "Não deu pra ler o saldo"
+ * não diz se a Meta mandou a descrição de um cartão, uma frase de saldo num
+ * formato novo, ou outra coisa. Com o texto na tela, uma olhada resolve o
+ * que hoje custa uma rodada de palpite.
+ *
+ * ── Por que não mostrar inteiro ──────────────────────────────────────────
+ *
+ * Porque a descrição de cartão carrega os últimos dígitos, e esse é dado de
+ * pagamento de um cliente nosso. Não serve pra fraudar nada sozinho, mas
+ * também não precisa ficar gravado no banco e impresso numa lista que a
+ * equipe inteira abre o dia todo. Qualquer corrida de 4 dígitos ou mais vira
+ * "••••" — o que sobra ("Mastercard ••••") é exatamente o que interessa pro
+ * diagnóstico, e nada do que não interessa.
+ *
+ * O corte em 60 caracteres é pelo mesmo motivo do corte em 300 do
+ * `lastSyncError`: resposta estranha da Meta não pode virar um texto gigante
+ * no meio de uma linha da tabela.
+ */
+export function descricaoSegura(texto: string): string {
+  return texto.replace(/\d{4,}/g, "••••").trim().slice(0, 60);
+}
+
 /** Formato de ID de conta de anúncio da Meta: "act_" e só números depois. */
 export const FORMATO_DA_CONTA = /^act_\d+$/;
 

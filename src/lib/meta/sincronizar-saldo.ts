@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { buscarNaGraph } from "./cliente-graph";
-import { parseSaldoEmCentavos } from "./saldo";
+import { parseSaldoEmCentavos, descricaoSegura } from "./saldo";
 import { problemaDaConta } from "./estado-da-conta";
 
 // Buscar o saldo de uma conta e guardar o que foi lido.
@@ -115,7 +115,7 @@ export async function sincronizarSaldo(
     // Uma frase que não diz qual dos dois é vira aviso permanente que
     // ninguém resolve — exatamente o que aconteceu com a R2.
     const erro = texto
-      ? "A Meta respondeu, mas não deu pra ler o saldo no texto que ela devolveu."
+      ? `a Meta devolveu a cobrança desta conta como "${descricaoSegura(texto)}", que não tem saldo em reais. Conta com cartão E Pix costuma responder assim: a Meta mostra só a forma principal.`
       : "ou falta acesso de administrador nessa conta na Meta, ou ela é no cartão — nesse caso marque 'Cartão' na ficha e o aviso some.";
     await registrarErro(conta.id, erro);
     return { ok: false, erro };

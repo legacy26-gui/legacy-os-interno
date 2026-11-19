@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Users, Check, AlertTriangle } from "lucide-react";
-import { definirGrupoInterno } from "@/lib/actions/whatsapp";
+import { Users, Check, AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  definirGrupoInterno,
+  buscarGruposDaZapi,
+} from "@/lib/actions/whatsapp";
 import type { GrupoNaTela } from "@/lib/whatsapp/ligacao";
 
 // Os grupos onde a IA responde PERGUNTA da equipe.
@@ -21,22 +24,48 @@ import type { GrupoNaTela } from "@/lib/whatsapp/ligacao";
 // outros clientes dentro da conversa de um deles. Por isso os grupos que já
 // são de alguma loja nem aparecem aqui — e o servidor recusa de novo, porque
 // tela se contorna e servidor não.
+//
+// ── Por que esta seção busca os grupos sozinha ───────────────────────────
+//
+// Porque antes ela dependia de alguém ter clicado em "buscar grupos" numa
+// seção ACIMA dela. Quem abria a tela via um título, uma frase e nenhuma
+// opção — e concluía, com razão, que a opção não existia. Foi o que
+// aconteceu com o Guilherme.
+//
+// Uma seção que precisa de um clique em outro lugar pra funcionar é uma
+// seção quebrada, por mais que o texto explique. O botão é dela agora.
 
 export function GruposInternos({
   grupos,
   jaInternos,
 }: {
-  /** Null enquanto ninguém buscou a lista do número. */
+  /** O que a seção de cima já buscou, se buscou. Null quando ninguém buscou. */
   grupos: GrupoNaTela[] | null;
   jaInternos: string[];
 }) {
   const [internos, setInternos] = useState<string[]>(jaInternos);
   const [msg, setMsg] = useState<{ ok?: string; erro?: string }>({});
   const [pendente, comecar] = useTransition();
+  /** A lista que ESTA seção buscou, quando a de cima não tinha buscado. */
+  const [meus, setMeus] = useState<GrupoNaTela[] | null>(null);
+  const [buscando, setBuscando] = useState(false);
+
+  const lista = grupos ?? meus;
+
+  function buscar() {
+    setMsg({});
+    setBuscando(true);
+    comecar(async () => {
+      const r = await buscarGruposDaZapi();
+      setBuscando(false);
+      if (r.ok) setMeus(r.grupos);
+      else setMsg({ erro: r.erro });
+    });
+  }
 
   // Grupo que já é de uma loja não entra na lista: oferecer a opção seria
   // oferecer o acidente.
-  const candidatos = (grupos ?? []).filter((g) => !g.lojaId);
+  const candidatos = (lista ?? []).filter((g) => !g.lojaId);
 
   function alternar(g: GrupoNaTela, querInterno: boolean) {
     setMsg({});
@@ -64,15 +93,33 @@ export function GruposInternos({
         </p>
       </div>
 
-      {grupos === null ? (
-        <p className="text-sm text-foreground-muted">
-          Busque os grupos do número acima pra escolher aqui.
-        </p>
+      {lista === null ? (
+        <button
+          type="button"
+          onClick={buscar}
+          disabled={pendente}
+          className="inline-flex items-center gap-2 px-4 min-h-11 rounded-lg border border-border
+            bg-surface-muted text-sm font-medium hover:bg-border/60 disabled:opacity-50 w-fit"
+        >
+          <RefreshCw size={14} className={buscando ? "animate-spin" : ""} />
+          {buscando ? "Buscando…" : "Buscar os grupos do número"}
+        </button>
       ) : candidatos.length === 0 ? (
-        <p className="text-sm text-foreground-muted">
-          Todos os grupos do número já estão ligados a alguma loja. Grupo de
-          cliente não pode ser interno.
-        </p>
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-foreground-muted">
+            Todos os {lista.length} grupos do número já estão ligados a alguma
+            loja. Grupo de cliente não pode ser interno — a IA listaria as
+            lojas dos outros lá dentro.
+          </p>
+          <button
+            type="button"
+            onClick={buscar}
+            disabled={pendente}
+            className="text-xs text-foreground-muted hover:text-foreground underline w-fit"
+          >
+            Buscar de novo
+          </button>
+        </div>
       ) : (
         <div className="flex flex-col divide-y divide-border">
           {candidatos.map((g) => {

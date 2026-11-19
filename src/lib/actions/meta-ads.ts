@@ -839,6 +839,12 @@ export async function desligarLojaDoMetaAds(
         await tx.metaInsightDaily.deleteMany({ where: { adAccountId: { in: ids } } });
         await tx.metaLifetime.deleteMany({ where: { adAccountId: { in: ids } } });
         await tx.metaAdCreative.deleteMany({ where: { adAccountId: { in: ids } } });
+        // Conjunto e campanha também apontam pra conta e também não têm regra
+        // de exclusão no banco. Sem estas duas linhas, a conta se recusava a
+        // sair e a transação inteira falhava — numa loja com campanha
+        // cadastrada isto nunca funcionou.
+        await tx.metaAdset.deleteMany({ where: { adAccountId: { in: ids } } });
+        await tx.metaCampaign.deleteMany({ where: { adAccountId: { in: ids } } });
         await tx.balanceSnapshot.deleteMany({ where: { adAccountId: { in: ids } } });
         await tx.metaAdAccount.deleteMany({ where: { id: { in: ids } } });
         // Sai também do estado de "retirada": sem conta nenhuma ela não

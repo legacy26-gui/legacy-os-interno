@@ -231,21 +231,109 @@ export async function updateClient(
   redirect(`/clientes/${clientId}`);
 }
 
-export async function deleteClient(clientId: string) {
+export type ExclusaoDeCliente = {
+  erro?: string;
+  /** O tamanho do estrago, pra ser lido ANTES do segundo clique. */
+  precisaConfirmar?: string;
+};
+
+/**
+ * Apaga um cliente — e, com ele, tudo que é dele.
+ *
+ * ── O defeito que isto conserta ──────────────────────────────────────────
+ *
+ * Clicar em excluir numa loja com conta de anúncio dava tela de erro. O
+ * banco recusa apagar um cliente enquanto houver MetaAdAccount apontando pra
+ * ele, e a recusa subia como falha de servidor — sem explicação nenhuma pra
+ * quem clicou.
+ *
+ * ── Por que agora ele avisa antes ────────────────────────────────────────
+ *
+ * Porque "excluir cliente" apaga MUITO mais do que a ficha. Vão junto as
+ * vendas registradas, as receitas, os contratos e todo o histórico de
+ * anúncios. Isso muda número de mês fechado: o Controle de Vendas e o
+ * Financeiro passam a mostrar um passado diferente do que mostravam ontem, e
+ * não há desfazer.
+ *
+ * Quem clica em "excluir" raramente quer isso. Quase sempre quer "este
+ * cliente saiu" — que é o status Cancelado, e esse preserva o histórico. Por
+ * isso a confirmação conta o que vai sumir e diz qual é a alternativa.
+ */
+export async function deleteClient(
+  clientId: string,
+  confirmado = false,
+): Promise<ExclusaoDeCliente> {
   const user = await requireModuleAccess("clientes");
   // Apagar cliente de outro gestor seria o pior caso: some pra todo mundo.
-  if (!(await clienteEDaCarteira(user, clientId))) return;
+  if (!(await clienteEDaCarteira(user, clientId))) {
+    return { erro: "Este cliente não está na sua carteira." };
+  }
 
   const client = await prisma.client.findUnique({
     where: { id: clientId },
-    select: { companyName: true, monthlyValue: true, status: true },
+    select: {
+      companyName: true,
+      monthlyValue: true,
+      status: true,
+      metaAdAccounts: { select: { id: true } },
+    },
   });
+  if (!client) return { erro: "Cliente não encontrado." };
 
-  await prisma.client.delete({ where: { id: clientId } });
+  const contas = client.metaAdAccounts.map((c) => c.id);
+
+  const [vendas, receitas, contratos, dias] = await Promise.all([
+    prisma.clientSale.count({ where: { clientId } }),
+    prisma.revenue.count({ where: { clientId } }),
+    prisma.contract.count({ where: { clientId } }),
+    contas.length
+      ? prisma.metaInsightDaily.count({ where: { adAccountId: { in: contas } } })
+      : Promise.resolve(0),
+  ]);
+
+  if (!confirmado) {
+    const perde: string[] = [];
+    if (vendas) perde.push(`${vendas} venda(s) registrada(s)`);
+    if (receitas) perde.push(`${receitas} lançamento(s) de receita`);
+    if (contratos) perde.push(`${contratos} contrato(s)`);
+    if (contas.length) {
+      perde.push(
+        `${contas.length} conta(s) de anúncio com ${dias} dia(s) de números`,
+      );
+    }
+
+    return {
+      precisaConfirmar:
+        perde.length === 0
+          ? `Apagar ${client.companyName} de vez? Não dá pra desfazer.`
+          : `Apagar ${client.companyName} leva junto: ${perde.join(", ")}. ` +
+            `Os números de meses já fechados vão mudar, e não dá pra desfazer. ` +
+            `Se o cliente só saiu, o status "Cancelado" tira ele das telas e guarda o histórico.`,
+    };
+  }
+
+  // A ordem importa: os filhos da conta de anúncio não têm regra de exclusão
+  // no banco, então é aqui que eles saem. Em transação porque apagar metade
+  // disso deixaria contas de anúncio órfãs e nenhuma tela saberia disso.
+  await prisma.$transaction(
+    async (tx) => {
+      if (contas.length) {
+        await tx.metaInsightDaily.deleteMany({ where: { adAccountId: { in: contas } } });
+        await tx.metaLifetime.deleteMany({ where: { adAccountId: { in: contas } } });
+        await tx.metaAdCreative.deleteMany({ where: { adAccountId: { in: contas } } });
+        await tx.metaAdset.deleteMany({ where: { adAccountId: { in: contas } } });
+        await tx.metaCampaign.deleteMany({ where: { adAccountId: { in: contas } } });
+        await tx.balanceSnapshot.deleteMany({ where: { adAccountId: { in: contas } } });
+        await tx.metaAdAccount.deleteMany({ where: { id: { in: contas } } });
+      }
+      await tx.client.delete({ where: { id: clientId } });
+    },
+    { timeout: 30_000, maxWait: 10_000 },
+  );
 
   // Cliente removido é um churn — só não duplica se ele já tinha virado
   // Cancelado antes (aí o churn já foi contado na hora do cancelamento).
-  if (client && client.status !== "CANCELADO") {
+  if (client.status !== "CANCELADO") {
     await prisma.commercialEvent.create({
       data: {
         empresa: "AGENCIA",
@@ -258,6 +346,8 @@ export async function deleteClient(clientId: string) {
   }
 
   revalidatePath("/clientes");
+  revalidatePath("/meta-ads");
+  revalidatePath("/controle-vendas");
   redirect("/clientes");
 }
 

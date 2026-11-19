@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { atenderMensagemDoGrupo } from "@/lib/whatsapp/atender-grupo";
+import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
 
 // A porta por onde mensagem de grupo entra no sistema.
 //
@@ -107,18 +108,31 @@ export async function POST(
   if (corpo.fromMe === true) {
     return NextResponse.json({ ok: true, ignorado: "minha" });
   }
-  if (corpo.isGroup !== true) {
-    return NextResponse.json({ ok: true, ignorado: "não é grupo" });
-  }
-
-  const grupoId = typeof corpo.phone === "string" ? corpo.phone : null;
+  const de = typeof corpo.phone === "string" ? corpo.phone : null;
   const texto =
     corpo.text && typeof corpo.text.message === "string"
       ? corpo.text.message
       : null;
-  if (!grupoId || !texto?.trim()) {
+  if (!de || !texto?.trim()) {
     return NextResponse.json({ ok: true, ignorado: "sem texto" });
   }
+
+  // ── Privado: a IA atendendo quem é da casa ────────────────────────────
+  //
+  // Antes isto era descartado com "não é grupo". Agora é a porta pela qual a
+  // Giovana pergunta "qual loja minha está sem verba?" do celular. Quem
+  // responde é o mesmo Copiloto da tela, com a carteira de quem escreveu —
+  // e número que não é de ninguém da casa recebe um recado e não aciona a IA.
+  if (corpo.isGroup !== true) {
+    try {
+      const d = await atenderMensagemPrivada({ telefone: de, texto });
+      return NextResponse.json({ ok: true, privado: d.tipo });
+    } catch {
+      return NextResponse.json({ ok: true, privado: "erro" });
+    }
+  }
+
+  const grupoId = de;
 
   try {
     const desfecho = await atenderMensagemDoGrupo({

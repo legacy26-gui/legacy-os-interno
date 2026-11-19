@@ -8,6 +8,7 @@ import { EMPRESAS, EMPRESA_LABELS, empresasPermitidas, veTodasAsEmpresas } from 
 import { UserForm } from "./user-form";
 import { UserRowActions } from "./user-row-actions";
 import { EmpresasDoUsuario } from "./empresas-do-usuario";
+import { WhatsappDoUsuario } from "./whatsapp-do-usuario";
 
 export default async function ConfiguracoesPage() {
   const user = await getCurrentUser();
@@ -60,6 +61,10 @@ export default async function ConfiguracoesPage() {
               <th className="px-5 py-3 font-medium hidden sm:table-cell">E-mail</th>
               <th className="px-5 py-3 font-medium">Nível</th>
               <th className="px-5 py-3 font-medium">Empresas</th>
+              {/* É por este número que a IA sabe de quem é a mensagem que
+                  chega no privado dela — e portanto quais lojas pode
+                  mostrar na resposta. */}
+              <th className="px-5 py-3 font-medium">WhatsApp</th>
               <th className="px-5 py-3 font-medium">Status</th>
               <th className="px-5 py-3 font-medium" />
             </tr>
@@ -77,6 +82,9 @@ export default async function ConfiguracoesPage() {
                     atuais={empresasPermitidas(u.empresas)}
                     rotulos={EMPRESA_LABELS}
                   />
+                </td>
+                <td className="px-5 py-3">
+                  <WhatsappDoUsuario userId={u.id} atual={u.whatsapp} />
                 </td>
                 <td className="px-5 py-3">
                   <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${u.active ? "bg-emerald-500/15 text-emerald-500" : "bg-red-500/15 text-red-500"}`}>

@@ -113,3 +113,64 @@ export async function resetUserPassword(userId: string): Promise<ResetPasswordSt
   revalidatePath("/configuracoes");
   return { tempPassword };
 }
+
+/**
+ * Guarda o WhatsApp de uma pessoa da casa.
+ *
+ * ── Por que este campo existe ────────────────────────────────────────────
+ *
+ * É por ele que a IA sabe de quem é a mensagem que chega no privado dela — e
+ * portanto quais lojas pode mostrar na resposta. Sem número cadastrado, a
+ * pessoa recebe o recado de desconhecido, igual a qualquer um de fora.
+ *
+ * ── Por que só dígitos ───────────────────────────────────────────────────
+ *
+ * Porque o que a Z-API manda são dígitos, e porque o mesmo telefone circula
+ * escrito de cinco maneiras. Guardar "(42) 98812-6561" e comparar com
+ * "554288126561" é a receita de um número cadastrado que nunca casa — e o
+ * sintoma seria a pessoa falando com a IA e recebendo "este é um atendimento
+ * interno", sem ninguém entender por quê.
+ *
+ * O DDI é exigido pelo mesmo motivo: sem ele, "4288126561" poderia ser
+ * brasileiro ou não, e a comparação por sufixo ficaria larga demais.
+ */
+export async function definirWhatsappDoUsuario(
+  userId: string,
+  numero: string,
+): Promise<{ ok?: string; erro?: string }> {
+  const quem = await getCurrentUser();
+  if (quem.role !== "ADMIN") return { erro: "Só o administrador mexe nisso." };
+
+  const digitos = numero.replace(/\D/g, "");
+
+  if (!digitos) {
+    await prisma.user.update({ where: { id: userId }, data: { whatsapp: null } });
+    revalidatePath("/configuracoes");
+    return { ok: "Número removido. Esta pessoa não fala mais com a IA." };
+  }
+
+  // 12 a 13 dígitos: 55 + DDD + 8 ou 9 do número.
+  if (digitos.length < 12 || digitos.length > 13) {
+    return {
+      erro: "Põe com DDI e DDD, só números: 5542988126561.",
+    };
+  }
+  if (!digitos.startsWith("55")) {
+    return { erro: "O número precisa começar com 55 (DDI do Brasil)." };
+  }
+
+  const jaEDeOutro = await prisma.user.findFirst({
+    where: { whatsapp: digitos, id: { not: userId } },
+    select: { name: true },
+  });
+  if (jaEDeOutro) {
+    return { erro: `Este número já é da ${jaEDeOutro.name}.` };
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { whatsapp: digitos },
+  });
+  revalidatePath("/configuracoes");
+  return { ok: "Número guardado. Esta pessoa já pode falar com a IA." };
+}

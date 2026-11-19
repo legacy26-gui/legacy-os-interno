@@ -28,9 +28,18 @@ enum Empresa {
 }
 
 model User {
-  id                 String    @id @default(cuid())
-  name               String
-  email              String    @unique
+  id    String @id @default(cuid())
+  name  String
+  email String @unique
+
+  /// O WhatsApp pessoal, pra IA saber de quem é a mensagem que chega no
+  /// privado dela. Só dígitos com DDI e DDD (5542988126561).
+  ///
+  /// Único de propósito: dois colaboradores com o mesmo número fariam a
+  /// pergunta de um ser respondida com a carteira do outro — e a busca
+  /// escolheria qual arbitrariamente, o que é o pior tipo de erro: o que
+  /// acerta na maioria das vezes.
+  whatsapp           String?   @unique
   passwordHash       String
   role               Role
   active             Boolean   @default(true)
@@ -61,6 +70,7 @@ model User {
   clientesConferidos   ClienteConferido[]     @relation("QuemConferiu")
   relatoriosEnviados   RelatorioEnviado[]     @relation("QuemMandouRelatorio")
   relatoriosDecididos  RelatorioParaAprovar[] @relation("QuemDecidiuRelatorio")
+  conversaDoCopiloto   ConversaDoCopiloto?
   studioArtesCriadas   StudioArte[]           @relation("StudioCriou")
   studioArtesRevisadas StudioArte[]           @relation("StudioRevisou")
   resgatesFeitos       AcaoDeResgate[]        @relation("QuemResgatou")
@@ -230,6 +240,30 @@ model RelatorioParaAprovar {
   @@unique([clientId, semana])
   @@index([estado, semana])
   @@map("relatorios_para_aprovar")
+}
+
+/// A conversa de uma pessoa da casa com a IA no privado do WhatsApp.
+///
+/// Uma linha por pessoa, sobrescrita: não é histórico pra consultar, é a
+/// memória curta que faz "e a outra loja?" ter sentido. Conversa de chat não
+/// é registro contábil, e guardar tudo pra sempre seria guardar os números
+/// das lojas em mais um lugar sem ninguém precisar deles ali.
+model ConversaDoCopiloto {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Os últimos turnos, em JSON: [{ de: "gestor" | "copiloto", texto }].
+  turnos Json @default("[]")
+
+  /// A ação que a IA propôs e espera um "confirma" pra fazer.
+  /// Null quando não há nada pendente. Ver atender-privado.ts.
+  acaoPendente Json?
+  propostaEm   DateTime?
+
+  atualizadoEm DateTime @updatedAt
+
+  @@map("conversas_do_copiloto")
 }
 
 model ClienteConferido {

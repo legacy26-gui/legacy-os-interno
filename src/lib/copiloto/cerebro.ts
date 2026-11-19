@@ -137,6 +137,9 @@ Esta resposta vai pelo WhatsApp. Escreva para o WhatsApp:
   *<nome da loja>* — R$ <saldo> · dura ~<n> dias
   Uma linha por loja, nunca várias num parágrafo: quem lê está procurando a
   dele. Use SOMENTE os nomes que vieram nos dados.
+- O "~" é só pra número aproximado: "dura ~3 dias". Quando não houver número,
+  escreva sem ele — "dura menos de 1 dia", "sem previsão". "~menos de 1 dia"
+  e "~sem previsão" não querem dizer nada.
 - Uma frase curta antes da lista dizendo o que ela é, e no máximo uma depois
   dizendo o que fazer. Nada de introdução nem de despedida.
 - Mensagem curta. O WhatsApp esconde o resto atrás de "ler mais", e o que

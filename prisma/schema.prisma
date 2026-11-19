@@ -42,29 +42,30 @@ model User {
   updatedAt          DateTime  @updatedAt
 
   employee             Employee?
-  assignedTasks        Task[]             @relation("TaskAssignee")
-  ownedLeads           Lead[]             @relation("LeadOwner")
+  assignedTasks        Task[]                 @relation("TaskAssignee")
+  ownedLeads           Lead[]                 @relation("LeadOwner")
   clientHistories      ClientHistory[]
   expensesLogged       Expense[]
-  assignedTickets      SupportTicket[]    @relation("TicketAssignee")
-  managedClients       Client[]           @relation("ClientManager")
-  dailyReviews         DailyReview[]      @relation("DailyReviewer")
-  weeklyReviews        WeeklyReview[]     @relation("WeeklyReviewer")
-  campaignChanges      CampaignChange[]   @relation("ChangeResponsible")
+  assignedTickets      SupportTicket[]        @relation("TicketAssignee")
+  managedClients       Client[]               @relation("ClientManager")
+  dailyReviews         DailyReview[]          @relation("DailyReviewer")
+  weeklyReviews        WeeklyReview[]         @relation("WeeklyReviewer")
+  campaignChanges      CampaignChange[]       @relation("ChangeResponsible")
   playbooks            Playbook[]
-  agendaItems          AgendaItem[]       @relation("AgendaOwner")
-  salesRegistered      ClientSale[]       @relation("SaleCreator")
+  agendaItems          AgendaItem[]           @relation("AgendaOwner")
+  salesRegistered      ClientSale[]           @relation("SaleCreator")
   pushSubscriptions    PushSubscription[]
-  gravacoes            Gravacao[]         @relation("GravacaoRegistrada")
-  etapasConcluidas     OnboardingEtapa[]  @relation("EtapaConcluida")
+  gravacoes            Gravacao[]             @relation("GravacaoRegistrada")
+  etapasConcluidas     OnboardingEtapa[]      @relation("EtapaConcluida")
   alertas              AlertaEstado[]
-  clientesConferidos   ClienteConferido[] @relation("QuemConferiu")
-  relatoriosEnviados   RelatorioEnviado[] @relation("QuemMandouRelatorio")
-  studioArtesCriadas   StudioArte[]       @relation("StudioCriou")
-  studioArtesRevisadas StudioArte[]       @relation("StudioRevisou")
-  resgatesFeitos       AcaoDeResgate[]    @relation("QuemResgatou")
-  verbasPedidas        PedidoDeVerba[]    @relation("VerbaPedidaPor")
-  metaAcoes            MetaAcao[]         @relation("MetaAcaoFeitaPor")
+  clientesConferidos   ClienteConferido[]     @relation("QuemConferiu")
+  relatoriosEnviados   RelatorioEnviado[]     @relation("QuemMandouRelatorio")
+  relatoriosDecididos  RelatorioParaAprovar[] @relation("QuemDecidiuRelatorio")
+  studioArtesCriadas   StudioArte[]           @relation("StudioCriou")
+  studioArtesRevisadas StudioArte[]           @relation("StudioRevisou")
+  resgatesFeitos       AcaoDeResgate[]        @relation("QuemResgatou")
+  verbasPedidas        PedidoDeVerba[]        @relation("VerbaPedidaPor")
+  metaAcoes            MetaAcao[]             @relation("MetaAcaoFeitaPor")
 
   @@map("users")
 }
@@ -179,6 +180,56 @@ model RelatorioEnviado {
   @@unique([clientId, semana])
   @@index([semana])
   @@map("relatorios_enviados")
+}
+
+enum EstadoDaAprovacao {
+  PENDENTE
+  APROVADO
+  RECUSADO
+}
+
+/// Relatório que o robô da segunda NÃO mandou sozinho, à espera de gente.
+///
+/// A regra é do Guilherme: custo por lead abaixo de R$ 12 sai automático;
+/// de R$ 12 pra cima passa pela aprovação da Andrielli. Ver
+/// src/lib/whatsapp/decidir-envio.ts, que é onde a regra mora.
+///
+/// Existe uma linha por loja por semana, e ela é o que TIRA a loja da fila
+/// do robô: sem isso a loja cara seria reavaliada de cinco em cinco minutos
+/// a manhã inteira e viraria uma fila de aprovações repetidas.
+model RelatorioParaAprovar {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  /// A segunda-feira da semana, igual à de RelatorioEnviado.
+  semana DateTime @db.Date
+
+  /// O custo por lead que segurou o relatório, em centavos.
+  /// Null quando não houve lead nenhum — que é outro motivo, não "custo zero".
+  cplCents Int?
+
+  /// Gasto e leads do período, pra decidir sem precisar abrir o relatório.
+  spendCents Int @default(0)
+  leads      Int @default(0)
+
+  /// Por que não saiu sozinho: "cpl-alto", "sem-lead" ou "sem-gasto".
+  motivoDaEspera String
+
+  estado EstadoDaAprovacao @default(PENDENTE)
+
+  criadoEm   DateTime  @default(now())
+  decididoEm DateTime?
+
+  decididoPorId String?
+  decididoPor   User?   @relation("QuemDecidiuRelatorio", fields: [decididoPorId], references: [id], onDelete: SetNull)
+
+  /// O que a pessoa escreveu ao recusar.
+  observacao String?
+
+  @@unique([clientId, semana])
+  @@index([estado, semana])
+  @@map("relatorios_para_aprovar")
 }
 
 model ClienteConferido {
@@ -541,6 +592,7 @@ model Client {
   conferencias          ClienteConferido[]
   relatoriosEnviados    RelatorioEnviado[]
   tentativasDeRelatorio TentativaDeRelatorio[]
+  relatoriosParaAprovar RelatorioParaAprovar[]
   studioMarca           StudioMarca?
   studioArtes           StudioArte[]
   resgates              AcaoDeResgate[]

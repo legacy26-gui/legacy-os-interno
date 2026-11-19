@@ -5,6 +5,9 @@ import { CARTEIRA_NO_META } from "@/lib/carteira";
 import { segundaDaSemana } from "@/lib/dia-da-casa";
 import { mandarRelatorioNoGrupo } from "./mandar-relatorio";
 import { zapiConfigurado } from "./zapi";
+import { montarRelatorio } from "@/lib/meta/relatorio";
+import { lerIntervalo, PADRAO_DO_RELATORIO } from "@/lib/meta/insights";
+import { decidirEnvio, type MotivoDaEspera } from "./decidir-envio";
 
 // O robô que manda os relatórios da semana, segunda de manhã.
 //
@@ -48,6 +51,8 @@ export interface ResultadoDaRodada {
   pulou?: "zapi-desligada" | "nao-e-segunda" | "nada-pendente";
   mandados: string[];
   falharam: { loja: string; erro: string }[];
+  /** Lojas que ficaram esperando aprovação, com o motivo. */
+  paraAprovar: { loja: string; motivo: MotivoDaEspera }[];
   /** Quantas lojas ainda faltam depois desta rodada. */
   faltam: number;
 }
@@ -71,7 +76,7 @@ export async function mandarRelatoriosDaSemana(
   agora = new Date(),
 ): Promise<ResultadoDaRodada> {
   if (!zapiConfigurado()) {
-    return { pulou: "zapi-desligada", mandados: [], falharam: [], faltam: 0 };
+    return { pulou: "zapi-desligada", mandados: [], falharam: [], paraAprovar: [], faltam: 0 };
   }
 
   const semana = segundaDaSemana(agora);
@@ -84,11 +89,11 @@ export async function mandarRelatoriosDaSemana(
     select: { id: true, companyName: true },
   });
   if (lojas.length === 0) {
-    return { pulou: "nada-pendente", mandados: [], falharam: [], faltam: 0 };
+    return { pulou: "nada-pendente", mandados: [], falharam: [], paraAprovar: [], faltam: 0 };
   }
 
   const ids = lojas.map((l) => l.id);
-  const [jaForam, tentativas] = await Promise.all([
+  const [jaForam, tentativas, esperando] = await Promise.all([
     prisma.relatorioEnviado.findMany({
       where: { clientId: { in: ids }, semana },
       select: { clientId: true },
@@ -97,27 +102,73 @@ export async function mandarRelatoriosDaSemana(
       where: { clientId: { in: ids }, semana },
       select: { clientId: true, tentativas: true },
     }),
+    // Quem já está na mão de gente — pendente, aprovado ou recusado — sai da
+    // fila do robô. É isto que impede a loja cara de ser reavaliada a cada
+    // rodada e virar uma pilha de aprovações da mesma semana.
+    prisma.relatorioParaAprovar.findMany({
+      where: { clientId: { in: ids }, semana },
+      select: { clientId: true },
+    }),
   ]);
 
   const prontas = new Set(jaForam.map((r) => r.clientId));
   const quantasTentou = new Map(
     tentativas.map((t) => [t.clientId, t.tentativas]),
   );
+  const naMaoDeGente = new Set(esperando.map((e) => e.clientId));
 
   const fila = lojas.filter(
     (l) =>
       !prontas.has(l.id) &&
+      !naMaoDeGente.has(l.id) &&
       (quantasTentou.get(l.id) ?? 0) < TETO_DE_TENTATIVAS,
   );
   if (fila.length === 0) {
-    return { pulou: "nada-pendente", mandados: [], falharam: [], faltam: 0 };
+    return { pulou: "nada-pendente", mandados: [], falharam: [], paraAprovar: [], faltam: 0 };
   }
 
   const desta = fila.slice(0, POR_RODADA);
   const mandados: string[] = [];
   const falharam: { loja: string; erro: string }[] = [];
+  const paraAprovar: { loja: string; motivo: MotivoDaEspera }[] = [];
+  const periodo = lerIntervalo({ periodo: "7" }, PADRAO_DO_RELATORIO);
 
   for (const [i, loja] of desta.entries()) {
+    // ── A bifurcação: sai sozinho ou espera gente? ──────────────────────
+    //
+    // Vem ANTES da pausa e antes de contar tentativa, de propósito. Olhar o
+    // custo por lead é consulta ao nosso banco, não mensagem no WhatsApp:
+    // não gasta a cota do chip e não é "tentativa" de nada. Pausar seis
+    // segundos antes de uma leitura que não manda mensagem seria jogar
+    // tempo de função fora, e contar tentativa empurraria a loja pro teto
+    // sem ela nunca ter sido tentada de verdade.
+    const numeros = await montarRelatorio(loja.id, periodo);
+
+    // `temDados` falso é a loja que não teve leitura boa da Meta. Esta
+    // decisão não é dela: deixa seguir pro caminho normal, que já falha com
+    // a mensagem certa ("sairia zerado") e já conta tentativa.
+    if (numeros?.temDados) {
+      const decisao = decidirEnvio(numeros.cplTotal, numeros.total.spendCents);
+      if (decisao.tipo === "aprovar") {
+        await prisma.relatorioParaAprovar.upsert({
+          where: { clientId_semana: { clientId: loja.id, semana } },
+          create: {
+            clientId: loja.id,
+            semana,
+            cplCents: numeros.cplTotal,
+            spendCents: numeros.total.spendCents,
+            leads: numeros.total.leads,
+            motivoDaEspera: decisao.motivo,
+          },
+          // Já existe: não mexe. A decisão de quem olhou vale mais que a
+          // releitura de uma rodada posterior.
+          update: {},
+        });
+        paraAprovar.push({ loja: loja.companyName, motivo: decisao.motivo });
+        continue;
+      }
+    }
+
     // A pausa vem ANTES da mensagem, menos na primeira. Assim a rodada não
     // gasta tempo de função esperando depois da última, que é tempo jogado
     // fora — a próxima rodada já está a cinco minutos de distância.
@@ -157,7 +208,7 @@ export async function mandarRelatoriosDaSemana(
     }
   }
 
-  return { mandados, falharam, faltam: fila.length - desta.length };
+  return { mandados, falharam, paraAprovar, faltam: fila.length - desta.length };
 }
 
 /**

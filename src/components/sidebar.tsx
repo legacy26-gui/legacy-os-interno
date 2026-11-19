@@ -9,7 +9,7 @@ import {
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
   Trophy, Video, Car, BellRing, TrendingUp, Megaphone, Sparkles,
-  PanelLeftClose, PanelLeftOpen,
+  PanelLeftClose, PanelLeftOpen, CheckCheck,
 } from "lucide-react";
 import type { Empresa, Role } from "@/generated/prisma/enums";
 import { canAccessModule, moduleServesEmpresa, type ModuleKey } from "@/lib/permissions";
@@ -53,6 +53,10 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
       { href: "/controle-vendas", label: "Controle de Vendas", icon: TrendingUp, module: "gestao-contas" },
       { href: "/meta-ads", label: "Meta Ads", icon: Megaphone, module: "clientes" },
+      // Só a direção entra (a tela redireciona quem não vê a casa inteira),
+      // e fica junto do Meta Ads porque é sobre os números dele que se
+      // decide o que vai pro grupo do cliente.
+      { href: "/relatorios/aprovar", label: "Aprovar Relatórios", icon: CheckCheck, module: "gestao-contas" },
       // Logo abaixo do Meta Ads porque é sobre os números dele que se
       // pergunta, e porque quem abre um costuma querer o outro.
       { href: "/copiloto", label: "Copiloto", icon: Bot, module: "clientes" },

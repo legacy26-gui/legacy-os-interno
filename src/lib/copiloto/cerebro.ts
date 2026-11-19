@@ -105,6 +105,44 @@ Regras que não se quebram:
 - Recomende no máximo 3 ações de uma vez. Lista grande ninguém executa.`;
 
 /**
+ * O que muda quando a resposta vai pro WhatsApp.
+ *
+ * ── Por que não serve a mesma instrução da tela ──────────────────────────
+ *
+ * O exemplo abaixo usa <marcadores>, e não nomes de loja de verdade, por um
+ * motivo que custou uma investigação: um nome real escrito aqui aparece em
+ * TODO prompt, inclusive no de quem não tem aquela loja na carteira. Além de
+ * confundir quem for depurar, é um empurrãozinho pro modelo citar uma loja
+ * que não é da pessoa.
+ *
+ * Porque o WhatsApp não é um navegador. Dois asteriscos não viram negrito lá
+ * — viram dois asteriscos na cara de quem lê. Tabela não existe. E a
+ * mensagem comprida aparece cortada atrás de um "ler mais", que ninguém
+ * abre: a informação que importa tem que caber antes do corte.
+ *
+ * ── Uma linha por loja ───────────────────────────────────────────────────
+ *
+ * Pedido do Guilherme, e ele tem razão. A resposta em texto corrido ("a
+ * Bravos está com R$ 40, a Podium com R$ 120 e a Real...") obriga quem lê a
+ * garimpar o nome da loja dele no meio do parágrafo. Uma linha por loja se
+ * varre com o olho, e é assim que se usa uma lista dessas: procurando a sua.
+ */
+const COMO_FALAR_NO_WHATSAPP = `
+Esta resposta vai pelo WhatsApp. Escreva para o WhatsApp:
+- Negrito é com UM asterisco: *assim*. Dois asteriscos não viram negrito lá,
+  aparecem como asterisco na tela.
+- Nada de tabela, de cabeçalho com # e de bloco de código.
+- Quando a resposta for sobre VÁRIAS lojas, escreva UMA LINHA POR LOJA, com o
+  nome da loja em negrito no começo, neste formato:
+  *<nome da loja>* — R$ <saldo> · dura ~<n> dias
+  Uma linha por loja, nunca várias num parágrafo: quem lê está procurando a
+  dele. Use SOMENTE os nomes que vieram nos dados.
+- Uma frase curta antes da lista dizendo o que ela é, e no máximo uma depois
+  dizendo o que fazer. Nada de introdução nem de despedida.
+- Mensagem curta. O WhatsApp esconde o resto atrás de "ler mais", e o que
+  fica escondido é como se não tivesse sido dito.`;
+
+/**
  * Primeira chamada: entender a pergunta e escolher o que buscar.
  */
 async function escolherConsulta(
@@ -175,12 +213,15 @@ Campos que não se aplicam vão como null.`,
 /**
  * Segunda chamada: escrever a resposta em cima do que o banco devolveu.
  */
+export type Canal = "tela" | "whatsapp";
+
 async function escreverResposta(
   pergunta: string,
   historico: Turno[],
   oQueFoi: string,
   dados: unknown,
   aviso: string | undefined,
+  canal: Canal,
 ): Promise<z.infer<typeof RespostaDoCopiloto>> {
   const conversa = historico
     .slice(-6)
@@ -195,7 +236,8 @@ async function escreverResposta(
   const cortado = comoTexto.length > CORTE;
 
   const r = await gerarJson({
-    system: COMO_FALAR,
+    system:
+      canal === "whatsapp" ? COMO_FALAR + COMO_FALAR_NO_WHATSAPP : COMO_FALAR,
     user: [
       conversa ? `Conversa até agora:\n${conversa}\n` : "",
       `Pergunta do gestor: ${pergunta}`,
@@ -234,6 +276,7 @@ export async function perguntar(
   pergunta: string,
   historico: Turno[],
   lojas: string[],
+  canal: Canal = "tela",
 ): Promise<RespostaPronta> {
   const escolha = await escolherConsulta(pergunta, historico, lojas);
 
@@ -244,6 +287,7 @@ export async function perguntar(
       "nada — a pergunta não precisa de dado do sistema",
       null,
       escolha.porQueNenhuma ?? undefined,
+      canal,
     );
     return { resposta: r.resposta, acoes: r.acoes, fonte: null };
   }
@@ -267,6 +311,7 @@ export async function perguntar(
     resultado.oQueFoi,
     resultado.dados,
     resultado.aviso,
+    canal,
   );
 
   return { resposta: r.resposta, acoes: r.acoes, fonte: resultado.oQueFoi };

@@ -192,7 +192,7 @@ export async function atenderMensagemPrivada(
     return { tipo: "teto", userId: pessoa.id };
   }
 
-  const r = await responderComoPessoa(pessoa, m.texto, historico);
+  const r = await responderComoPessoa(pessoa, m.texto, historico, "whatsapp");
 
   if (r.erro !== undefined || r.resposta === undefined) {
     const erro = r.erro ?? "não veio resposta.";

@@ -292,6 +292,30 @@ model MensagemTratada {
   @@map("mensagens_tratadas")
 }
 
+/// Grupo do WhatsApp onde a IA responde pergunta da EQUIPE.
+///
+/// ── Por que isto é uma lista explícita, e não um sim-ou-não ─────────────
+///
+/// Porque o estrago do contrário é grave e silencioso. Se a IA respondesse
+/// pergunta em qualquer grupo, bastaria alguém perguntar "quais lojas estão
+/// sem verba?" no grupo de um cliente pra ela listar as lojas dos outros
+/// clientes ali dentro — nomes, gastos e resultados de quem não tem nada a
+/// ver com aquela conversa.
+///
+/// Então ela só responde onde foi explicitamente autorizada, e a autorização
+/// é por grupo. Um grupo novo nasce fora desta lista, como deve ser.
+model GrupoInterno {
+  /// O id do grupo na Z-API, como "120363396517254902-group".
+  grupoId String @id
+
+  /// O nome, só pra tela não mostrar um id cru.
+  nome String
+
+  criadoEm DateTime @default(now())
+
+  @@map("grupos_internos")
+}
+
 model ClienteConferido {
   id       String @id @default(cuid())
   clientId String

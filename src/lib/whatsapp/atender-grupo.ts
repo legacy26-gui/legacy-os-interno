@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { enviarTexto } from "./zapi";
 import { entenderPedido, type AnuncioConhecido } from "./entender-pedido";
 import { foiMencionado, semAMarcacao } from "./mencao";
+import { acharPessoaPeloNumero } from "./atender-privado";
+import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
 
 // O que o robô faz quando alguém escreve no grupo de uma loja.
@@ -55,6 +57,10 @@ export interface MensagemDoGrupo {
 export type Desfecho =
   /** Grupo que não é de nenhuma loja — nem foi lido. */
   | { tipo: "grupo-desconhecido" }
+  /** Grupo interno da agência: a IA respondeu uma pergunta da equipe. */
+  | { tipo: "respondeu-interno"; userId: string }
+  /** Grupo interno, mas não dava pra saber de quem é a pergunta. */
+  | { tipo: "interno-sem-dono" }
   /** Ninguém marcou o robô. O caso de quase toda mensagem do grupo. */
   | { tipo: "sem-mencao"; clientId: string }
   /** A loja não autorizou o robô a desligar sozinho. */
@@ -79,6 +85,22 @@ const MAXIMO_NA_PERGUNTA = 5;
 export async function atenderMensagemDoGrupo(
   m: MensagemDoGrupo,
 ): Promise<Desfecho> {
+  // ── 0. É um grupo INTERNO da agência? ─────────────────────────────────
+  //
+  // Aqui a conversa é outra: ninguém pede pra desligar carro, a equipe
+  // pergunta sobre as lojas. Quem responde é o Copiloto, com a carteira de
+  // QUEM ESCREVEU — descoberta pelo telefone dele dentro do grupo.
+  //
+  // A lista de grupos internos é explícita, e esta é a trava mais importante
+  // deste arquivo depois do @: se a IA respondesse pergunta em qualquer
+  // grupo, bastaria alguém perguntar "quais lojas estão sem verba?" no grupo
+  // de um cliente pra ela listar as lojas dos OUTROS clientes ali dentro.
+  const interno = await prisma.grupoInterno.findUnique({
+    where: { grupoId: m.grupoId },
+    select: { grupoId: true },
+  });
+  if (interno) return atenderNoGrupoInterno(m);
+
   // ── 1. O grupo é de alguma loja? ──────────────────────────────────────
   const loja = await prisma.client.findFirst({
     where: { whatsappGrupoId: m.grupoId },
@@ -190,6 +212,72 @@ export async function atenderMensagemDoGrupo(
     adId: objeto.objetoId,
     nome: objeto.nome,
   };
+}
+
+/**
+ * A IA respondendo a equipe dentro de um grupo interno.
+ *
+ * ── Por que a carteira é de quem ESCREVEU ────────────────────────────────
+ *
+ * Porque é a pergunta dela. Se a Giovana pergunta "quais lojas minhas estão
+ * sem verba?", a resposta certa é sobre as lojas da Giovana — num grupo ou no
+ * privado, dá no mesmo. Usar a carteira "do grupo" não existe: grupo não tem
+ * carteira.
+ *
+ * Consequência que vale saber: a resposta aparece pra TODOS do grupo. Num
+ * grupo interno isso é o esperado — é a equipe. E é mais um motivo pra a
+ * lista de grupos internos ser explícita.
+ *
+ * ── Por que também exige o @ ─────────────────────────────────────────────
+ *
+ * Mesma razão do grupo de loja, e mais uma: grupo interno tem conversa o dia
+ * inteiro, e uma IA que responde tudo que parece pergunta vira ruído — e cada
+ * palpite dela custa duas chamadas ao modelo.
+ */
+async function atenderNoGrupoInterno(m: MensagemDoGrupo): Promise<Desfecho> {
+  if (!foiMencionado(m.texto, m.numeroDoRobo, m.mencionados)) {
+    return { tipo: "interno-sem-dono" };
+  }
+
+  // Quem escreveu, pelo telefone dele dentro do grupo. Sem telefone ou sem
+  // cadastro não há carteira pra usar — e responder com a de outra pessoa
+  // seria o erro exato que todas estas travas existem pra evitar.
+  const pessoa = m.telefone ? await acharPessoaPeloNumero(m.telefone) : null;
+
+  if (!pessoa) {
+    await responder(
+      m.grupoId,
+      "Oi! Eu respondo sobre as lojas, mas só pra quem está cadastrado no " +
+        "Legacy OS — e não reconheci este número. Fala com o Guilherme.",
+    );
+    return { tipo: "interno-sem-dono" };
+  }
+
+  const r = await responderComoPessoa(
+    pessoa,
+    semAMarcacao(m.texto),
+    [],
+    "whatsapp",
+  );
+
+  if (r.erro || r.resposta === undefined) {
+    await responder(
+      m.grupoId,
+      `Não consegui responder agora: ${r.erro ?? "não veio resposta."}`,
+    );
+    return { tipo: "interno-sem-dono" };
+  }
+
+  // Ação proposta vira texto, não botão: executar daqui ainda não existe.
+  const acoes = r.acoes ?? [];
+  await responder(
+    m.grupoId,
+    r.resposta +
+      (acoes.length > 0
+        ? "\n\nAbre o Legacy OS pra executar o que eu sugeri."
+        : ""),
+  );
+  return { tipo: "respondeu-interno", userId: pessoa.id };
 }
 
 /**

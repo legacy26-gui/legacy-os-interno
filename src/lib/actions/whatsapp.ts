@@ -240,3 +240,63 @@ export async function verEnvioAutomatico(): Promise<{
   if (segredo) return { ligado: true, sugestao: null };
   return { ligado: false, sugestao: randomBytes(24).toString("base64url") };
 }
+
+/**
+ * Marca (ou desmarca) um grupo como interno da agência.
+ *
+ * ── O que isto liga, e por que é decisão de ADMIN ────────────────────────
+ *
+ * Num grupo interno a IA responde PERGUNTA da equipe — "quais lojas estão
+ * sem verba?" — com a carteira de quem escreveu. Num grupo de cliente ela
+ * nunca faz isso, e o motivo é direto: a resposta listaria as lojas dos
+ * outros clientes dentro da conversa de um deles.
+ *
+ * Por isso a lista é explícita e nasce vazia. Um grupo novo não vira interno
+ * por descuido; alguém tem que vir aqui e dizer que é.
+ */
+export async function definirGrupoInterno(
+  grupoId: string,
+  nome: string,
+  interno: boolean,
+): Promise<WhatsappState> {
+  const user = await requireModuleAccess("configuracoes");
+  if (user.role !== "ADMIN") {
+    return { erro: "Só o administrador define grupo interno." };
+  }
+
+  if (!interno) {
+    await prisma.grupoInterno.deleteMany({ where: { grupoId } });
+    revalidatePath("/configuracoes/whatsapp");
+    return { ok: "A IA não responde mais perguntas neste grupo." };
+  }
+
+  // Grupo que já é de uma loja não pode virar interno: seria exatamente o
+  // vazamento que a lista existe pra impedir. A tela já esconde esses, e esta
+  // conferência é a que vale — tela se contorna, servidor não.
+  const deLoja = await prisma.client.findFirst({
+    where: { whatsappGrupoId: grupoId },
+    select: { companyName: true },
+  });
+  if (deLoja) {
+    return {
+      erro: `Este grupo é o da ${deLoja.companyName}. Grupo de cliente não pode ser interno — a IA listaria as lojas dos outros lá dentro.`,
+    };
+  }
+
+  await prisma.grupoInterno.upsert({
+    where: { grupoId },
+    create: { grupoId, nome: nome.slice(0, 200) },
+    update: { nome: nome.slice(0, 200) },
+  });
+  revalidatePath("/configuracoes/whatsapp");
+  return {
+    ok: "Pronto. A equipe já pode marcar a IA com @ neste grupo e perguntar.",
+  };
+}
+
+/** Os grupos marcados como internos, pra tela saber quais estão ligados. */
+export async function listarGruposInternos(): Promise<string[]> {
+  await requireModuleAccess("configuracoes");
+  const linhas = await prisma.grupoInterno.findMany({ select: { grupoId: true } });
+  return linhas.map((l) => l.grupoId);
+}

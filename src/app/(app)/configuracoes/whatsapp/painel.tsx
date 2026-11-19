@@ -19,6 +19,7 @@ import {
   definirDesligaAuto,
 } from "@/lib/actions/whatsapp";
 import type { EstadoDaLigacao, GrupoNaTela } from "@/lib/whatsapp/ligacao";
+import { GruposInternos } from "./grupos-internos";
 import { definirGrupoDoWhatsapp } from "@/lib/actions/meta-ads";
 
 interface Loja {
@@ -35,6 +36,7 @@ export function PainelDoWhatsapp({
   webhook,
   envioAutomatico,
   lojas: lojasIniciais,
+  gruposInternos,
 }: {
   estado: EstadoDaLigacao;
   variaveis: { nome: string; onde: string }[];
@@ -42,6 +44,8 @@ export function PainelDoWhatsapp({
   /** O relatório automático de segunda depende do CRON_SECRET. */
   envioAutomatico: { ligado: boolean; sugestao: string | null };
   lojas: Loja[];
+  /** Os grupos já marcados como internos da agência. */
+  gruposInternos: string[];
 }) {
   const [lojas, setLojas] = useState(lojasIniciais);
   const [grupos, setGrupos] = useState<GrupoNaTela[] | null>(null);
@@ -132,6 +136,7 @@ export function PainelDoWhatsapp({
               ))}
             </div>
 
+            {/* ver grupos-internos.tsx */}
             {semGrupo.length > 0 && (
               <p className="text-sm text-amber-600 dark:text-amber-400 flex items-start gap-1.5">
                 <AlertTriangle size={15} className="shrink-0 mt-0.5" />
@@ -148,7 +153,9 @@ export function PainelDoWhatsapp({
 
           <Recebimento webhook={webhook} />
 
-          <Teste conectado={estado.conectado} />
+          <GruposInternos grupos={grupos} jaInternos={gruposInternos} />
+
+      <Teste conectado={estado.conectado} />
         </>
       )}
     </div>

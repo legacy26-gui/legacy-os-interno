@@ -3,7 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { CARTEIRA, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
 import { AiNaoConfigurado } from "@/lib/ai/config";
-import { perguntar, type Turno } from "@/lib/copiloto/cerebro";
+import { perguntar, type Turno, type Canal } from "@/lib/copiloto/cerebro";
 import type { RespostaDoCopiloto } from "@/lib/copiloto/tipos";
 
 // O Copiloto respondendo, sem saber quem perguntou DE ONDE.
@@ -41,6 +41,8 @@ export async function responderComoPessoa(
   user: PessoaDaCasa,
   pergunta: string,
   historico: Turno[],
+  /** Muda só o JEITO de escrever, nunca o que é consultado. Ver cerebro.ts. */
+  canal: Canal = "tela",
 ): Promise<RespostaDoCopiloto> {
   const texto = pergunta.trim();
   if (!texto) return { erro: "Escreva a pergunta." };
@@ -74,6 +76,7 @@ export async function responderComoPessoa(
         texto: String(t.texto ?? "").slice(0, 4000),
       })),
       lojas.map((l) => l.companyName),
+      canal,
     );
 
     // Resolve o nome que o modelo escreveu contra a carteira de verdade.

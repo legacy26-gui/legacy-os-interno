@@ -6,6 +6,7 @@ import { entenderPedido, type AnuncioConhecido } from "./entender-pedido";
 import { foiMencionado, semAMarcacao } from "./mencao";
 import { acharPessoaPeloNumero } from "./atender-privado";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
+import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
 
 // O que o robô faz quando alguém escreve no grupo de uma loja.
@@ -69,6 +70,8 @@ export type Desfecho =
   | { tipo: "sem-pedido"; clientId: string }
   /** Pediu, mas não dá pra saber qual carro. Perguntou no grupo. */
   | { tipo: "perguntou"; clientId: string; quantos: number }
+  /** O carro não está anunciado. A equipe foi avisada no privado. */
+  | { tipo: "nao-anunciado"; clientId: string; avisados: number }
   /** Desligou e avisou no grupo. */
   | { tipo: "desligou"; clientId: string; adId: string; nome: string }
   /** Tentou desligar e a Meta recusou. */
@@ -157,6 +160,44 @@ export async function atenderMensagemDoGrupo(
   const pedido = entenderPedido(semAMarcacao(m.texto), anuncios);
   if (pedido.intencao === "nenhuma") {
     return { tipo: "sem-pedido", clientId: loja.id };
+  }
+
+  // ── O carro não está anunciado ────────────────────────────────────────
+  //
+  // Pedido do Guilherme, e a razão é boa: "não achei esse carro nos anúncios"
+  // é um problema NOSSO — ou ele nunca foi anunciado, ou o anúncio tem outro
+  // nome, ou já tinha sido pausado. Nenhum dos três o dono da loja resolve, e
+  // ler isso no grupo dele só passa a impressão de que o sistema não sabe o
+  // que está fazendo.
+  //
+  // Então o detalhe vai pro privado de quem cuida da loja, e no grupo fica
+  // uma linha curta — curta, mas não silêncio: quem escreveu pediu uma coisa
+  // e precisa saber que foi lido.
+  if (pedido.candidatos.length === 0) {
+    const emCartaz = anuncios.slice(0, 12).map((a) => `• ${a.nome}`).join("\n");
+    const aviso = await avisarAEquipeDaLoja(
+      loja.id,
+      `*${loja.companyName}* — pediram pra tirar um carro do ar e eu não achei ` +
+        `qual.\n\nQuem escreveu: ${m.quem ?? "não identificado"}\n` +
+        `A mensagem: "${m.texto.slice(0, 200)}"\n\n` +
+        (anuncios.length === 0
+          ? "Esta loja não tem nenhum anúncio ativo no momento."
+          : `Os ${anuncios.length} anúncios no ar hoje:\n${emCartaz}` +
+            (anuncios.length > 12 ? `\n…e mais ${anuncios.length - 12}.` : "")) +
+        `\n\nSe for pra tirar algum, faz pelo Legacy OS.`,
+    );
+
+    await responder(
+      m.grupoId,
+      "Anotado! Esse carro não está entre os anúncios que estão no ar agora. " +
+        "Já avisei a equipe pra conferir.",
+    );
+
+    return {
+      tipo: "nao-anunciado",
+      clientId: loja.id,
+      avisados: aviso.mandados,
+    };
   }
 
   if (!pedido.semDuvida) {
@@ -292,12 +333,11 @@ function textoDaPergunta(candidatos: AnuncioConhecido[]): string {
   const comoResponder =
     "Me marca com @ de novo junto com o nome e eu desligo.";
 
-  if (candidatos.length === 0) {
-    return (
-      "Entendi que é pra tirar um carro do ar, mas não achei qual. " +
-      `Qual é o nome do anúncio como está no Facebook? ${comoResponder}`
-    );
-  }
+  // A lista vazia não chega mais aqui: ela virou o caminho do "não está
+  // anunciado", que avisa a equipe no privado em vez de discutir no grupo do
+  // cliente. Ficou a guarda, porque função que confia em quem a chama é
+  // função que quebra no dia em que alguém a chamar de outro lugar.
+  if (candidatos.length === 0) return comoResponder;
   const lista = candidatos
     .slice(0, MAXIMO_NA_PERGUNTA)
     .map((c) => `• ${c.nome}`)

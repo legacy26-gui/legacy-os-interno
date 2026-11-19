@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { atenderMensagemDoGrupo } from "@/lib/whatsapp/atender-grupo";
 import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
+import { primeiraVez } from "@/lib/whatsapp/so-uma-vez";
 
 // A porta por onde mensagem de grupo entra no sistema.
 //
@@ -36,6 +37,14 @@ import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
 export const dynamic = "force-dynamic";
 /** Node e não Edge: o atendimento fala com o banco pelo Prisma. */
 export const runtime = "nodejs";
+/**
+ * Tempo pro trabalho que acontece DEPOIS da resposta.
+ *
+ * Atender uma pergunta da IA são duas chamadas ao modelo. O `after` roda
+ * dentro deste limite, não do tempo que a Z-API espera — e é justamente por
+ * isso que ele existe aqui.
+ */
+export const maxDuration = 300;
 
 /** Compara sem deixar o tempo da resposta contar quantas letras acertou. */
 function iguais(a: string, b: string): boolean {
@@ -58,6 +67,8 @@ interface CorpoDaZapi {
   text?: { message?: unknown; mentionedPhones?: unknown };
   /** Alguns formatos da Z-API mandam os marcados aqui em cima. */
   mentionedPhones?: unknown;
+  /** O id da mensagem, usado pra não atender a mesma duas vezes. */
+  messageId?: unknown;
 }
 
 /** Os marcados, venham de onde vierem. Formato de webhook muda sem avisar. */
@@ -117,6 +128,18 @@ export async function POST(
     return NextResponse.json({ ok: true, ignorado: "sem texto" });
   }
 
+  // ── A mesma mensagem, de novo ─────────────────────────────────────────
+  //
+  // A Z-API reenvia quando não recebe resposta rápido, e atender uma pergunta
+  // da IA leva dezenas de segundos. Sem esta trava, a pessoa recebe a resposta
+  // duas vezes — e no grupo o mesmo anúncio seria desligado duas vezes.
+  //
+  // Vem depois das conferências baratas e ANTES de qualquer trabalho: é o
+  // último ponto em que dá pra ir embora sem ter feito nada. Ver so-uma-vez.ts.
+  if (!(await primeiraVez(corpo.messageId))) {
+    return NextResponse.json({ ok: true, ignorado: "repetida" });
+  }
+
   // ── Privado: a IA atendendo quem é da casa ────────────────────────────
   //
   // Antes isto era descartado com "não é grupo". Agora é a porta pela qual a
@@ -124,40 +147,56 @@ export async function POST(
   // responde é o mesmo Copiloto da tela, com a carteira de quem escreveu —
   // e número que não é de ninguém da casa recebe um recado e não aciona a IA.
   if (corpo.isGroup !== true) {
-    try {
-      const d = await atenderMensagemPrivada({ telefone: de, texto });
-      return NextResponse.json({ ok: true, privado: d.tipo });
-    } catch {
-      return NextResponse.json({ ok: true, privado: "erro" });
-    }
+    // Responde AGORA e atende depois. A Z-API reenvia o que demora, e pensar
+    // uma resposta são duas chamadas ao modelo: esperar por elas antes de
+    // responder é o que fazia a mesma pergunta ser atendida duas vezes.
+    //
+    // A posse da mensagem já foi tomada acima, de forma síncrona — então o
+    // reenvio que chegar enquanto esta ainda está sendo pensada encontra a
+    // linha já criada e vai embora.
+    after(async () => {
+      try {
+        await atenderMensagemPrivada({ telefone: de, texto });
+      } catch {
+        // Erro aqui não tem a quem ser devolvido: a resposta HTTP já saiu.
+        // O sintoma pra quem escreveu é não receber nada, e o reenvio da
+        // Z-API não vai trazer de volta — a posse já está tomada.
+      }
+    });
+    return NextResponse.json({ ok: true, privado: "recebido" });
   }
 
   const grupoId = de;
 
-  try {
-    const desfecho = await atenderMensagemDoGrupo({
-      grupoId,
-      texto,
-      quem: typeof corpo.senderName === "string" ? corpo.senderName : null,
-      telefone:
-        typeof corpo.participantPhone === "string"
-          ? corpo.participantPhone
-          : null,
-      // O próprio número, pra saber se o @ da mensagem era pra ele. Vem no
-      // recado e não de configuração: assim trocar o chip não exige mexer em
-      // variável nenhuma, e não existe o caso de a variável ficar com o
-      // número velho e o robô emudecer sem ninguém entender por quê.
-      numeroDoRobo:
-        typeof corpo.connectedPhone === "string" ? corpo.connectedPhone : null,
-      mencionados: marcados(corpo),
-    });
-    // Devolve só o TIPO do desfecho. Nome de loja, de anúncio ou do carro
-    // não voltam: do outro lado está um serviço de fora, e o que ele precisa
-    // saber é que chegou.
-    return NextResponse.json({ ok: true, desfecho: desfecho.tipo });
-  } catch {
-    // Erro nosso não vira reenvio: a Z-API mandaria de novo e, se a falha
-    // foi DEPOIS de desligar, o anúncio seria desligado duas vezes.
-    return NextResponse.json({ ok: true, desfecho: "erro" });
-  }
+  // Mesma ideia do privado: responde já, atende depois. No grupo o atendimento
+  // conversa com a Meta — que às vezes demora — e a duplicata aqui custaria
+  // caro: o mesmo "pode tirar o Compass" desligando um anúncio duas vezes.
+  after(async () => {
+    try {
+      await atenderMensagemDoGrupo({
+        grupoId,
+        texto,
+        quem: typeof corpo.senderName === "string" ? corpo.senderName : null,
+        telefone:
+          typeof corpo.participantPhone === "string"
+            ? corpo.participantPhone
+            : null,
+        // O próprio número, pra saber se o @ da mensagem era pra ele. Vem no
+        // recado e não de configuração: assim trocar o chip não exige mexer em
+        // variável nenhuma, e não existe o caso de a variável ficar com o
+        // número velho e o robô emudecer sem ninguém entender por quê.
+        numeroDoRobo:
+          typeof corpo.connectedPhone === "string" ? corpo.connectedPhone : null,
+        mencionados: marcados(corpo),
+      });
+    } catch {
+      // A resposta HTTP já saiu; não há a quem devolver o erro. O robô avisa
+      // no grupo quando falha ao mexer na Meta — ver atender-grupo.ts.
+    }
+  });
+
+  // Só "recebido". Nome de loja, de anúncio ou do carro nunca voltam: do
+  // outro lado está um serviço de fora, e o que ele precisa saber é que
+  // chegou.
+  return NextResponse.json({ ok: true, grupo: "recebido" });
 }

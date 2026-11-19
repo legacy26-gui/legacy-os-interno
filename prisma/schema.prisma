@@ -266,6 +266,32 @@ model ConversaDoCopiloto {
   @@map("conversas_do_copiloto")
 }
 
+/// As mensagens do WhatsApp que já foram tratadas.
+///
+/// ── O defeito que isto conserta ──────────────────────────────────────────
+///
+/// A Z-API REENVIA o webhook quando não recebe resposta rápido. E atender uma
+/// pergunta da IA leva dezenas de segundos — são duas chamadas ao modelo. A
+/// Z-API desiste de esperar, manda de novo, e a mesma mensagem é atendida
+/// duas vezes.
+///
+/// No privado isso é a pessoa recebendo a resposta repetida — chato, e o
+/// dobro do custo de IA. No GRUPO é o mesmo anúncio sendo desligado duas
+/// vezes, e a segunda vez acontece num anúncio que já estava fora do ar.
+///
+/// A trava é o id da mensagem: quem chega primeiro CRIA a linha, e quem chega
+/// depois esbarra no índice único e vai embora sem fazer nada. É o banco
+/// decidindo, não o código — duas chamadas simultâneas não têm como passar as
+/// duas.
+model MensagemTratada {
+  /// O id que a Z-API dá à mensagem.
+  messageId String   @id
+  criadoEm  DateTime @default(now())
+
+  @@index([criadoEm])
+  @@map("mensagens_tratadas")
+}
+
 model ClienteConferido {
   id       String @id @default(cuid())
   clientId String

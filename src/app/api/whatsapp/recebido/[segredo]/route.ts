@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { atenderMensagemDoGrupo } from "@/lib/whatsapp/atender-grupo";
 import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
 import { primeiraVez } from "@/lib/whatsapp/so-uma-vez";
+import { guardarRecado } from "@/lib/whatsapp/guardar-recado";
 
 // A porta por onde mensagem de grupo entra no sistema.
 //
@@ -113,6 +114,11 @@ export async function POST(
   if (minha && typeof corpo.instanceId === "string" && corpo.instanceId !== minha) {
     return NextResponse.json({ ok: true, ignorado: "outra instância" });
   }
+
+  // O retrato do que chegou, antes de qualquer decisão — inclusive das que
+  // descartam a mensagem. É justamente a mensagem DESCARTADA que não deixa
+  // rastro nenhum, e era ela que a gente não conseguia investigar.
+  await guardarRecado(corpo as Record<string, unknown>);
 
   // Mensagem que o próprio robô mandou volta pelo webhook. Sem isto, a
   // resposta "tirei o Onix do ar" seria lida como um novo pedido.

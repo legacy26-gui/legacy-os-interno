@@ -300,3 +300,13 @@ export async function listarGruposInternos(): Promise<string[]> {
   const linhas = await prisma.grupoInterno.findMany({ select: { grupoId: true } });
   return linhas.map((l) => l.grupoId);
 }
+
+/** Os últimos recados que a Z-API mandou, pra diagnóstico. */
+export async function verRecadosDaZapi() {
+  const user = await requireModuleAccess("configuracoes");
+  if (user.role !== "ADMIN") return [];
+  return prisma.recadoDaZapi.findMany({
+    orderBy: { recebidoEm: "desc" },
+    take: 8,
+  });
+}

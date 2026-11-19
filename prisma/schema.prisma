@@ -316,6 +316,51 @@ model GrupoInterno {
   @@map("grupos_internos")
 }
 
+/// O retrato do que a Z-API mandou, pra parar de adivinhar.
+///
+/// ── Por que isto existe ──────────────────────────────────────────────────
+///
+/// Porque o atendimento é feito DEPOIS da resposta HTTP (ver so-uma-vez.ts),
+/// e isso tirou a única janela em que dava pra perguntar ao sistema o que ele
+/// decidiu. Quando uma mensagem de grupo some sem deixar rastro, não sobra
+/// nada pra olhar — e o diagnóstico vira chute.
+///
+/// ── O que é guardado, e o que não é ──────────────────────────────────────
+///
+/// A ESTRUTURA do recado, não o conteúdo: quais campos vieram, se era grupo,
+/// quem escreveu, se o robô foi marcado. O texto da mensagem NÃO é guardado,
+/// porque pra descobrir por que o robô não respondeu basta saber se havia uma
+/// marcação nele — e guardar conversa de grupo de cliente num banco é criar
+/// um problema maior que o que se está resolvendo.
+model RecadoDaZapi {
+  id         String   @id @default(cuid())
+  recebidoEm DateTime @default(now())
+
+  /// Os campos de primeiro nível que vieram, em ordem.
+  chaves String
+
+  isGroup Boolean?
+  fromMe  Boolean?
+
+  /// De onde veio: o id do grupo, ou o telefone de quem mandou no privado.
+  de String?
+  /// Dentro de um grupo, quem escreveu.
+  participante String?
+  /// O número que a Z-API diz ser o do robô. Sem isto não dá pra saber se o
+  /// @ da mensagem era pra ele — é o suspeito número um.
+  numeroDoRobo String?
+  /// Os marcados, quando a Z-API manda a lista.
+  mencionados String?
+
+  /// O texto tinha "@" seguido de dígitos? É o que a detecção procura.
+  temArrobaComNumero Boolean @default(false)
+  /// Tamanho do texto, só pra saber que havia texto.
+  tamanhoDoTexto Int @default(0)
+
+  @@index([recebidoEm])
+  @@map("recados_da_zapi")
+}
+
 model ClienteConferido {
   id       String @id @default(cuid())
   clientId String

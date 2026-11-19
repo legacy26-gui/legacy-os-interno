@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { enviarTexto } from "./zapi";
 import { entenderPedido, type AnuncioConhecido } from "./entender-pedido";
+import { foiMencionado, semAMarcacao } from "./mencao";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
 
 // O que o robô faz quando alguém escreve no grupo de uma loja.
@@ -12,10 +13,17 @@ import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
 // 1. É grupo conhecido? Mensagem de grupo que não é de nenhuma loja é
 //    ignorada sem nem ler. É isso que impede que alguém crie um grupo,
 //    adicione o robô e mande "desliga tudo".
-// 2. A loja autorizou o robô a agir? Nasce desligado, loja por loja.
-// 3. A frase é um pedido pra tirar do ar? Quase nenhuma é.
-// 4. Dá pra saber QUAL carro, sem dúvida? Na dúvida, pergunta.
-// 5. Só então mexe na Meta.
+// 2. FALARAM COM ELE? Sem o @, a mensagem não é dele. Ver mencao.ts.
+// 3. A loja autorizou o robô a agir? Nasce desligado, loja por loja.
+// 4. A frase é um pedido pra tirar do ar? Quase nenhuma é.
+// 5. Dá pra saber QUAL carro, sem dúvida? Na dúvida, pergunta.
+// 6. Só então mexe na Meta.
+//
+// A trava 2 é a que mudou tudo. Antes dela o robô lia TODA conversa do grupo
+// procurando pedido, e num grupo de loja se fala de carro o dia inteiro:
+// "vendeu o Compass ontem" era indistinguível de "vendeu o Compass, pode
+// tirar". Com o @, quem decide que aquilo é uma ordem é a pessoa — o robô
+// parou de adivinhar intenção e passou a obedecer.
 //
 // ── Por que ele sempre responde no grupo ─────────────────────────────────
 //
@@ -32,11 +40,23 @@ export interface MensagemDoGrupo {
   quem: string | null;
   /** Telefone de quem escreveu, dentro do grupo. */
   telefone: string | null;
+  /**
+   * O número conectado na instância — o próprio robô.
+   *
+   * Vem do recado da Z-API (`connectedPhone`), não de configuração: é o que
+   * permite saber se o @ da mensagem era pra ele. Sem isto o robô não age,
+   * porque não tem como provar que foi chamado.
+   */
+  numeroDoRobo?: string | null;
+  /** A lista de marcados, quando a Z-API manda uma. */
+  mencionados?: string[];
 }
 
 export type Desfecho =
   /** Grupo que não é de nenhuma loja — nem foi lido. */
   | { tipo: "grupo-desconhecido" }
+  /** Ninguém marcou o robô. O caso de quase toda mensagem do grupo. */
+  | { tipo: "sem-mencao"; clientId: string }
   /** A loja não autorizou o robô a desligar sozinho. */
   | { tipo: "loja-nao-autoriza"; clientId: string }
   /** A frase não pedia nada. O caso de quase toda mensagem. */
@@ -74,7 +94,15 @@ export async function atenderMensagemDoGrupo(
   });
   if (!loja) return { tipo: "grupo-desconhecido" };
 
-  // ── 2. Esta loja deixou o robô agir? ──────────────────────────────────
+  // ── 2. Falaram com ele? ───────────────────────────────────────────────
+  //
+  // Antes de tudo que custa: sem o @ a mensagem não é dele, e o grupo inteiro
+  // de conversa normal morre aqui sem gastar consulta de criativo nenhuma.
+  if (!foiMencionado(m.texto, m.numeroDoRobo, m.mencionados)) {
+    return { tipo: "sem-mencao", clientId: loja.id };
+  }
+
+  // ── 3. Esta loja deixou o robô agir? ──────────────────────────────────
   //
   // Antes de ler a frase, porque loja que não autorizou não deve nem ter a
   // mensagem interpretada — e porque assim desligar o interruptor desliga
@@ -101,7 +129,10 @@ export async function atenderMensagemDoGrupo(
     textos: [c.titulo, c.legenda].filter((t): t is string => !!t),
   }));
 
-  const pedido = entenderPedido(m.texto, anuncios);
+  // Sem a marcação: o número do robô dentro do texto entraria na conta de
+  // raridade de palavras e poderia, sozinho, empurrar a escolha pro anúncio
+  // errado. Ver semAMarcacao.
+  const pedido = entenderPedido(semAMarcacao(m.texto), anuncios);
   if (pedido.intencao === "nenhuma") {
     return { tipo: "sem-pedido", clientId: loja.id };
   }
@@ -161,12 +192,22 @@ export async function atenderMensagemDoGrupo(
   };
 }
 
-/** A pergunta de quando não dá pra ter certeza. */
+/**
+ * A pergunta de quando não dá pra ter certeza.
+ *
+ * Ela PEDE que marquem de novo, e isso não é formalidade: a regra do @ vale
+ * pra toda mensagem, inclusive pra resposta desta pergunta. Um robô que
+ * perguntasse "qual desses?" e ignorasse calado a resposta pareceria quebrado
+ * — então a pergunta tem que ensinar como responder.
+ */
 function textoDaPergunta(candidatos: AnuncioConhecido[]): string {
+  const comoResponder =
+    "Me marca com @ de novo junto com o nome e eu desligo.";
+
   if (candidatos.length === 0) {
     return (
       "Entendi que é pra tirar um carro do ar, mas não achei qual. " +
-      "Me diz o nome do anúncio como está no Facebook?"
+      `Qual é o nome do anúncio como está no Facebook? ${comoResponder}`
     );
   }
   const lista = candidatos
@@ -177,7 +218,7 @@ function textoDaPergunta(candidatos: AnuncioConhecido[]): string {
   return (
     `Qual desses eu tiro do ar?\n\n${lista}` +
     (sobrando > 0 ? `\n…e mais ${sobrando}.` : "") +
-    `\n\nMe responde com o nome e eu desligo.`
+    `\n\n${comoResponder}`
   );
 }
 

@@ -52,7 +52,23 @@ interface CorpoDaZapi {
   senderName?: unknown;
   participantPhone?: unknown;
   instanceId?: unknown;
-  text?: { message?: unknown };
+  /** O número conectado na instância — o próprio robô. */
+  connectedPhone?: unknown;
+  text?: { message?: unknown; mentionedPhones?: unknown };
+  /** Alguns formatos da Z-API mandam os marcados aqui em cima. */
+  mentionedPhones?: unknown;
+}
+
+/** Os marcados, venham de onde vierem. Formato de webhook muda sem avisar. */
+function marcados(corpo: CorpoDaZapi): string[] {
+  const fontes = [corpo.mentionedPhones, corpo.text?.mentionedPhones];
+  const lista: string[] = [];
+  for (const f of fontes) {
+    if (Array.isArray(f)) {
+      for (const x of f) if (typeof x === "string") lista.push(x);
+    }
+  }
+  return lista;
 }
 
 export async function POST(
@@ -113,6 +129,13 @@ export async function POST(
         typeof corpo.participantPhone === "string"
           ? corpo.participantPhone
           : null,
+      // O próprio número, pra saber se o @ da mensagem era pra ele. Vem no
+      // recado e não de configuração: assim trocar o chip não exige mexer em
+      // variável nenhuma, e não existe o caso de a variável ficar com o
+      // número velho e o robô emudecer sem ninguém entender por quê.
+      numeroDoRobo:
+        typeof corpo.connectedPhone === "string" ? corpo.connectedPhone : null,
+      mencionados: marcados(corpo),
     });
     // Devolve só o TIPO do desfecho. Nome de loja, de anúncio ou do carro
     // não voltam: do outro lado está um serviço de fora, e o que ele precisa

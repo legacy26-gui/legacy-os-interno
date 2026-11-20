@@ -3,6 +3,35 @@
 O Guilherme anota **cada gasto** num grupo de WhatsApp só dele ("financeiro (gastos)") e o robô
 lança no financeiro: gasto da empresa vai pro DRE; gasto pessoal vira **retirada**.
 
+## Quem entende a mensagem: a IA, com travas em código
+
+Desde o print "Tatiana salário já está pago : 2300, tira do contas a pagar deste mês" (que virou um gasto
+novo com a frase inteira de descrição), **a IA lê cada mensagem do grupo** como um contador leria
+(`src/lib/financeiro-ia/interprete.ts`). Ela recebe o que está anotado — **contas a pagar abertas**,
+**perguntas abertas** de pessoal/empresa, os nomes da **equipe**, se o saldo foi informado — e devolve ações:
+
+`lancar_gasto` · `anotar_a_pagar` · `dar_baixa` (pagou agora) · `ja_estava_pago` · `remover_a_pagar` ·
+`atualizar_saldo` · `decidir_pendente` · `consultar` (gastos, saldo/projeção, a pagar, resumo) · `nada`
+
+Quando não tem certeza, ela **pergunta** em vez de agir.
+
+O código confere antes de mexer em dinheiro (`validar-interpretacao.ts`):
+- valor que **não está escrito** na mensagem é descartado ("Fiquei sem fazer: …");
+- conta a pagar e pergunta aberta só pelos ids da lista que ela recebeu;
+- descrição com cara de frase inteira ou de ordem ("já está pago", "tira do contas a pagar") é recusada.
+
+**"Já estava pago" × "paguei agora".** Se você informou o saldo hoje e diz que a Tatiana *já estava*
+paga, o pagamento é registrado ANTES da conferência do saldo — já está dentro do número que você
+deu, e não desconta de novo. "Paguei a Andrielli" (agora) desconta. O caixa usa o **momento do
+pagamento** (`paidDate`), não o do cadastro: o salário fixo criado no dia 1 e pago hoje sai do saldo hoje.
+
+`desfaz` e as respostas curtas (`pessoal`, `empresa`, `1 pessoal 2 empresa`) continuam sem IA.
+**Sem IA** (chave ausente ou erro), valem as regras de antes — com a mesma trava de frase inteira: o
+robô pergunta "é um gasto novo, uma conta a pagar ou o pagamento de uma conta?" em vez de lançar.
+
+Gasto fixo (gerado todo mês) não é apagado por "não vou pagar": o sistema recriaria; o robô explica
+e manda ajustar na tela.
+
 ## Ligar
 
 1. Criar o grupo no WhatsApp com o número do robô.

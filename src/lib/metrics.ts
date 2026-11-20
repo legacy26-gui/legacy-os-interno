@@ -311,7 +311,7 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
     // Fluxo de caixa é dinheiro que saiu de verdade: só saída confirmada.
     prisma.expense.findMany({
       where: { empresa, date: { lt: monthEnd }, paid: true },
-      select: { value: true, date: true, category: true, fixedExpenseId: true, createdAt: true },
+      select: { value: true, date: true, category: true, fixedExpenseId: true, createdAt: true, paidDate: true },
     }),
     prisma.revenue.findMany({
       where: { empresa, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
@@ -326,7 +326,7 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
   ]);
   const expenses = [
     ...despesas,
-    ...retiradasDoCaixa.map((r) => ({ value: r.value, date: r.date, createdAt: r.createdAt, category: "Retiradas", fixedExpenseId: null })),
+    ...retiradasDoCaixa.map((r) => ({ value: r.value, date: r.date, createdAt: r.createdAt, paidDate: null, category: "Retiradas", fixedExpenseId: null })),
   ];
 
   const key = (d: Date) => d.toISOString().slice(0, 7);
@@ -349,14 +349,20 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
   const openingBalance = cashSetting ? Number(cashSetting.openingBalance) : 0;
 
   // A saída conta pro saldo quando veio DEPOIS da conferência: em data posterior, ou no
-  // mesmo dia mas lançada depois de o saldo ser informado. Sem a segunda parte, quem diz
-  // o saldo às 10h e anota o almoço às 12h teria o almoço fora da conta até o dia seguinte.
+  // mesmo dia mas paga depois de o saldo ser informado. Sem a segunda parte, quem diz o
+  // saldo às 10h e anota o almoço às 12h teria o almoço fora da conta até o dia seguinte.
+  //
+  // "Quando saiu" é o momento do PAGAMENTO (`paidDate`), e não o do cadastro: o salário
+  // fixo é criado no dia 1 e pago no dia 20 — e se ele foi pago antes de o saldo ser
+  // informado, já está dentro do saldo e não pode sair de novo. Sem `paidDate` (o gasto
+  // lançado já pago na tela), vale o cadastro.
   // (Entrada segue só pela data: a baixa de uma cobrança não guarda a hora em que foi dada.)
   const conferidoEm = cashSetting?.updatedAt ?? null;
-  function saidaContaDepoisDaConferencia(e: { date: Date; createdAt: Date }): boolean {
+  function saidaContaDepoisDaConferencia(e: { date: Date; createdAt: Date; paidDate: Date | null }): boolean {
     if (!openingDate) return false;
     if (e.date > openingDate) return true;
-    return e.date.getTime() === openingDate.getTime() && !!conferidoEm && e.createdAt > conferidoEm;
+    const saiuEm = e.paidDate ?? e.createdAt;
+    return e.date.getTime() === openingDate.getTime() && !!conferidoEm && saiuEm > conferidoEm;
   }
 
   // Saldo em caixa numa data-limite qualquer (fim de mês, ou hoje).

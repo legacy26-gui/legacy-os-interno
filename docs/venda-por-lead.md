@@ -140,3 +140,18 @@ e o lançamento no Controle de Vendas.
   A **1ª venda do mês nunca diz que é a primeira**. Da 2ª em diante entra "Essa é a *Nª venda
   do mês*", e da 3ª o "resultado excepcional!".
 - **Valor**: a regra da casa é contar o preço do anúncio quando a pessoa não disser outro.
+
+## Pausar CONJUNTO (pedido do Guilherme)
+
+Quando a frase tem a palavra **"conjunto"** ("pausa o conjunto do Versa"), o robô pausa o
+conjunto inteiro — e os anúncios dentro dele param junto. Vale no grupo (direto) e no privado
+(com a confirmação "sim", como sempre).
+
+- Sem a palavra "conjunto", nada muda: continua tirando o anúncio do carro.
+- A busca é pelo NOME do conjunto, com o mesmo leitor dos anúncios (erro de digitação vira
+  pergunta; dois parecidos viram "qual destes?"; nunca pausa por aproximação).
+- Se nenhum conjunto tem esse nome, o robô tira os anúncios do carro e diz: "Não achei um
+  conjunto com esse nome, então fiz pelos anúncios do carro."
+- A resposta diz quantos anúncios estavam dentro do conjunto.
+- Quando a Meta recusa, a equipe da loja é avisada de verdade (antes a resposta dizia "já
+  avisei a equipe" sem avisar).

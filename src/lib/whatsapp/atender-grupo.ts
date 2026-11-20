@@ -5,6 +5,7 @@ import { enviarTexto } from "./zapi";
 import {
   entenderPedidoComVarios,
   type AnuncioConhecido,
+  type PedidoComVarios,
   type Sugestao,
 } from "./entender-pedido";
 import { foiMencionado, marcacoesDoTexto, semAMarcacao } from "./mencao";
@@ -15,6 +16,7 @@ import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { anotar } from "./trilha";
 import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
+import { conjuntosNoAr, pedeConjunto, semPalavraConjunto } from "./conjuntos";
 
 // O que o robô faz quando alguém escreve no grupo de uma loja.
 //
@@ -280,6 +282,23 @@ export async function atenderMensagemDoGrupo(
 
   // ── 3. e 4. A frase pede, e dá pra saber qual? ────────────────────────
   const contas = loja.metaAdAccounts.map((c) => c.id);
+
+  // ── "Pausa o CONJUNTO do Versa" ───────────────────────────────────────
+  //
+  // Só quando a pessoa escreve "conjunto": pausar um conjunto para todos os
+  // anúncios dentro dele, e isso não se faz por adivinhação. Se nenhum conjunto
+  // tem esse nome, o robô cai no pedido de sempre (tirar os anúncios do carro) e
+  // diz isso na resposta — quem pediu quer o carro parado, e não um "não achei".
+  let conjuntoNaoAchado = false;
+  if (pedeConjunto(semAMarcacao(m.texto))) {
+    const conjuntos = await conjuntosNoAr(contas);
+    const lidoC = entenderPedidoComVarios(semPalavraConjunto(semAMarcacao(m.texto)), conjuntos);
+    if (lidoC.intencao === "desligar" && lidoC.alvos.length > 0) {
+      return await tirarConjuntos(m, loja, lidoC, venda.recado);
+    }
+    conjuntoNaoAchado = true;
+  }
+
   const criativos = contas.length
     ? await prisma.metaAdCreative.findMany({
         // Só o que está no ar: pedir pra desligar o que já está desligado é
@@ -483,6 +502,9 @@ export async function atenderMensagemDoGrupo(
   // O que o robô tem a dizer sobre a VENDA (parabéns, ou a pergunta do valor)
   // vai na mesma mensagem da pausa: duas mensagens seguidas pra um aviso só é o
   // robô falando sozinho no grupo do cliente.
+  if (conjuntoNaoAchado && tirados.length > 0) {
+    partes.unshift("Não achei um conjunto com esse nome, então fiz pelos anúncios do carro.");
+  }
   if (venda.recado) partes.push(venda.recado);
   if (falhas.length > 0) {
     partes.push(
@@ -512,6 +534,7 @@ export async function atenderMensagemDoGrupo(
   }
 
   if (partes.length > 0) await responder(m.grupoId, partes.join("\n\n"), m.messageId);
+  if (falhas.length > 0) await avisarDaFalha(loja, m, falhas);
 
   if (falhas.length > 0 && tirados.length === 0) {
     return { tipo: "falhou", clientId: loja.id, erro: falhas.join("; ") };
@@ -530,6 +553,111 @@ export async function atenderMensagemDoGrupo(
       adId: pedido.alvos[0].candidatos[0].adId,
       nome: tirados[0],
     };
+  }
+  return { tipo: "desligou-varios", clientId: loja.id, quantos: tirados.length };
+}
+
+/** O robô disse "já avisei a equipe": aqui é onde ele avisa de verdade. */
+async function avisarDaFalha(
+  loja: { id: string; companyName: string },
+  m: MensagemDoGrupo,
+  falhas: string[],
+): Promise<void> {
+  try {
+    await avisarAEquipeDaLoja(
+      loja.id,
+      `*${loja.companyName}* — pediram no grupo pra tirar do ar e a Meta recusou:\n` +
+        `${falhas.map((f) => `• ${f}`).join("\n")}\n\n` +
+        `O pedido: "${semAMarcacao(m.texto).slice(0, 200)}"\nFaz na mão pelo Legacy OS.`,
+    );
+  } catch {
+    // O aviso é cortesia: não pode derrubar a resposta que já foi pro grupo.
+  }
+}
+
+/**
+ * Pausa os conjuntos que o pedido citou. Mesma regra dos anúncios: só o que é CERTO
+ * sai do ar; o duvidoso vira UMA pergunta no fim.
+ */
+async function tirarConjuntos(
+  m: MensagemDoGrupo,
+  loja: { id: string; companyName: string },
+  pedido: PedidoComVarios,
+  recadoDaVenda: string | null,
+): Promise<Desfecho> {
+  const quem = [m.quem, m.telefone].filter(Boolean).join(" · ") || null;
+  const tirados: { nome: string; anuncios: number }[] = [];
+  const falhas: string[] = [];
+  const emDuvida: string[] = [];
+
+  for (const alvo of pedido.alvos) {
+    if (!alvo.semDuvida) {
+      for (const c of alvo.candidatos) emDuvida.push(c.nome);
+      continue;
+    }
+    // Todos os conjuntos do carro (o "Cópia" também): deixar um no ar é deixar
+    // o carro vendido gastando verba.
+    for (const candidato of alvo.mesmoCarro) {
+      // De novo pelo cadastro da loja: a trava que impede um id de outra pessoa.
+      const objeto = await acharObjetoDaLoja(loja.id, "conjunto", candidato.adId);
+      if (!objeto) {
+        await anotar(m.messageId, m.grupoId, "conjunto-nao-e-da-loja", candidato.nome);
+        continue;
+      }
+      const r = await mudarStatus({
+        clientId: loja.id,
+        quemId: null,
+        nivel: "conjunto",
+        objeto,
+        ligar: false,
+        origem: "whatsapp",
+        pedidoPor: quem,
+        pedidoTexto: m.texto,
+      });
+      if (r.ok) {
+        tirados.push({ nome: objeto.nome, anuncios: objeto.levaJunto });
+        await anotar(m.messageId, m.grupoId, "pausou-conjunto", objeto.nome);
+      } else {
+        falhas.push(`${objeto.nome} (${r.erro})`);
+        await anotar(m.messageId, m.grupoId, "a-meta-recusou", `${objeto.nome}: ${r.erro}`);
+      }
+    }
+  }
+
+  const dentro = (n: number) =>
+    n > 0 ? ` (com ${n} ${n === 1 ? "anúncio" : "anúncios"} dentro)` : "";
+  const partes: string[] = [];
+  if (tirados.length === 1) {
+    partes.push(`Pronto, tirei o conjunto *${tirados[0].nome}* do ar${dentro(tirados[0].anuncios)}.`);
+  } else if (tirados.length > 1) {
+    partes.push(
+      `Pronto, tirei do ar os conjuntos:\n${tirados
+        .map((t) => `• *${t.nome}*${dentro(t.anuncios)}`)
+        .join("\n")}`,
+    );
+  }
+  if (recadoDaVenda) partes.push(recadoDaVenda);
+  if (falhas.length > 0) {
+    partes.push(
+      `Não consegui tirar ${falhas.join("; ")}. Já avisei a equipe — alguém vai fazer na mão.`,
+    );
+  }
+  if (emDuvida.length > 0) {
+    partes.push(
+      `Qual destes conjuntos?\n${emDuvida
+        .slice(0, 4)
+        .map((n) => `• *${n}*`)
+        .join("\n")}\n\nMe marca de novo com o nome certo.`,
+    );
+  }
+  if (partes.length > 0) await responder(m.grupoId, partes.join("\n\n"), m.messageId);
+
+  if (falhas.length > 0) await avisarDaFalha(loja, m, falhas);
+  if (falhas.length > 0 && tirados.length === 0) {
+    return { tipo: "falhou", clientId: loja.id, erro: falhas.join("; ") };
+  }
+  if (tirados.length === 0) {
+    return { tipo: "perguntou", clientId: loja.id, quantos: emDuvida.length };
   }
   return { tipo: "desligou-varios", clientId: loja.id, quantos: tirados.length };
 }

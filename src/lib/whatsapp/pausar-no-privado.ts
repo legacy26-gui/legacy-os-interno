@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { CARTEIRA_NO_META, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
+import { conjuntosNoAr, pedeConjunto, semPalavraConjunto } from "./conjuntos";
 import {
   achatar,
   entenderPedidoComVarios,
@@ -50,8 +51,11 @@ export const CONFIRMACAO_VALE_MS = 10 * 60 * 1000;
 export interface AlvoPendente {
   clientId: string;
   loja: string;
+  /** O id do anúncio — ou do CONJUNTO, quando `nivel` é "conjunto". */
   adId: string;
   nome: string;
+  /** Ausente nas pendências antigas, que eram sempre de anúncio. */
+  nivel?: "conjunto";
 }
 
 export interface AcaoPendente {
@@ -381,6 +385,77 @@ export async function montarPedidoDePausa(
   const candidatas = citada.loja ? [citada.loja.id] : lojas.map((l) => l.id);
   const frase = citada.loja ? citada.restante : texto;
 
+  // ── "Pausa o CONJUNTO do Versa" ───────────────────────────────────────
+  //
+  // Só quando a pessoa escreve "conjunto". Se nenhum conjunto tem esse nome, cai no
+  // pedido de sempre (os anúncios do carro) e a resposta avisa que foi assim.
+  let avisoDeConjunto = "";
+  if (pedeConjunto(frase)) {
+    const contasDe = new Map(lojas.map((l) => [l.id, l.metaAdAccounts.map((a) => a.id)]));
+    const achados: { clientId: string; pedido: Awaited<ReturnType<typeof entenderPedidoComVarios>> }[] = [];
+    for (const clientId of candidatas) {
+      const conjuntos = await conjuntosNoAr(contasDe.get(clientId) ?? []);
+      const pedido = entenderPedidoComVarios(semPalavraConjunto(frase), conjuntos);
+      if (pedido.intencao === "desligar" && pedido.alvos.length > 0) achados.push({ clientId, pedido });
+    }
+    if (achados.length > 1) {
+      const onde = achados.map((r) => negrito(nomeDaLoja.get(r.clientId) ?? "")).join(", ");
+      return {
+        resposta:
+          `Achei esse conjunto em mais de uma loja sua: ${onde}.\n\n` +
+          `Me manda de novo dizendo de qual: *pausa o conjunto NOME da LOJA*.`,
+        pendente: null,
+      };
+    }
+    if (achados.length === 1) {
+      const { clientId, pedido } = achados[0];
+      const loja = nomeDaLoja.get(clientId) ?? "";
+      const alvos: AlvoPendente[] = [];
+      const linhas: string[] = [];
+      const vistos = new Set<string>();
+      for (const a of pedido.alvos.filter((x) => x.semDuvida)) {
+        for (const c of a.mesmoCarro) {
+          if (vistos.has(c.adId)) continue;
+          vistos.add(c.adId);
+          const objeto = await acharObjetoDaLoja(clientId, "conjunto", c.adId);
+          if (!objeto) continue;
+          alvos.push({ clientId, loja, adId: c.adId, nome: c.nome, nivel: "conjunto" });
+          linhas.push(
+            objeto.levaJunto > 0
+              ? `${c.nome} (com ${objeto.levaJunto} ${objeto.levaJunto === 1 ? "anúncio" : "anúncios"} dentro)`
+              : c.nome,
+          );
+        }
+      }
+      const duvidas = pedido.alvos.filter((x) => !x.semDuvida);
+      const partes: string[] = [];
+      if (alvos.length > 0) partes.push(`Vou pausar na ${negrito(loja)} o conjunto:\n${lista(linhas)}`);
+      if (duvidas.length > 0) {
+        const nomes = duvidas.flatMap((d) => d.candidatos.slice(0, 4).map((c) => c.nome));
+        partes.push(
+          (alvos.length > 0 ? "Ficou de fora, sem certeza:\n" : "") +
+            `Qual destes conjuntos da ${negrito(loja)}?\n${lista(nomes)}`,
+        );
+      }
+      if (alvos.length > 0) {
+        const minutos = Math.round(CONFIRMACAO_VALE_MS / 60000);
+        partes.push(
+          `Responde ${negrito("sim")} pra eu pausar${
+            duvidas.length > 0 ? " só o que está na lista" : ""
+          } (vale ${minutos} minutos) ou ${negrito("não")} pra cancelar.`,
+        );
+      } else {
+        partes.push("Me manda de novo com o nome certo e eu confirmo com você antes de pausar.");
+      }
+      return {
+        resposta: partes.join("\n\n"),
+        pendente:
+          alvos.length > 0 ? { tipo: "pausar-anuncios", alvos, pedido: texto.slice(0, 300) } : null,
+      };
+    }
+    avisoDeConjunto = "Não achei um conjunto com esse nome, então olhei os anúncios do carro.\n\n";
+  }
+
   const resultados = candidatas
     .map((clientId) => {
       const dela = anuncios.filter((a) => a.clientId === clientId);
@@ -393,7 +468,7 @@ export async function montarPedidoDePausa(
     const onde = citada.loja
       ? `entre os anúncios no ar da ${negrito(citada.loja.nome)}`
       : "entre os anúncios no ar das suas lojas";
-    return { resposta: `Não achei esse carro ${onde}.`, pendente: null };
+    return { resposta: `${avisoDeConjunto}Não achei esse carro ${onde}.`, pendente: null };
   }
 
   // ── O mesmo carro em mais de uma loja ────────────────────────────────
@@ -462,7 +537,7 @@ export async function montarPedidoDePausa(
 
   void agora;
   return {
-    resposta: partes.join("\n\n"),
+    resposta: avisoDeConjunto + partes.join("\n\n"),
     pendente:
       alvos.length > 0 ? { tipo: "pausar-anuncios", alvos, pedido: texto.slice(0, 300) } : null,
   };
@@ -496,7 +571,8 @@ export async function lerPendente(
         typeof x.clientId === "string" &&
         typeof x.adId === "string" &&
         typeof x.nome === "string" &&
-        typeof x.loja === "string",
+        typeof x.loja === "string" &&
+        (x.nivel === undefined || x.nivel === "conjunto"),
     );
   if (!valida) return { acao: null, venceu: false };
 
@@ -577,16 +653,17 @@ export async function executarPausa(
 
     // De novo pelo cadastro da loja, e não pelo id que veio guardado: a mesma
     // trava que impede um id trocado de pausar a campanha de outra pessoa.
-    const objeto = await acharObjetoDaLoja(alvo.clientId, "anuncio", alvo.adId);
+    const nivel = alvo.nivel ?? "anuncio";
+    const objeto = await acharObjetoDaLoja(alvo.clientId, nivel, alvo.adId);
     if (!objeto) {
-      falhas.push(`${alvo.nome} (não achei mais esse anúncio)`);
+      falhas.push(`${alvo.nome} (não achei mais ${nivel === "conjunto" ? "esse conjunto" : "esse anúncio"})`);
       continue;
     }
 
     const r = await mudarStatus({
       clientId: alvo.clientId,
       quemId: pessoa.id,
-      nivel: "anuncio",
+      nivel,
       objeto,
       ligar: false,
       origem: "whatsapp",
@@ -595,7 +672,10 @@ export async function executarPausa(
     });
 
     if (r.ok) {
-      feitos.set(alvo.loja, [...(feitos.get(alvo.loja) ?? []), objeto.nome]);
+      feitos.set(alvo.loja, [
+        ...(feitos.get(alvo.loja) ?? []),
+        nivel === "conjunto" ? `conjunto ${objeto.nome}` : objeto.nome,
+      ]);
     } else {
       falhas.push(`${objeto.nome} (${r.erro})`);
     }

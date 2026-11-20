@@ -3,7 +3,7 @@ import "server-only";
 import * as z from "zod";
 import { gerarJson } from "@/lib/ai/client";
 import { ATALHOS } from "@/lib/meta/insights";
-import type { PessoaDaCasa } from "@/lib/carteira";
+import type { QuemPergunta } from "./consultas";
 import { rodarConsulta, type NomeDaConsulta } from "./consultas";
 
 // O Copiloto, em duas chamadas ao modelo.
@@ -275,7 +275,7 @@ async function escreverResposta(
  * recado na tela.
  */
 export async function perguntar(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
   pergunta: string,
   historico: Turno[],
   lojas: string[],

@@ -71,6 +71,8 @@ export type Desfecho =
   | { tipo: "loja-nao-autoriza"; clientId: string }
   /** A frase não pedia nada. O caso de quase toda mensagem. */
   | { tipo: "sem-pedido"; clientId: string }
+  /** Perguntaram sobre a loja no grupo dela, e a IA respondeu ali. */
+  | { tipo: "respondeu-da-loja"; clientId: string }
   /** Pediu, mas não dá pra saber qual carro. Perguntou no grupo. */
   | { tipo: "perguntou"; clientId: string; quantos: number }
   /** O carro não está anunciado. A equipe foi avisada no privado. */
@@ -193,7 +195,9 @@ export async function atenderMensagemDoGrupo(
   // errado. Ver semAMarcacao.
   const pedido = entenderPedidoComVarios(semAMarcacao(m.texto), anuncios);
   if (pedido.intencao === "nenhuma") {
-    return { tipo: "sem-pedido", clientId: loja.id };
+    // Não é pedido pra tirar carro: então é pergunta sobre a loja, e a IA
+    // responde ali mesmo — recortada NAQUELA loja.
+    return responderSobreALoja(m, loja.id, loja.companyName);
   }
 
   // ── O carro não está anunciado ────────────────────────────────────────
@@ -322,6 +326,76 @@ export async function atenderMensagemDoGrupo(
     };
   }
   return { tipo: "desligou-varios", clientId: loja.id, quantos: tirados.length };
+}
+
+/**
+ * A IA respondendo uma pergunta DENTRO do grupo de um cliente.
+ *
+ * ── A diferença que decide tudo ──────────────────────────────────────────
+ *
+ * No grupo interno a resposta é recortada por QUEM perguntou. Aqui não pode
+ * ser: quem escreve no grupo da R2 costuma ser o dono da R2, que não tem
+ * carteira nenhuma — e, se fosse alguém da equipe, a carteira dele traria
+ * as outras lojas pra dentro da conversa de um cliente.
+ *
+ * Então o recorte é pela LOJA DO GRUPO, por construção: `soALoja` entra no
+ * `where` da única consulta que resolve lojas, e o que não passa por lá não
+ * existe pro resto do Copiloto.
+ *
+ * O Guilherme disse "nenhuma loja vai perguntar de outras lojas, ela deve
+ * deduzir isso". A primeira parte é verdade; a segunda é onde eu não
+ * obedeço. Pedir pro modelo deduzir que só pode falar daquela loja é apostar
+ * o dado do cliente num bom dia dele. Com a trava no banco, "quais lojas
+ * estão sem verba?" perguntado no grupo da R2 traz a R2 porque não HÁ outra
+ * pra trazer.
+ *
+ * ── Em nome de quem a consulta roda ──────────────────────────────────────
+ *
+ * Do gestor da loja. Não é detalhe: as consultas também conferem a carteira,
+ * e rodar em nome de alguém que não tem a loja devolveria vazio. Sem gestor,
+ * a IA não responde — é o lado seguro de um cadastro incompleto.
+ */
+async function responderSobreALoja(
+  m: MensagemDoGrupo,
+  clientId: string,
+  nomeDaLoja: string,
+): Promise<Desfecho> {
+  const dono = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { manager: { select: { id: true, role: true, active: true } } },
+  });
+  const gestor = dono?.manager;
+  if (!gestor || !gestor.active) {
+    // Sem gestor não há em nome de quem perguntar. Silêncio aqui é melhor que
+    // uma resposta vazia que pareceria "esta loja não gastou nada".
+    return { tipo: "sem-pedido", clientId };
+  }
+
+  const r = await responderComoPessoa(
+    { id: gestor.id, role: gestor.role, soALoja: clientId },
+    semAMarcacao(m.texto),
+    [],
+    "whatsapp",
+  );
+
+  if (r.erro || r.resposta === undefined) {
+    await responder(
+      m.grupoId,
+      "Não consegui buscar isso agora. Já avisei a equipe.",
+    );
+    await avisarAEquipeDaLoja(
+      clientId,
+      `*${nomeDaLoja}* — perguntaram no grupo e eu não consegui responder: ` +
+        `${r.erro ?? "não veio resposta."}\n\nA pergunta: "${m.texto.slice(0, 200)}"`,
+    );
+    return { tipo: "sem-pedido", clientId };
+  }
+
+  // Ação proposta NÃO vira texto aqui: "daria pra pausar o anúncio X" dito no
+  // grupo do cliente é a agência sugerindo serviço na frente dele, sem
+  // ninguém da casa ter olhado. Quem decide isso é a equipe, no sistema.
+  await responder(m.grupoId, r.resposta);
+  return { tipo: "respondeu-da-loja", clientId };
 }
 
 /**

@@ -52,9 +52,36 @@ export interface ResultadoDaConsulta {
 // ── Peças comuns ─────────────────────────────────────────────────────────
 
 /** As lojas da carteira de quem perguntou, com as contas de anúncio. */
-async function lojasDoUsuario(user: PessoaDaCasa) {
+/**
+ * Quem está perguntando — e, quando for o caso, por qual porta.
+ *
+ * ── O campo que importa ──────────────────────────────────────────────────
+ *
+ * `soALoja` existe pra uma situação só: a pergunta chegou DENTRO do grupo de
+ * um cliente. Ali a resposta não pode ser a carteira de quem escreveu — tem
+ * que ser aquela loja, e só ela. Um "quais lojas estão sem verba?" no grupo
+ * da R2 precisa trazer a R2 e mais nada.
+ *
+ * Não é o modelo que garante isso. É esta linha, no `where` da única consulta
+ * que resolve lojas neste arquivo: o que não passa por aqui não existe pro
+ * resto do Copiloto. Pedir pro modelo "deduzir" que só pode falar daquela
+ * loja seria apostar o dado do cliente num bom dia dele.
+ */
+export interface QuemPergunta extends PessoaDaCasa {
+  /** clientId. Com ele, a consulta enxerga uma loja só. */
+  soALoja?: string;
+}
+
+async function lojasDoUsuario(user: QuemPergunta) {
   return prisma.client.findMany({
-    where: { ...CARTEIRA_NO_META, ...escopoDaCarteira(user) },
+    where: {
+      ...CARTEIRA_NO_META,
+      ...escopoDaCarteira(user),
+      // A trava do grupo do cliente. Vem DEPOIS do escopo de carteira, e os
+      // dois valem juntos: a loja tem que estar na carteira de quem pergunta
+      // E ser a do grupo. Uma não substitui a outra.
+      ...(user.soALoja ? { id: user.soALoja } : {}),
+    },
     orderBy: { companyName: "asc" },
     select: {
       id: true,
@@ -158,7 +185,7 @@ function janelaAnterior(p: Intervalo): Intervalo {
  * caro pro mais barato, e quem não teve resultado nenhum vem antes de todos.
  */
 export async function desempenhoDasLojas(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
   args: { periodo?: string },
 ): Promise<ResultadoDaConsulta> {
   const periodo = periodoDe(args.periodo);
@@ -254,7 +281,7 @@ export async function desempenhoDasLojas(
 // ── 2. Uma loja em detalhe ───────────────────────────────────────────────
 
 export async function desempenhoDeUmaLoja(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
   args: { loja: string; periodo?: string },
 ): Promise<ResultadoDaConsulta> {
   const periodo = periodoDe(args.periodo);
@@ -328,7 +355,7 @@ export async function desempenhoDeUmaLoja(
 // ── 3. Campanhas, conjuntos e anúncios de uma loja ───────────────────────
 
 export async function itensDaLoja(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
   args: { loja: string; nivel?: "campanha" | "conjunto" | "anuncio"; periodo?: string },
 ): Promise<ResultadoDaConsulta> {
   const periodo = periodoDe(args.periodo);
@@ -421,7 +448,7 @@ export async function itensDaLoja(
  * amostra pequena — e uma lista cheia desses esconde os três que importam.
  */
 export async function desperdicio(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
   args: { loja?: string; periodo?: string; minimoReais?: number },
 ): Promise<ResultadoDaConsulta> {
   const periodo = periodoDe(args.periodo);
@@ -513,7 +540,7 @@ export async function desperdicio(
 // ── 5. Comparar dois períodos ────────────────────────────────────────────
 
 export async function compararPeriodos(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
   args: { loja: string; periodo?: string; contra?: string },
 ): Promise<ResultadoDaConsulta> {
   const lojas = await lojasDoUsuario(user);
@@ -583,7 +610,7 @@ export async function compararPeriodos(
 // ── 6. Saldo das contas ──────────────────────────────────────────────────
 
 export async function saldoDasLojas(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
 ): Promise<ResultadoDaConsulta> {
   const lojas = await lojasDoUsuario(user);
   const linhas = await Promise.all(
@@ -642,7 +669,7 @@ export async function saldoDasLojas(
 // ── 7. O que já foi mexido ───────────────────────────────────────────────
 
 export async function acoesRecentes(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
   args: { loja?: string; quantas?: number },
 ): Promise<ResultadoDaConsulta> {
   const lojas = await lojasDoUsuario(user);
@@ -714,7 +741,7 @@ export const CONSULTAS = {
 export type NomeDaConsulta = keyof typeof CONSULTAS;
 
 export async function rodarConsulta(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
   nome: NomeDaConsulta,
   args: Record<string, unknown>,
 ): Promise<ResultadoDaConsulta> {

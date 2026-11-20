@@ -1,7 +1,8 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { CARTEIRA, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
+import { CARTEIRA, escopoDaCarteira } from "@/lib/carteira";
+import type { QuemPergunta } from "@/lib/copiloto/consultas";
 import { AiNaoConfigurado } from "@/lib/ai/config";
 import { perguntar, type Turno, type Canal } from "@/lib/copiloto/cerebro";
 import type { RespostaDoCopiloto } from "@/lib/copiloto/tipos";
@@ -38,7 +39,7 @@ import type { RespostaDoCopiloto } from "@/lib/copiloto/tipos";
  * 3. Nada é executado. A proposta é proposta.
  */
 export async function responderComoPessoa(
-  user: PessoaDaCasa,
+  user: QuemPergunta,
   pergunta: string,
   historico: Turno[],
   /** Muda só o JEITO de escrever, nunca o que é consultado. Ver cerebro.ts. */
@@ -50,8 +51,16 @@ export async function responderComoPessoa(
     return { erro: "Pergunta muito longa. Resuma em algumas linhas." };
   }
 
+  // A mesma trava de lojasDoUsuario, e pelo mesmo motivo: esta lista é a
+  // que o modelo enxerga como "as lojas existentes". Se ela trouxesse mais
+  // que a loja do grupo, o modelo saberia o nome das outras — e saber o nome
+  // já é vazar.
   const lojas = await prisma.client.findMany({
-    where: { ...CARTEIRA, ...escopoDaCarteira(user) },
+    where: {
+      ...CARTEIRA,
+      ...escopoDaCarteira(user),
+      ...(user.soALoja ? { id: user.soALoja } : {}),
+    },
     orderBy: { companyName: "asc" },
     select: { id: true, companyName: true },
   });

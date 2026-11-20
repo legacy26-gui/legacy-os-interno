@@ -11,6 +11,8 @@ hoje?* Cada pessoa vê os alertas dela, com link pro lugar onde se resolve.
 | Gravação atrasada | Andrielli | Gravações |
 | Implantação parada | Andrielli | Formulários |
 | Mensalidade vencida | Só o dono | Financeiro |
+| Cliente sem verba | O gestor da loja (sem gestor: o dono) | Meta Ads da loja |
+| Relatório não enviado | O gestor da loja; a Andrielli de quarta em diante | Meu Dia |
 
 Gestor de tráfego não recebe alerta nenhum — foi decisão do Guilherme.
 
@@ -205,3 +207,122 @@ não se mexe em nenhum deles. A obra foi a engrenagem; alerta novo é regrinha.
 **Cuidado ao escolher a `chave`:** o mesmo problema tem que dar a mesma chave
 amanhã, senão o anti-spam não reconhece e o aviso sai de novo todo dia. Nunca
 entra data nem contagem na chave.
+
+
+## Aviso no WhatsApp
+
+Quem tem número cadastrado em Configurações recebe os avisos **no WhatsApp**,
+e só lá. Quem não tem continua recebendo no app, como sempre foi. A troca é
+de canal, não soma: o mesmo problema vibrando duas vezes no mesmo celular é o
+que faz a pessoa desligar as duas notificações.
+
+### Um recado por pessoa
+
+O robô manda **uma mensagem** por pessoa por dia, com seções, e não uma por
+alerta. A Z-API não é oficial: ela conecta um número comum pelo caminho do
+WhatsApp Web, e rajada de mensagem desse número é o jeito mais rápido
+conhecido de bloqueá-lo — e bloqueado, para o envio da casa inteira,
+relatórios dos clientes incluídos. Entre uma pessoa e outra há uma pausa
+sorteada de 4 a 9 segundos, porque intervalo igual entre todas as mensagens é a
+assinatura de um robô.
+
+```
+Oi, Giovana! Hoje precisa de atenção:
+
+*Cliente sem verba*
+• *Podium* — Conta zerada — a campanha para hoje
+• *Real Veículos* — Saldo R$ 40,00 — dura 1 dia
+
+*Relatório não enviado*
+• *Real Veículos* — O envio automático falhou — manda pelo Meu Dia
+
+Resolve pelo Legacy OS. Se já tratou, é só ignorar: eu só volto a falar
+disso se piorar.
+```
+
+### Só de segunda a sexta
+
+Decisão do Guilherme: fim de semana ninguém é incomodado. Nada é anotado como
+"avisado" no sábado e no domingo, então segunda às 8h sai tudo que estiver em
+aberto, com o estado de segunda. O dia é o de **Caxias** (America/Sao_Paulo),
+não o do servidor: às 22h de sexta o UTC já virou sábado.
+
+O fim de semana vale só pro WhatsApp. Quem recebe no app continua como era.
+
+### Se o WhatsApp falhar, o aviso não morre
+
+Se a Z-API recusar o recado, o aviso cai no app, que é o canal de antes. E
+nada é anotado como entregue enquanto não chegar em algum lugar — então o
+robô tenta de novo no dia seguinte, em vez de achar que já avisou.
+
+## Cliente sem verba
+
+A régua é a do Meu Dia, de propósito: **não chega no próximo abastecimento**.
+A loja abastece por semana, então sete dias de saldo não é alerta, é o tanque
+cheio.
+
+| Degrau | Quando | O que quer dizer |
+| --- | --- | --- |
+| Amarelo | 3 dias de saldo ou menos | Hora de cobrar o Pix da semana |
+| Vermelho | 2 dias ou menos | O Pix já está atrasado |
+| Crítico | Conta zerada, ou menos de 1 dia | A campanha para sozinha, hoje |
+
+Fica de fora, como na tela: conta no cartão (não tem saldo), e a loja com link
+de Pix já mandado e no prazo (o azul do Meu Dia) — alguém já tratou, e avisar
+de novo seria cobrar quem já agiu. Se o prazo vencer e o dinheiro não vier, ela
+volta sozinha.
+
+Mora em `src/lib/meta/lojas-sem-verba.ts` e passa pela mesma função que a tela
+(`avaliarLoja`), então a tela e o aviso **não podem discordar**. Está testado:
+zerada, acabando, atenção, cheia e cobrada dão o mesmo tom na tela e o mesmo
+degrau no alerta.
+
+**Por que não reaproveita o painel inteiro do Meu Dia:** o sininho do cabeçalho
+recalcula todos os alertas a cada página aberta. O painel faz quatro agregações
+sobre o histórico de insights, e três delas (artes cansadas, projeção do mês)
+não têm nada a ver com saldo. Pendurar isso ali faria cada clique, de cada
+pessoa, rodar tudo só pra saber se uma conta zerou.
+
+## Relatório não enviado: agora diz o motivo
+
+Antes dizia só "ainda não enviado", e isso era verdade pra três situações que
+pedem três pessoas diferentes:
+
+| Situação | Quem resolve | O que o aviso diz |
+| --- | --- | --- |
+| Aguardando aprovação | A Andrielli | "Aguardando aprovação da Andrielli — custo por lead de R$ 12 ou mais" |
+| O envio automático falhou | O gestor | "O envio automático falhou — manda pelo Meu Dia" |
+| Loja sem grupo de WhatsApp | O gestor | "Sem grupo de WhatsApp cadastrado — manda pelo Meu Dia" |
+
+Quem espera aprovação **não cobra o gestor**: ele não tem o que fazer, e cobrar
+quem não pode agir ensina a ignorar o aviso.
+
+### Segunda de manhã não é aviso
+
+Na segunda às 8h o robô dos relatórios está mandando os da casa inteira, sozinho.
+Avisar o gestor ali seria dizer "o relatório está pronto pra enviar" cinco
+minutos antes de ele sair. O nível 1 continua na tela, mas só vai pro WhatsApp
+a partir de quarta (nível 2) — e aí sobra só quem de fato ficou pra trás.
+Quando o aviso de quarta sai, a verba que já foi avisada na segunda não repete.
+
+Isso mora em `NIVEL_MINIMO_NO_WHATSAPP` (`src/lib/alertas/tipos.ts`).
+
+## O que foi conferido
+
+Contra Z-API falsa e banco de teste, passando o robô por quarta, de novo na
+quarta, uma piora, sábado e segunda:
+
+- um recado só por pessoa, com o que é dela e nada da carteira de outro gestor
+- a segunda execução do mesmo dia não manda nada
+- a piora de um degrau manda só o que piorou
+- sábado: nada sai e nada fica anotado
+- segunda: sai a verba, não o relatório, e o relatório não fica marcado como
+  avisado (pra poder sair quarta)
+- Z-API recusando: contado, cai no app, e não anota "já avisei"
+- sem a Z-API ligada: tudo cai no app, como era
+- no navegador: a tela de Alertas mostra "Cliente sem verba — Conta zerada" e o
+  botão leva pra loja
+
+**Não foi conferido:** a entrega num WhatsApp de verdade. Isso só a produção
+responde, e só depois que os números dos gestores estiverem cadastrados. O
+primeiro dia útil depois disso é o teste.

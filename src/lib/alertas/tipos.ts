@@ -15,6 +15,7 @@ export const TIPOS_DE_ALERTA = [
   "implantacao-parada",
   "reuniao-marcada",
   "relatorio-nao-enviado",
+  "sem-verba",
 ] as const;
 
 export type TipoDeAlerta = (typeof TIPOS_DE_ALERTA)[number];
@@ -87,6 +88,7 @@ export const ROTULO_DO_TIPO: Record<TipoDeAlerta, string> = {
   "implantacao-parada": "Implantação parada",
   "reuniao-marcada": "Reunião marcada",
   "relatorio-nao-enviado": "Relatório não enviado",
+  "sem-verba": "Cliente sem verba",
 };
 
 /**
@@ -97,6 +99,23 @@ export const ROTULO_DO_TIPO: Record<TipoDeAlerta, string> = {
  * pessoa desligar a notificação — e aí ela perde também o que importava.
  */
 export const TIPOS_SO_NA_TELA: TipoDeAlerta[] = ["reuniao-marcada"];
+
+/**
+ * A partir de que gravidade um tipo de alerta vai pro WhatsApp.
+ *
+ * O relatório da semana nasce em nível 1 na segunda de manhã, e é exatamente a
+ * hora em que o robô dos relatórios está mandando os da casa inteira, sozinho.
+ * Avisar o gestor ali seria dizer "o relatório está pronto pra enviar" cinco
+ * minutos antes de ele sair — todo mundo recebendo uma cobrança por uma coisa
+ * que já estava em andamento. A partir de quarta (nível 2) sobra só quem de
+ * fato ficou pra trás: o que falhou, o que espera aprovação, o que não tem
+ * grupo.
+ *
+ * Na TELA o nível 1 continua aparecendo; isto vale só pro celular.
+ */
+export const NIVEL_MINIMO_NO_WHATSAPP: Partial<Record<TipoDeAlerta, NivelDeAlerta>> = {
+  "relatorio-nao-enviado": 2,
+};
 
 // A mesma escada de cores do Controle de Vendas, de propósito: quem já leu
 // aquela tela não precisa aprender outro código de cor aqui. A faixa máxima é

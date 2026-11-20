@@ -73,6 +73,12 @@ const QUEM_RECEBE: Record<TipoDeAlerta, (p: Pessoa, a: Alerta) => boolean> = {
   "relatorio-nao-enviado": (p, a) =>
     (!!a.donoId && a.donoId === p.id) ||
     (ehAndrielli(p.email) && a.nivel >= NIVEL_QUE_CHAMA_O_GESTOR),
+  // Verba: o gestor DA LOJA, e mais ninguém. É ele quem cobra o Pix, e alerta
+  // que vai pra todo mundo é alerta de ninguém. A exceção é a loja sem gestor:
+  // aí o dono da casa, porque um aviso que não chega a ninguém é pior que
+  // aviso nenhum — dá a sensação de que alguém foi avisado.
+  "sem-verba": (p, a) =>
+    a.donoId ? a.donoId === p.id : ehODono(p),
 };
 
 /**

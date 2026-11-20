@@ -3,6 +3,8 @@ import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { avisarPessoas, pushConfigurado, type AvisoPush } from "@/lib/push";
+import { enviarTexto, zapiConfigurado } from "@/lib/whatsapp/zapi";
+import { alertasQueVaoPraWhatsapp, ehDiaUtilNaCasa, montarRecado } from "./por-whatsapp";
 import { EMPRESA_CURTA, veTodasAsEmpresas } from "@/lib/empresa";
 import { calcularTodosOsAlertas } from "./calcular";
 import { alertaEDaPessoa, podeVerAlerta, recebeAlgumAlerta, ehODono, type Pessoa } from "./destinatarios";
@@ -153,6 +155,11 @@ export async function ultimaConferencia(): Promise<Date | null> {
 export interface ResultadoDoRobo {
   /** Quantos problemas o sistema encontrou, somando todo mundo. */
   problemas: number;
+  /** Quantos recados saíram pelo WhatsApp (um por pessoa). */
+  whatsapp: number;
+  /** Quantos recados de WhatsApp a Z-API recusou — esses caíram no app. */
+  whatsappRecusados: number;
+  whatsappConfigurado: boolean;
   /** Quantas pessoas tinham algo novo pra saber. */
   pessoasAvisadas: number;
   /** Quantos avisos saíram (um por pessoa por tipo de alerta). */
@@ -196,6 +203,11 @@ function resumoDoPush(
   };
 }
 
+/** Entre 4 e 9 segundos, sorteado — nunca o mesmo intervalo duas vezes. */
+function pausaIrregular(): number {
+  return 4_000 + Math.floor(Math.random() * 5_000);
+}
+
 /**
  * O robô. Olha os problemas, decide quem precisa saber, avisa no celular e
  * anota o que avisou.
@@ -204,18 +216,29 @@ function resumoDoPush(
  * avisou, ou o que piorou de gravidade desde a última vez. É isso que permite
  * ter o botão "rodar agora" sem risco de encher o celular de ninguém.
  */
-export async function rodarAlertas(hoje: Date = new Date()): Promise<ResultadoDoRobo> {
+export async function rodarAlertas(
+  hoje: Date = new Date(),
+  opcoes: {
+    /** A pausa entre um recado de WhatsApp e o seguinte. Só o teste troca. */
+    pausaMs?: () => number;
+  } = {},
+): Promise<ResultadoDoRobo> {
   const todos = await calcularTodosOsAlertas(hoje);
 
   const equipe = await prisma.user.findMany({
     where: { active: true },
-    select: { id: true, name: true, email: true, role: true, empresas: true },
+    select: { id: true, name: true, email: true, role: true, empresas: true, whatsapp: true },
   });
+  const pausaMs = opcoes.pausaMs ?? pausaIrregular;
   // Quem não é dono de nenhum tipo de alerta não é nem consultado.
   const donos = equipe.filter((p) => recebeAlgumAlerta(p, todos));
 
+  const zapPronta = zapiConfigurado();
   const resultado: ResultadoDoRobo = {
     problemas: todos.length,
+    whatsapp: 0,
+    whatsappRecusados: 0,
+    whatsappConfigurado: zapPronta,
     pessoasAvisadas: 0,
     avisos: 0,
     aparelhos: 0,
@@ -243,34 +266,81 @@ export async function rodarAlertas(hoje: Date = new Date()): Promise<ResultadoDo
     });
     if (aAvisar.length === 0) continue;
 
-    // Quem só trabalha numa empresa não precisa ler o nome dela em cada aviso.
-    const mostrarEmpresa = veTodasAsEmpresas(pessoa.empresas);
-
-    const porTipo = new Map<TipoDeAlerta, Alerta[]>();
-    for (const a of aAvisar) {
-      const lista = porTipo.get(a.tipo) ?? [];
-      lista.push(a);
-      porTipo.set(a.tipo, lista);
-    }
-
-    let chegouEmAlgumAparelho = false;
-    for (const [tipo, lista] of porTipo) {
-      lista.sort(piorPrimeiro);
-      const entregues = await avisarPessoas([pessoa.id], resumoDoPush(tipo, lista, mostrarEmpresa));
-      resultado.avisos++;
-      resultado.aparelhos += entregues;
-      if (entregues > 0) chegouEmAlgumAparelho = true;
-    }
-
-    // Só anota "já avisei" se o aviso chegou em algum aparelho de verdade.
+    // ── Por onde esta pessoa é avisada ─────────────────────────────────────
     //
-    // Importa: enquanto o push não estiver configurado, ou enquanto a pessoa
-    // não tiver instalado o app, nada é anotado — então no dia em que ela
-    // instalar, ela recebe o que estava pendente em vez de nunca receber nada.
-    if (chegouEmAlgumAparelho) {
+    // Quem tem número cadastrado recebe no WhatsApp, e SÓ lá: o mesmo problema
+    // vibrando duas vezes no mesmo celular é o que faz a pessoa desligar as
+    // duas notificações. Quem não tem número segue no app, como sempre foi.
+    const numero = pessoa.whatsapp ? pessoa.whatsapp.replace(/\D/g, "") : null;
+    const noWhatsapp = !!numero && numero.length >= 10 && zapPronta;
+
+    // Fim de semana: quem é avisado por WhatsApp não é incomodado. Nada é
+    // anotado como "avisado", então segunda às 8h sai o que estiver em aberto.
+    if (noWhatsapp && !ehDiaUtilNaCasa(hoje)) continue;
+
+    let paraPush: Alerta[] = aAvisar;
+    const entregues: Alerta[] = [];
+
+    if (noWhatsapp) {
+      // O que ainda não é hora de ir pro celular (ver NIVEL_MINIMO_NO_WHATSAPP)
+      // fica na tela e NÃO vai pro app no lugar: o app foi trocado, não somado.
+      const paraWhatsapp = alertasQueVaoPraWhatsapp(aAvisar);
+      paraPush = [];
+
+      if (paraWhatsapp.length > 0) {
+        // Pausa irregular entre uma pessoa e outra: dez segundos exatos entre
+        // todas as mensagens é a assinatura de um robô, e a Z-API não é oficial.
+        if (resultado.whatsapp + resultado.whatsappRecusados > 0) {
+          await new Promise((r) => setTimeout(r, pausaMs()));
+        }
+        const r = await enviarTexto(numero!, montarRecado(pessoa.name, paraWhatsapp));
+        if (r.ok) {
+          resultado.whatsapp++;
+          entregues.push(...paraWhatsapp);
+        } else {
+          // A Z-API recusou: o aviso não pode morrer aqui. Cai no app, que é
+          // o canal de antes, e o motivo fica no resultado do robô.
+          resultado.whatsappRecusados++;
+          paraPush = paraWhatsapp;
+        }
+      }
+    }
+
+    if (paraPush.length > 0) {
+      // Quem só trabalha numa empresa não precisa ler o nome dela em cada aviso.
+      const mostrarEmpresa = veTodasAsEmpresas(pessoa.empresas);
+
+      const porTipo = new Map<TipoDeAlerta, Alerta[]>();
+      for (const a of paraPush) {
+        const lista = porTipo.get(a.tipo) ?? [];
+        lista.push(a);
+        porTipo.set(a.tipo, lista);
+      }
+
+      let chegouEmAlgumAparelho = false;
+      for (const [tipo, lista] of porTipo) {
+        lista.sort(piorPrimeiro);
+        const entreguesNoApp = await avisarPessoas(
+          [pessoa.id],
+          resumoDoPush(tipo, lista, mostrarEmpresa),
+        );
+        resultado.avisos++;
+        resultado.aparelhos += entreguesNoApp;
+        if (entreguesNoApp > 0) chegouEmAlgumAparelho = true;
+      }
+
+      // Só anota "já avisei" se o aviso chegou em algum aparelho de verdade.
+      //
+      // Importa: enquanto o push não estiver configurado, ou enquanto a pessoa
+      // não tiver instalado o app, nada é anotado — então no dia em que ela
+      // instalar, ela recebe o que estava pendente em vez de nunca receber nada.
+      if (chegouEmAlgumAparelho) entregues.push(...paraPush);
+    }
+
+    if (entregues.length > 0) {
       resultado.pessoasAvisadas++;
       await prisma.$transaction(
-        aAvisar.map((a) =>
+        entregues.map((a) =>
           prisma.alertaEstado.upsert({
             where: { userId_chave: { userId: pessoa.id, chave: a.chave } },
             update: { nivelAvisado: a.nivel, avisadoEm: hoje },

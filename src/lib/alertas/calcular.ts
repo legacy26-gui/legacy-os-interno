@@ -5,6 +5,8 @@ import { estadoDaVenda, diasEntre, type TomDaVenda } from "@/lib/controle-vendas
 import { TOTAL_DE_ETAPAS } from "@/lib/etapas-implantacao";
 import { formatCurrency } from "@/lib/labels";
 import { segundaDaSemana, diaDaCasaComoData } from "@/lib/dia-da-casa";
+import { EXPLICACAO } from "@/lib/whatsapp/decidir-envio";
+import { descreverVerba, lojasComPoucaVerba } from "@/lib/meta/lojas-sem-verba";
 import type { Alerta, NivelDeAlerta } from "./tipos";
 
 // De onde cada alerta nasce.
@@ -312,6 +314,7 @@ async function relatoriosNaoEnviados(hoje: Date): Promise<Alerta[]> {
       id: true,
       companyName: true,
       managerId: true,
+      whatsappGrupoId: true,
       manager: { select: { name: true } },
     },
     orderBy: { companyName: "asc" },
@@ -320,23 +323,108 @@ async function relatoriosNaoEnviados(hoje: Date): Promise<Alerta[]> {
     take: 100,
   });
 
+  // ── Por que o relatório não saiu ────────────────────────────────────────
+  //
+  // Antes isto dizia só "ainda não enviado", e era verdade pra três situações
+  // que pedem três pessoas diferentes:
+  //
+  //   esperando aprovação ..... é da Andrielli. O gestor não tem o que fazer,
+  //                             e cobrá-lo por isso é cobrar quem não pode agir.
+  //   o envio automático falhou  é do gestor: manda pelo Meu Dia.
+  //   loja sem grupo de WhatsApp  é do gestor: o robô nunca teve pra onde mandar.
+  //
+  // Sem separar, o gestor receberia o mesmo "relatório não enviado" por uma
+  // loja que está só esperando a Andrielli — e aprenderia a ignorar o aviso.
+  const ids = lojas.map((l) => l.id);
+  const [aguardando, falhas] = await Promise.all([
+    ids.length
+      ? prisma.relatorioParaAprovar.findMany({
+          where: { clientId: { in: ids }, semana, estado: "PENDENTE" },
+          select: { clientId: true, motivoDaEspera: true },
+        })
+      : [],
+    ids.length
+      ? prisma.tentativaDeRelatorio.findMany({
+          where: { clientId: { in: ids }, semana, ultimoErro: { not: null } },
+          select: { clientId: true },
+        })
+      : [],
+  ]);
+  const esperaDe = new Map(aguardando.map((a) => [a.clientId, a.motivoDaEspera]));
+  const falhou = new Set(falhas.map((f) => f.clientId));
+
   const semanaISO = semana.toISOString().slice(0, 10);
 
+  return lojas.map((l) => {
+    const motivoDaEspera = esperaDe.get(l.id);
+    const dias = `${diaDaSemana - 1} ${diaDaSemana === 2 ? "dia" : "dias"}`;
+
+    let detalhe: string;
+    let donoId: string | null = l.managerId;
+
+    if (motivoDaEspera) {
+      // O dono do problema é quem aprova, e não o gestor da loja. Sem donoId o
+      // roteamento deixa o gestor de fora e a Andrielli recebe de quarta em
+      // diante, que é o ritmo que ela já tem.
+      detalhe = `Aguardando aprovação da Andrielli — ${
+        EXPLICACAO[motivoDaEspera as keyof typeof EXPLICACAO] ?? "relatório em espera"
+      }`;
+      donoId = null;
+    } else if (falhou.has(l.id)) {
+      detalhe = "O envio automático falhou — manda pelo Meu Dia";
+    } else if (!l.whatsappGrupoId) {
+      detalhe = "Sem grupo de WhatsApp cadastrado — manda pelo Meu Dia";
+    } else if (diaDaSemana === 1) {
+      detalhe = "Relatório da semana pronto pra enviar";
+    } else {
+      detalhe = `Relatório da semana ainda não enviado — ${dias} desde segunda`;
+    }
+
+    return {
+      chave: `relatorio-nao-enviado:${l.id}:${semanaISO}`,
+      tipo: "relatorio-nao-enviado" as const,
+      empresa: "AGENCIA" as const,
+      titulo: l.companyName,
+      detalhe,
+      nivel: nivelDoRelatorio(diaDaSemana),
+      // Leva pro Meu Dia e não pra tela de relatório: é lá que está a lista
+      // inteira com o botão de marcar, que é o que fecha a pendência.
+      link: "/meu-dia",
+      modulo: "clientes" as const,
+      dias: diaDaSemana - 1,
+      donoId,
+    };
+  });
+}
+
+// ──────────────────────────── Cliente sem verba ───────────────────────────
+//
+// A régua é a do Meu Dia (ver lojas-sem-verba.ts): "não chega no próximo
+// abastecimento". A loja abastece por semana, então sete dias de saldo não é
+// alerta, é o tanque cheio. Os três degraus são os mesmos da tela:
+//
+//   amarelo ... 3 dias ou menos: hora de cobrar o Pix da semana
+//   vermelho .. 2 dias ou menos: o Pix já está atrasado
+//   crítico ... conta zerada, ou para hoje: a campanha para sozinha
+//
+// A chave é a loja, sem data: o MESMO problema tem que ser reconhecido amanhã
+// como o de hoje, é isso que faz o aviso sair só quando PIORA de degrau.
+//
+// Cobrança já feita (link de Pix mandado, no prazo) não entra: alguém tratou.
+
+async function lojasSemVerba(hoje: Date): Promise<Alerta[]> {
+  const lojas = await lojasComPoucaVerba(hoje);
   return lojas.map((l) => ({
-    chave: `relatorio-nao-enviado:${l.id}:${semanaISO}`,
-    tipo: "relatorio-nao-enviado" as const,
+    chave: `sem-verba:${l.clientId}`,
+    tipo: "sem-verba" as const,
     empresa: "AGENCIA" as const,
-    titulo: l.companyName,
-    detalhe:
-      diaDaSemana === 1
-        ? "Relatório da semana pronto pra enviar"
-        : `Relatório da semana ainda não enviado — ${diaDaSemana - 1} ${diaDaSemana === 2 ? "dia" : "dias"} desde segunda`,
-    nivel: nivelDoRelatorio(diaDaSemana),
-    // Leva pro Meu Dia e não pra tela de relatório: é lá que está a lista
-    // inteira com o botão de marcar, que é o que fecha a pendência.
-    link: "/meu-dia",
+    titulo: l.nome,
+    detalhe: descreverVerba(l),
+    nivel: l.nivel,
+    link: `/meta-ads/${l.clientId}`,
     modulo: "clientes" as const,
-    dias: diaDaSemana - 1,
+    // Aqui "dias" não é idade do problema: ordena só dentro do mesmo degrau.
+    dias: 0,
     donoId: l.managerId,
   }));
 }
@@ -355,6 +443,7 @@ export async function calcularTodosOsAlertas(hoje: Date = new Date()): Promise<A
     implantacoesParadas(hoje),
     reunioesMarcadas(hoje),
     relatoriosNaoEnviados(hoje),
+    lojasSemVerba(hoje),
   ]);
   return listas.flat();
 }

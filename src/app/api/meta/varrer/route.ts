@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { varrerCasa } from "@/lib/meta/varredura";
 import { prazoDe } from "@/lib/meta/sincronizar-insights";
+import { conferirEAvisar } from "@/lib/whatsapp/vigia-conexao";
 
 // A porta que mantém os números da Meta sempre frescos.
 //
@@ -110,6 +111,13 @@ export async function GET(req: Request) {
   });
 
   try {
+    // De carona nos 15 minutos: confere se o número do robô está conectado. Rápido, e
+    // nunca derruba a varredura (ver vigia-conexao.ts).
+    try {
+      await conferirEAvisar();
+    } catch (e) {
+      console.error("[varrer] vigia do WhatsApp falhou:", e instanceof Error ? e.message : e);
+    }
     const r = await varrerCasa(prazoDe(ORCAMENTO_MS));
     console.log("[meta] varredura de 15 em 15:", JSON.stringify(r));
     // `contas: r` e não `...r`: o resultado da varredura TAMBÉM tem um campo

@@ -16,6 +16,7 @@ export const TIPOS_DE_ALERTA = [
   "reuniao-marcada",
   "relatorio-nao-enviado",
   "sem-verba",
+  "whatsapp-desconectado",
 ] as const;
 
 export type TipoDeAlerta = (typeof TIPOS_DE_ALERTA)[number];
@@ -89,6 +90,7 @@ export const ROTULO_DO_TIPO: Record<TipoDeAlerta, string> = {
   "reuniao-marcada": "Reunião marcada",
   "relatorio-nao-enviado": "Relatório não enviado",
   "sem-verba": "Cliente sem verba",
+  "whatsapp-desconectado": "WhatsApp do robô fora do ar",
 };
 
 /**
@@ -98,7 +100,9 @@ export const ROTULO_DO_TIPO: Record<TipoDeAlerta, string> = {
  * celular de quem não tem nada pra fazer agora é o caminho mais curto pra a
  * pessoa desligar a notificação — e aí ela perde também o que importava.
  */
-export const TIPOS_SO_NA_TELA: TipoDeAlerta[] = ["reuniao-marcada"];
+// WhatsApp desconectado também: o vigia (vigia-conexao.ts) já manda o push na hora
+// em que cai, e mandar pelo WhatsApp seria mandar pelo que está quebrado.
+export const TIPOS_SO_NA_TELA: TipoDeAlerta[] = ["reuniao-marcada", "whatsapp-desconectado"];
 
 /**
  * A partir de que gravidade um tipo de alerta vai pro WhatsApp.

@@ -485,8 +485,11 @@ function Recebimento({
       {webhook.url ? (
         <>
           <p className="text-sm text-foreground-muted">
-            No painel da Z-API, em <strong>Webhooks → Ao receber</strong>, cole
-            este endereço:
+            No painel da Z-API, em <strong>Webhooks</strong>, cole este mesmo
+            endereço em <strong>Ao receber</strong>, <strong>Ao desconectar</strong> e{" "}
+            <strong>Ao conectar</strong>. Os dois últimos fazem o sistema avisar no seu
+            celular, na hora, quando o número do robô cair e quando voltar (sem eles, o
+            aviso ainda chega, mas pode levar até meia hora).
           </p>
           <div className="flex gap-2 flex-wrap items-center">
             <code

@@ -79,6 +79,8 @@ const QUEM_RECEBE: Record<TipoDeAlerta, (p: Pessoa, a: Alerta) => boolean> = {
   // aviso nenhum — dá a sensação de que alguém foi avisado.
   "sem-verba": (p, a) =>
     a.donoId ? a.donoId === p.id : ehODono(p),
+  // O número do robô é da casa: quem resolve (lê o QR Code) é o dono.
+  "whatsapp-desconectado": ehODono,
 };
 
 /**

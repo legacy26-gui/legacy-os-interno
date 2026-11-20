@@ -7,6 +7,7 @@ import { formatCurrency } from "@/lib/labels";
 import { segundaDaSemana, diaDaCasaComoData } from "@/lib/dia-da-casa";
 import { EXPLICACAO } from "@/lib/whatsapp/decidir-envio";
 import { descreverVerba, lojasComPoucaVerba } from "@/lib/meta/lojas-sem-verba";
+import { whatsappForaDesde } from "@/lib/whatsapp/vigia-conexao";
 import type { Alerta, NivelDeAlerta } from "./tipos";
 
 // De onde cada alerta nasce.
@@ -429,6 +430,32 @@ async function lojasSemVerba(hoje: Date): Promise<Alerta[]> {
   }));
 }
 
+// ─────────────────────────── WhatsApp do robô fora ─────────────────────────
+//
+// Enquanto o número do robô estiver desconectado, nada sai pelo WhatsApp: relatório,
+// aviso, pausa. Crítico desde o primeiro minuto — não piora com o tempo porque já
+// está no pior. A chave é fixa: é sempre o mesmo problema.
+
+async function whatsappDesconectado(hoje: Date): Promise<Alerta[]> {
+  const fora = await whatsappForaDesde();
+  if (!fora) return [];
+  const desde = fora.desde.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return [
+    {
+      chave: "whatsapp-desconectado",
+      tipo: "whatsapp-desconectado" as const,
+      empresa: "AGENCIA" as const,
+      titulo: "WhatsApp do robô desconectado",
+      detalhe: `Desde ${desde}. Relatórios, avisos e pausas estão parados — leia o QR Code de novo na Z-API.`,
+      nivel: 3,
+      link: "/configuracoes/whatsapp",
+      modulo: "configuracoes" as const,
+      dias: Math.floor((hoje.getTime() - fora.desde.getTime()) / 86_400_000),
+      donoId: null,
+    },
+  ];
+}
+
 /**
  * Todos os alertas que o sistema tem hoje, de todas as empresas e sem dono
  * ainda. Quem recebe o quê é decidido depois, em destinatarios.ts — assim o
@@ -444,6 +471,7 @@ export async function calcularTodosOsAlertas(hoje: Date = new Date()): Promise<A
     reunioesMarcadas(hoje),
     relatoriosNaoEnviados(hoje),
     lojasSemVerba(hoje),
+    whatsappDesconectado(hoje),
   ]);
   return listas.flat();
 }

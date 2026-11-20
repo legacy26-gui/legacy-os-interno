@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { atenderMensagemDoGrupo } from "@/lib/whatsapp/atender-grupo";
 import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
 import { atenderAudioDoGrupo } from "@/lib/whatsapp/atender-audio";
+import { registrarConexao } from "@/lib/whatsapp/vigia-conexao";
 import { primeiraVez } from "@/lib/whatsapp/so-uma-vez";
 import { anotar } from "@/lib/whatsapp/trilha";
 import { guardarRecado } from "@/lib/whatsapp/guardar-recado";
@@ -123,6 +124,23 @@ export async function POST(
   // descartam a mensagem. É justamente a mensagem DESCARTADA que não deixa
   // rastro nenhum, e era ela que a gente não conseguia investigar.
   await guardarRecado(corpo as Record<string, unknown>);
+
+  // ── A Z-API avisando que o número caiu ou voltou ──────────────────────
+  //
+  // Chega aqui quando o mesmo endereço está em "Ao desconectar" / "Ao conectar" no
+  // painel da Z-API. Não é mensagem de ninguém: só muda o estado e avisa o dono.
+  if (corpo.type === "DisconnectedCallback" || corpo.type === "ConnectedCallback") {
+    const conectou = corpo.type === "ConnectedCallback";
+    const erro = typeof (corpo as { error?: unknown }).error === "string" ? (corpo as { error: string }).error : null;
+    after(async () => {
+      try {
+        await registrarConexao(conectou, "zapi", erro);
+      } catch (e) {
+        await anotar(null, "zapi", "conexao-estourou", e instanceof Error ? e.message : String(e));
+      }
+    });
+    return NextResponse.json({ ok: true, conexao: conectou ? "conectou" : "desconectou" });
+  }
 
   // Mensagem que o próprio robô mandou volta pelo webhook. Sem isto, a
   // resposta "tirei o Onix do ar" seria lida como um novo pedido.

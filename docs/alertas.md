@@ -326,3 +326,18 @@ quarta, uma piora, sábado e segunda:
 **Não foi conferido:** a entrega num WhatsApp de verdade. Isso só a produção
 responde, e só depois que os números dos gestores estiverem cadastrados. O
 primeiro dia útil depois disso é o teste.
+
+## WhatsApp do robô desconectado (vigia)
+
+Se o número do robô cai (celular sem bateria/internet, sessão expirada), relatórios, avisos e pausas
+pelo WhatsApp param calados. O vigia (`src/lib/whatsapp/vigia-conexao.ts`) descobre por dois caminhos:
+
+1. **A Z-API avisa** (`DisconnectedCallback` / `ConnectedCallback`) quando o endereço do webhook também
+   está em **Ao desconectar** e **Ao conectar** no painel dela. Vale na hora.
+2. **A varredura de 15 em 15 minutos** pergunta o status. Só a **segunda** conferência seguida com falha
+   conta como queda (até 30 min), pra lentidão da Z-API não virar alarme.
+
+Ao cair: **push no celular do dono** (não pelo WhatsApp — é ele que caiu) e um alerta **crítico** no
+sininho ("WhatsApp do robô fora do ar", só pro dono, leva pra Configurações → WhatsApp) enquanto durar.
+Ao voltar: outro push ("voltou depois de X fora") e o alerta some. No meio, silêncio. O estado fica na
+tabela `conexao_whatsapp` (uma linha).

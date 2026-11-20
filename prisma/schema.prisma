@@ -2099,3 +2099,21 @@ model PassoDoRobo {
   @@index([messageId])
   @@map("passo_do_robo")
 }
+
+/// O estado da conexão do número do robô (Z-API). Uma linha só.
+///
+/// Existe porque a Z-API falha calada: o celular desconecta e relatórios, avisos e
+/// pausas param sem ninguém saber. Guarda o último estado conhecido pra avisar só
+/// quando MUDA (caiu / voltou), e não a cada conferência.
+model ConexaoDoWhatsapp {
+  id             String   @id @default("zapi")
+  conectado      Boolean  @default(true)
+  /// Desde quando está no estado atual.
+  desde          DateTime @default(now())
+  /// Conferências seguidas que acharam desconectado. Só avisa a partir de 2.
+  falhasSeguidas Int      @default(0)
+  ultimoErro     String?
+  conferidoEm    DateTime @default(now())
+
+  @@map("conexao_whatsapp")
+}

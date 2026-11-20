@@ -213,6 +213,8 @@ export const VENDAS_PARA_EXCEPCIONAL = 3;
  * o cliente percebe quando o elogio é automático.
  */
 export function textoDeParabens(opcoes: {
+  /** O nome da LOJA: quem recebe os parabéns é ela, não "o pessoal". */
+  loja: string;
   vendasNoMes: number;
   gastoCents: number;
   /** Quantos leads os anúncios do carro trouxeram. */
@@ -221,7 +223,7 @@ export function textoDeParabens(opcoes: {
   const n = opcoes.vendasNoMes;
   const excepcional = n >= VENDAS_PARA_EXCEPCIONAL;
   const linhas = [
-    `🎉 Parabéns pela venda, pessoal! Essa é a *${n}ª venda do mês*${
+    `🎉 Parabéns, *${opcoes.loja}*, pela venda! Essa é a *${n}ª venda do mês*${
       excepcional ? " — resultado excepcional!" : "."
     }`,
   ];
@@ -242,7 +244,7 @@ export function textoDeParabens(opcoes: {
 
 export const TEXTO_FORA_DE_LEAD =
   "Entendi, essa venda não veio de lead do anúncio, então não conto no controle. " +
-  "Parabéns mesmo assim, pessoal! 🎉";
+  "Parabéns mesmo assim! 🎉";
 
 /** O que o robô ainda não sabe, dito como pergunta. */
 export function textoDaPergunta(opcoes: {

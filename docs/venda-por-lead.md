@@ -119,3 +119,15 @@ não vira valor; pergunta vencida; loja fora do controle; e quem pode apagar.
 **Não foi conferido:** uma venda real num grupo de cliente, e a recepção do parabéns
 pelo cliente. Na primeira venda real, vale o Guilherme conferir a mensagem no grupo
 e o lançamento no Controle de Vendas.
+
+
+## Valor, origem e parabéns (ajuste depois do primeiro uso)
+
+- **Origem**: "tráfego", "anúncio", "lead", "instagram" na frase já bastam. Se a pessoa
+  disse, o robô não pergunta de novo.
+- **Valor**: se a frase não traz, o robô usa o **preço que está no anúncio** e registra
+  direto. O aviso ao gestor diz "(o preço do anúncio — ninguém disse o valor)", pra ele
+  corrigir em Marcar Venda se saiu por outro valor. Só pergunta quando o anúncio não tem preço.
+- **Parabéns**: vai pra LOJA pelo nome ("Parabéns, *Vilela Motors*, pela venda!"), com a
+  venda do mês e, sempre que há dado, o valor investido no carro e os leads.
+- As perguntas não trazem mais exemplo ("68 mil"): só "Qual foi o *valor* da venda?".

@@ -287,8 +287,14 @@ async function concluirOuPerguntar(e: Estado): Promise<{ recado: string; passo: 
   }
 
   // ── Lead e com valor: registra ───────────────────────────────────────
-  if (e.origemLead === true && e.valorCents !== null) {
-    const recado = await registrar(e, e.valorCents);
+  //
+  // O valor que ninguém disse é o PREÇO DO ANÚNCIO, quando o anúncio tem um: o
+  // Guilherme pediu que o robô procure ali primeiro e só pergunte se não achar. O
+  // aviso ao gestor diz de onde veio o número, pra ele corrigir se a venda saiu
+  // por outro valor.
+  const valorFinal = e.valorCents ?? e.precoDoAnuncioCents;
+  if (e.origemLead === true && valorFinal !== null) {
+    const recado = await registrar(e, valorFinal, e.valorCents === null);
     await prisma.vendaAguardandoDados.deleteMany({ where: { grupoId: e.grupoId } });
     return { recado, passo: "venda-registrada" };
   }
@@ -328,7 +334,11 @@ async function concluirOuPerguntar(e: Estado): Promise<{ recado: string; passo: 
 }
 
 /** Grava no Controle de Vendas e devolve o parabéns. */
-async function registrar(e: Estado, valorCents: number): Promise<string> {
+async function registrar(
+  e: Estado,
+  valorCents: number,
+  valorDoAnuncio: boolean,
+): Promise<string> {
   // O gasto é o TOTAL do carro, somando os anúncios dele (o Ka e o Ka "Cópia"),
   // pelo mesmo acumulado que o Copiloto usa pra responder "quanto gastou".
   const vida = await prisma.metaLifetime.findMany({
@@ -382,7 +392,7 @@ async function registrar(e: Estado, valorCents: number): Promise<string> {
     e.loja.id,
     `*${e.loja.companyName}* — registrei uma venda por lead no controle:\n` +
       `• ${e.carro}\n` +
-      `• Valor: ${dinheiro(valorCents)}\n` +
+      `• Valor: ${dinheiro(valorCents)}${valorDoAnuncio ? " (o preço do anúncio — ninguém disse o valor)" : ""}\n` +
       `• Gasto de anúncio do carro: ${dinheiro(gastoCents)}` +
       (leads > 0 ? ` · ${leads} ${leads === 1 ? "lead" : "leads"}` : "") +
       `\n` +
@@ -390,5 +400,5 @@ async function registrar(e: Estado, valorCents: number): Promise<string> {
       `Se estiver errada, apaga em Marcar Venda → Últimas vendas marcadas.`,
   );
 
-  return textoDeParabens({ vendasNoMes, gastoCents, leads });
+  return textoDeParabens({ loja: e.loja.companyName, vendasNoMes, gastoCents, leads });
 }

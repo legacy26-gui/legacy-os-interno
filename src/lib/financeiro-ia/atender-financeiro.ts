@@ -49,6 +49,12 @@ export interface MensagemFinanceira {
   telefone: string | null;
   messageId?: string | null;
   agora?: Date;
+  /**
+   * O que foi ouvido, quando a mensagem veio de ÁUDIO. Vai na primeira linha de toda
+   * resposta ("🎙️ Ouvi: …"): transcrição erra, e quem falou precisa ver o que o robô
+   * entendeu pra poder corrigir com um "desfaz".
+   */
+  ouvido?: string;
 }
 
 export type DesfechoFinanceiro =
@@ -61,8 +67,10 @@ export type DesfechoFinanceiro =
   | { tipo: "nao-entendeu" }
   | { tipo: "silencio" };
 
-async function responder(grupoId: string, texto: string, messageId?: string | null) {
-  const r = await enviarTexto(grupoId, texto);
+async function dizer(m: MensagemFinanceira, texto: string, _messageId?: string | null) {
+  const grupoId = m.grupoId;
+  const messageId = m.messageId;
+  const r = await enviarTexto(grupoId, m.ouvido ? `🎙️ Ouvi: _"${m.ouvido.slice(0, 400)}"_\n\n${texto}` : texto);
   if (!r.ok) await anotar(messageId, grupoId, "financeiro-nao-enviou", r.erro ?? "");
 }
 
@@ -191,9 +199,7 @@ export async function atenderGrupoFinanceiro(
       await lancar(grupo.donoId, decididos, loteId);
       await guardarPendencia(m.grupoId, []);
       await anotar(m.messageId, m.grupoId, "financeiro-respondeu", `${decididos.length} lançados`);
-      await responder(
-        m.grupoId,
-        `Lancei:\n${decididos.map((g) => linhaDoGasto(g, hoje)).join("\n")}`,
+      await dizer(m, `Lancei:\n${decididos.map((g) => linhaDoGasto(g, hoje)).join("\n")}`,
         m.messageId,
       );
       return { tipo: "respondeu-pendencia", lancados: decididos.length };
@@ -205,9 +211,7 @@ export async function atenderGrupoFinanceiro(
     // A pergunta aberta é a coisa mais recente: desfazer começa por ela.
     if (pendentes.length > 0) {
       await guardarPendencia(m.grupoId, []);
-      await responder(
-        m.grupoId,
-        `Descartei sem lançar:\n${pendentes.map((g) => `• ${g.descricao} — ${reais(g.valorCents)}`).join("\n")}`,
+      await dizer(m, `Descartei sem lançar:\n${pendentes.map((g) => `• ${g.descricao} — ${reais(g.valorCents)}`).join("\n")}`,
         m.messageId,
       );
       return { tipo: "desfez", apagados: pendentes.length };
@@ -222,13 +226,13 @@ export async function atenderGrupoFinanceiro(
   // não pode virar um gasto.
   if (ehPerguntaDeGasto(m.texto) && perguntaDeGastoTemAssunto(m.texto, agora)) {
     await anotar(m.messageId, m.grupoId, "financeiro-pergunta");
-    await responder(m.grupoId, await responderPerguntaDeGasto(grupo.donoId, m.texto, agora), m.messageId);
+    await dizer(m, await responderPerguntaDeGasto(grupo.donoId, m.texto, agora), m.messageId);
     return { tipo: "respondeu-pergunta" };
   }
 
   // ── 3. "resumo" ───────────────────────────────────────────────────────
   if (pedeResumo(m.texto) || ehPerguntaDeGasto(m.texto)) {
-    await responder(m.grupoId, await textoDoResumo(grupo.donoId, agora), m.messageId);
+    await dizer(m, await textoDoResumo(grupo.donoId, agora), m.messageId);
     return { tipo: "resumo" };
   }
 
@@ -255,6 +259,9 @@ export async function atenderGrupoFinanceiro(
   if (gastos.length === 0 && naoEntendi.length === 0) {
     // Sem número nenhum: conversa, não gasto.
     await anotar(m.messageId, m.grupoId, "financeiro-sem-gasto");
+    // Texto sem número é conversa e passa calado. Áudio não: quem falou precisa saber
+    // que foi ouvido e que não virou gasto, senão acha que o robô não escutou.
+    if (m.ouvido) await dizer(m, "Não achei gasto nisso — se era um, fala o valor (\"almoço 45\").");
     return { tipo: "silencio" };
   }
 
@@ -285,7 +292,7 @@ export async function atenderGrupoFinanceiro(
     "financeiro-lancou",
     `empresa=${feitos.empresa} pessoal=${feitos.pessoal} duvida=${duvidas.length} nao-entendi=${naoEntendi.length}`,
   );
-  await responder(m.grupoId, partes.join("\n\n"), m.messageId);
+  await dizer(m, partes.join("\n\n"), m.messageId);
 
   if (gastos.length === 0) return { tipo: "nao-entendeu" };
   return { tipo: "lancou", empresa: feitos.empresa, pessoal: feitos.pessoal, perguntou: duvidas.length };
@@ -313,7 +320,7 @@ async function desfazerUltimo(
   ]);
   const ultimo = !e ? p : !p ? e : e.createdAt >= p.createdAt ? e : p;
   if (!ultimo?.loteId) {
-    await responder(m.grupoId, "Não achei lançamento meu das últimas 48 horas pra apagar.", m.messageId);
+    await dizer(m, "Não achei lançamento meu das últimas 48 horas pra apagar.", m.messageId);
     return { tipo: "desfez", apagados: 0 };
   }
 
@@ -336,7 +343,7 @@ async function desfazerUltimo(
   }
   void hoje;
   await anotar(m.messageId, m.grupoId, "financeiro-desfez", `${linhas.length} apagados`);
-  await responder(m.grupoId, `Apaguei:\n${linhas.join("\n")}`, m.messageId);
+  await dizer(m, `Apaguei:\n${linhas.join("\n")}`, m.messageId);
   return { tipo: "desfez", apagados: linhas.length };
 }
 

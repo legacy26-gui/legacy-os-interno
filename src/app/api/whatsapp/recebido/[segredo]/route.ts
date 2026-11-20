@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { atenderMensagemDoGrupo } from "@/lib/whatsapp/atender-grupo";
 import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
+import { atenderAudioDoGrupo } from "@/lib/whatsapp/atender-audio";
 import { primeiraVez } from "@/lib/whatsapp/so-uma-vez";
 import { anotar } from "@/lib/whatsapp/trilha";
 import { guardarRecado } from "@/lib/whatsapp/guardar-recado";
@@ -67,6 +68,8 @@ interface CorpoDaZapi {
   /** O número conectado na instância — o próprio robô. */
   connectedPhone?: unknown;
   text?: { message?: unknown; mentionedPhones?: unknown };
+  /** Mensagem de voz ou áudio. Só é usada no grupo financeiro, e só do dono. */
+  audio?: { audioUrl?: unknown; mimeType?: unknown; seconds?: unknown };
   /** Alguns formatos da Z-API mandam os marcados aqui em cima. */
   mentionedPhones?: unknown;
   /** O id da mensagem, usado pra não atender a mesma duas vezes. */
@@ -131,7 +134,10 @@ export async function POST(
     corpo.text && typeof corpo.text.message === "string"
       ? corpo.text.message
       : null;
-  if (!de || !texto?.trim()) {
+  const audioUrl = typeof corpo.audio?.audioUrl === "string" ? corpo.audio.audioUrl : null;
+  // Áudio só interessa em GRUPO (o financeiro). No privado e fora dele, sem texto = sem nada a fazer.
+  const eAudioDeGrupo = !!de && !texto?.trim() && !!audioUrl && corpo.isGroup === true;
+  if (!de || (!texto?.trim() && !eAudioDeGrupo)) {
     return NextResponse.json({ ok: true, ignorado: "sem texto" });
   }
 
@@ -166,7 +172,7 @@ export async function POST(
     // linha já criada e vai embora.
     after(async () => {
       try {
-        await atenderMensagemPrivada({ telefone: de, texto, messageId: idDaMensagem });
+        await atenderMensagemPrivada({ telefone: de, texto: texto ?? "", messageId: idDaMensagem });
       } catch (e) {
         // Erro aqui não tem a quem ser devolvido: a resposta HTTP já saiu.
         // O sintoma pra quem escreveu é não receber nada, e o reenvio da
@@ -188,6 +194,28 @@ export async function POST(
 
   const grupoId = de;
 
+  // ── Áudio: só o do dono, no grupo financeiro ──────────────────────────
+  //
+  // Todas as travas ficam em atenderAudioDoGrupo, ANTES de baixar o áudio. Aqui só se
+  // responde já e se trabalha depois, como no texto.
+  if (eAudioDeGrupo && audioUrl) {
+    after(async () => {
+      try {
+        await atenderAudioDoGrupo({
+          grupoId,
+          audioUrl,
+          mimeType: typeof corpo.audio?.mimeType === "string" ? corpo.audio.mimeType : null,
+          segundos: typeof corpo.audio?.seconds === "number" ? corpo.audio.seconds : null,
+          telefone: typeof corpo.participantPhone === "string" ? corpo.participantPhone : null,
+          messageId: idDaMensagem,
+        });
+      } catch (e) {
+        await anotar(idDaMensagem, grupoId, "audio-estourou", e instanceof Error ? e.message : String(e));
+      }
+    });
+    return NextResponse.json({ ok: true, audio: "recebido" });
+  }
+
   // Mesma ideia do privado: responde já, atende depois. No grupo o atendimento
   // conversa com a Meta — que às vezes demora — e a duplicata aqui custaria
   // caro: o mesmo "pode tirar o Compass" desligando um anúncio duas vezes.
@@ -195,7 +223,7 @@ export async function POST(
     try {
       await atenderMensagemDoGrupo({
         grupoId,
-        texto,
+        texto: texto ?? "",
         quem: typeof corpo.senderName === "string" ? corpo.senderName : null,
         telefone:
           typeof corpo.participantPhone === "string"

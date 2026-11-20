@@ -26,6 +26,26 @@ lança no financeiro: gasto da empresa vai pro DRE; gasto pessoal vira **retirad
 
 Não precisa marcar o robô com @ nesse grupo. Mensagem sem número (um "bom dia") passa em silêncio.
 
+## Áudio
+
+Pode falar em vez de digitar, no grupo financeiro: "gastei quarenta e cinco reais no almoço e
+vinte e três de Uber com o Igor". O robô transcreve, converte os números por extenso
+("quarenta e cinco" → 45) e lança como se tivesse sido digitado — inclusive a pergunta
+"pessoal ou empresa?", as respostas ("pessoal") e as perguntas de quanto gastou.
+
+- Toda resposta a um áudio começa com **🎙️ Ouvi: "…"**: a transcrição erra, e é por esse eco que
+  dá pra ver o que foi entendido (e usar o *desfaz*).
+- Áudio sem gasto: o robô diz que ouviu e que não achou gasto (texto sem número fica calado).
+- Até **2 minutos** por áudio.
+- **Só o áudio do dono, no grupo financeiro** é baixado e transcrito. Qualquer outro (outra pessoa,
+  outro grupo) é ignorado sem baixar nada — transcrever custa dinheiro e manda o áudio pra fora.
+- Precisa de **`OPENAI_API_KEY`** na Vercel (a transcrição usa a OpenAI, mesmo que o Copiloto
+  use outro provedor). Sem ela o robô diz "não consegui ouvir" e não lança nada.
+  Modelo: `gpt-4o-mini-transcribe` (troca com `TRANSCRICAO_MODELO`); custo de centavos por mês.
+- Regras do conversor de números (`numeros-por-extenso.ts`): "um/uma" sozinho nunca vira 1;
+  número até dez sozinho só vira dígito colado em "reais"/"mil" (em "dois cafés dezoito reais",
+  o dois é quantidade); centavos só com a palavra "centavos".
+
 ## Perguntar quanto gastou (grupo financeiro e privado)
 
 Pergunta livre, respondida com o que foi lançado — soma da empresa e do pessoal:

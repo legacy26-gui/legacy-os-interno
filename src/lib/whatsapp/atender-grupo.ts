@@ -2,7 +2,10 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { enviarTexto } from "./zapi";
-import { entenderPedido, type AnuncioConhecido } from "./entender-pedido";
+import {
+  entenderPedidoComVarios,
+  type AnuncioConhecido,
+} from "./entender-pedido";
 import { foiMencionado, semAMarcacao } from "./mencao";
 import { acharPessoaPeloNumero } from "./atender-privado";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
@@ -72,8 +75,10 @@ export type Desfecho =
   | { tipo: "perguntou"; clientId: string; quantos: number }
   /** O carro não está anunciado. A equipe foi avisada no privado. */
   | { tipo: "nao-anunciado"; clientId: string; avisados: number }
-  /** Desligou e avisou no grupo. */
+  /** Desligou e avisou no grupo. Pode ter sido mais de um carro. */
   | { tipo: "desligou"; clientId: string; adId: string; nome: string }
+  /** Mais de um carro na mesma mensagem. */
+  | { tipo: "desligou-varios"; clientId: string; quantos: number }
   /** Tentou desligar e a Meta recusou. */
   | { tipo: "falhou"; clientId: string; erro: string };
 
@@ -132,7 +137,36 @@ export async function atenderMensagemDoGrupo(
   // Antes de ler a frase, porque loja que não autorizou não deve nem ter a
   // mensagem interpretada — e porque assim desligar o interruptor desliga
   // o robô de verdade, não só a última etapa.
+  //
+  // ── Por que isto deixou de ser silêncio ───────────────────────────────
+  //
+  // Porque era. O Guilherme marcou o robô no grupo da R2 duas vezes, em uma
+  // hora diferente cada, e não recebeu nada — nem no grupo, nem no privado.
+  // Do lado de fora, "o robô decidiu que não pode agir" e "o robô está
+  // quebrado" são a mesma coisa: nenhuma resposta.
+  //
+  // O interruptor continua mandando: a loja que não autorizou segue sem ter
+  // anúncio nenhum tocado. O que mudou é que agora alguém fica sabendo que
+  // pediram — a equipe no privado, com o nome da loja e onde ligar.
+  //
+  // No grupo vai uma linha neutra. "Esta loja não me autorizou" seria expor
+  // configuração nossa na conversa do cliente; "Anotado, avisei a equipe" diz
+  // a verdade que importa pra quem escreveu: foi lido.
   if (!loja.whatsappDesligaAuto) {
+    await avisarAEquipeDaLoja(
+      loja.id,
+      `*${loja.companyName}* — me marcaram no grupo e pediram alguma coisa, ` +
+        `mas o robô NÃO está autorizado a mexer em anúncio nessa loja.\n\n` +
+        `Quem escreveu: ${m.quem ?? "não identificado"}\n` +
+        `A mensagem: "${m.texto.slice(0, 200)}"\n\n` +
+        `Pra ele poder agir: Configurações → WhatsApp → na linha da ` +
+        `${loja.companyName}, marca "Desligar anúncio sozinho quando pedirem ` +
+        `neste grupo".`,
+    );
+    await responder(
+      m.grupoId,
+      "Anotado! Já avisei a equipe pra cuidar disso.",
+    );
     return { tipo: "loja-nao-autoriza", clientId: loja.id };
   }
 
@@ -157,7 +191,7 @@ export async function atenderMensagemDoGrupo(
   // Sem a marcação: o número do robô dentro do texto entraria na conta de
   // raridade de palavras e poderia, sozinho, empurrar a escolha pro anúncio
   // errado. Ver semAMarcacao.
-  const pedido = entenderPedido(semAMarcacao(m.texto), anuncios);
+  const pedido = entenderPedidoComVarios(semAMarcacao(m.texto), anuncios);
   if (pedido.intencao === "nenhuma") {
     return { tipo: "sem-pedido", clientId: loja.id };
   }
@@ -173,7 +207,7 @@ export async function atenderMensagemDoGrupo(
   // Então o detalhe vai pro privado de quem cuida da loja, e no grupo fica
   // uma linha curta — curta, mas não silêncio: quem escreveu pediu uma coisa
   // e precisa saber que foi lido.
-  if (pedido.candidatos.length === 0) {
+  if (pedido.alvos.length === 0) {
     const emCartaz = anuncios.slice(0, 12).map((a) => `• ${a.nome}`).join("\n");
     const aviso = await avisarAEquipeDaLoja(
       loja.id,
@@ -200,59 +234,94 @@ export async function atenderMensagemDoGrupo(
     };
   }
 
-  if (!pedido.semDuvida) {
-    await responder(m.grupoId, textoDaPergunta(pedido.candidatos));
-    return {
-      tipo: "perguntou",
-      clientId: loja.id,
-      quantos: pedido.candidatos.length,
-    };
-  }
-
-  // ── 5. Mexer na Meta ──────────────────────────────────────────────────
-  const alvo = pedido.candidatos[0];
-
-  // De novo pelo cadastro da loja, e não pelo id que veio da leitura: é a
-  // mesma trava que impede um id trocado no navegador de pausar a campanha
-  // de outra pessoa. Custa uma consulta e fecha a porta.
-  const objeto = await acharObjetoDaLoja(loja.id, "anuncio", alvo.adId);
-  if (!objeto) {
-    return { tipo: "sem-pedido", clientId: loja.id };
-  }
+  // ── 5. Mexer na Meta, um carro de cada vez ────────────────────────────
+  //
+  // ── Por que vários ────────────────────────────────────────────────────
+  //
+  // Porque é como as pessoas escrevem. O primeiro pedido real foi "pausar
+  // anúncios mobi 2018 e peugeot 2008" — dois carros numa frase. Atender só
+  // o primeiro seria pior que não atender: o segundo continuaria no ar com
+  // todo mundo achando que tinha saído.
+  //
+  // Os duvidosos viram UMA pergunta no fim, não uma por carro: três
+  // perguntas seguidas no grupo do cliente é o robô falando sozinho.
 
   const quem = [m.quem, m.telefone].filter(Boolean).join(" · ") || null;
 
-  const r = await mudarStatus({
-    clientId: loja.id,
-    quemId: null,
-    nivel: "anuncio",
-    objeto,
-    ligar: false,
-    origem: "whatsapp",
-    pedidoPor: quem,
-    pedidoTexto: m.texto,
-  });
+  const tirados: string[] = [];
+  const falhas: string[] = [];
+  const emDuvida: AnuncioConhecido[] = [];
 
-  if (!r.ok) {
-    await responder(
-      m.grupoId,
-      `Tentei tirar *${objeto.nome}* do ar e não consegui: ${r.erro} ` +
-        `Já avisei a equipe — alguém vai fazer na mão.`,
+  for (const alvo of pedido.alvos) {
+    if (!alvo.semDuvida) {
+      for (const c of alvo.candidatos) emDuvida.push(c);
+      continue;
+    }
+
+    // De novo pelo cadastro da loja, e não pelo id que veio da leitura: é a
+    // mesma trava que impede um id trocado no navegador de pausar a campanha
+    // de outra pessoa. Custa uma consulta e fecha a porta.
+    const objeto = await acharObjetoDaLoja(
+      loja.id,
+      "anuncio",
+      alvo.candidatos[0].adId,
     );
-    return { tipo: "falhou", clientId: loja.id, erro: r.erro };
+    if (!objeto) continue;
+
+    const r = await mudarStatus({
+      clientId: loja.id,
+      quemId: null,
+      nivel: "anuncio",
+      objeto,
+      ligar: false,
+      origem: "whatsapp",
+      pedidoPor: quem,
+      pedidoTexto: m.texto,
+    });
+
+    if (r.ok) tirados.push(objeto.nome);
+    else falhas.push(`${objeto.nome} (${r.erro})`);
   }
 
-  await responder(
-    m.grupoId,
-    `Pronto, tirei *${objeto.nome}* do ar. ` +
-      `Se não era esse, me avisa aqui que a gente liga de volta na hora.`,
-  );
-  return {
-    tipo: "desligou",
-    clientId: loja.id,
-    adId: objeto.objetoId,
-    nome: objeto.nome,
-  };
+  // ── Uma resposta só, com tudo que aconteceu ───────────────────────────
+  const partes: string[] = [];
+  if (tirados.length === 1) {
+    partes.push(`Pronto, tirei *${tirados[0]}* do ar.`);
+  } else if (tirados.length > 1) {
+    partes.push(
+      `Pronto, tirei do ar:\n${tirados.map((n) => `• *${n}*`).join("\n")}`,
+    );
+  }
+  if (falhas.length > 0) {
+    partes.push(
+      `Não consegui tirar ${falhas.join("; ")}. Já avisei a equipe — ` +
+        `alguém vai fazer na mão.`,
+    );
+  }
+  if (emDuvida.length > 0) {
+    partes.push(textoDaPergunta(emDuvida));
+  }
+  if (tirados.length > 0 && falhas.length === 0 && emDuvida.length === 0) {
+    partes.push("Se não era esse, me avisa aqui que a gente liga de volta na hora.");
+  }
+
+  if (partes.length > 0) await responder(m.grupoId, partes.join("\n\n"));
+
+  if (falhas.length > 0 && tirados.length === 0) {
+    return { tipo: "falhou", clientId: loja.id, erro: falhas.join("; ") };
+  }
+  if (tirados.length === 0) {
+    return { tipo: "perguntou", clientId: loja.id, quantos: emDuvida.length };
+  }
+  if (tirados.length === 1) {
+    return {
+      tipo: "desligou",
+      clientId: loja.id,
+      adId: pedido.alvos[0].candidatos[0].adId,
+      nome: tirados[0],
+    };
+  }
+  return { tipo: "desligou-varios", clientId: loja.id, quantos: tirados.length };
 }
 
 /**

@@ -83,6 +83,35 @@ const PEDIDOS_DE_DESLIGAR = [
   "parar de anunciar",
   "nao anuncia mais",
   "cancela",
+  // ── O imperativo, que é como as pessoas mandam de verdade ──────────────
+  //
+  // O primeiro pedido real do Guilherme no grupo foi "Pause o Virtus das
+  // campanhas", e o robô ficou mudo: a lista tinha "pausa" e "pausar", não
+  // "pause". O mesmo valia pra "tira o Onix" — só "tira do ar" era
+  // reconhecido, e ninguém fala assim quando está com pressa.
+  //
+  // Abrir a lista é seguro porque nada aqui age sozinho: o robô só chega a
+  // ler a frase depois de ter sido MARCADO com @ por uma pessoa. O custo de
+  // um verbo a mais é uma pergunta "qual desses?"; o custo de um verbo a
+  // menos é o robô ignorar um pedido legítimo em silêncio, que foi o que
+  // aconteceu.
+  //
+  // "para" e "pare" ficam DE FORA de propósito: "para" é preposição e
+  // apareceria em quase toda frase ("manda para mim", "foto para o
+  // anúncio"). A forma com complemento, "parar de anunciar", já está acima.
+  "pause",
+  "tira",
+  "tire",
+  "tirar",
+  "retira",
+  "retire",
+  "retirar",
+  "desligue",
+  "desative",
+  "encerra",
+  "encerre",
+  "suspende",
+  "suspenda",
 ];
 
 /**
@@ -104,6 +133,11 @@ const DESMENTIDOS = [
   "nao tira",
   "nao desliga",
   "nao pausa",
+  "nao pause",
+  "nao tire",
+  "nao retire",
+  "nao desligue",
+  "nao desative",
   "nem vendeu",
   "sera que vendeu",
 ];
@@ -207,12 +241,26 @@ export function entenderPedido(
   if (!pedeParaDesligar(texto)) {
     return { intencao: "nenhuma", candidatos: [], semDuvida: false };
   }
+  return { intencao: "desligar", ...acharAnuncios(texto, anuncios) };
+}
 
+/**
+ * Acha os anúncios que combinam com um texto, SEM conferir se ele pede algo.
+ *
+ * Separado de entenderPedido porque numa mensagem com mais de um carro o
+ * verbo aparece uma vez só: em "pausar anúncios mobi 2018 e peugeot 2008",
+ * o pedaço "peugeot 2008" não pede nada sozinho. Quem confere o verbo é
+ * quem olha a frase inteira; quem acha o carro olha cada pedaço.
+ */
+function acharAnuncios(
+  texto: string,
+  anuncios: AnuncioConhecido[],
+): { candidatos: AnuncioConhecido[]; semDuvida: boolean } {
   const daFrase = new Set(
     palavras(texto).filter((p) => !PALAVRAS_SEM_FORCA.has(p)),
   );
   if (daFrase.size === 0 || anuncios.length === 0) {
-    return { intencao: "desligar", candidatos: [], semDuvida: false };
+    return { candidatos: [], semDuvida: false };
   }
 
   const porAnuncio = anuncios.map((a) => ({
@@ -244,7 +292,7 @@ export function entenderPedido(
     .sort((a, b) => b.nota - a.nota);
 
   if (comNota.length === 0) {
-    return { intencao: "desligar", candidatos: [], semDuvida: false };
+    return { candidatos: [], semDuvida: false };
   }
 
   const primeiro = comNota[0];
@@ -252,8 +300,85 @@ export function entenderPedido(
   const folga = !segundo || primeiro.nota >= segundo.nota * 2;
 
   return {
-    intencao: "desligar",
     candidatos: comNota.map((n) => n.anuncio),
     semDuvida: folga && primeiro.temExclusiva,
   };
+}
+
+// ─────────────────── Mais de um carro na mesma mensagem ───────────────────
+//
+// ── Por que isto precisou existir ────────────────────────────────────────
+//
+// Porque é como as pessoas escrevem. O primeiro pedido de verdade que o
+// Guilherme mandou foi "pausar anúncios mobi 2018 e peugeot 2008" — dois
+// carros numa frase só. O entendimento antigo procurava UM anúncio na frase
+// inteira, então as palavras dos dois carros competiam entre si: nenhum
+// ganhava com folga, e o robô acabava perguntando "qual desses?" numa
+// mensagem que já dizia exatamente quais.
+//
+// ── Como o corte é feito ─────────────────────────────────────────────────
+//
+// Por " e ", vírgula, ponto-e-vírgula, "+" e quebra de linha. São os
+// separadores que aparecem em lista escrita à mão, e nenhum deles aparece no
+// meio do nome de um carro.
+//
+// O verbo é conferido UMA vez, na frase toda: em "pausar X e Y", o pedaço
+// "Y" não pede nada sozinho.
+//
+// ── Por que pedaço sem resultado é ignorado ──────────────────────────────
+//
+// Porque "vendeu o Compass, pode tirar" vira dois pedaços, e o segundo é só
+// verbo. Tratá-lo como "carro não encontrado" faria o robô avisar a equipe
+// sobre um carro que ninguém mencionou. Só quando NENHUM pedaço acha nada é
+// que o pedido de fato não casou com anúncio nenhum.
+
+/** O que fazer com um carro citado na mensagem. */
+export interface AlvoDoPedido {
+  /** O pedaço da frase que gerou isto, pra poder mostrar a quem perguntou. */
+  trecho: string;
+  candidatos: AnuncioConhecido[];
+  semDuvida: boolean;
+}
+
+export interface PedidoComVarios {
+  intencao: Intencao;
+  /** Um por carro citado que achou alguma coisa. Vazio = nada casou. */
+  alvos: AlvoDoPedido[];
+}
+
+const SEPARADORES = /\s+e\s+|\s*[,;+]\s*|\n+/i;
+
+export function entenderPedidoComVarios(
+  texto: string,
+  anuncios: AnuncioConhecido[],
+): PedidoComVarios {
+  if (!pedeParaDesligar(texto)) return { intencao: "nenhuma", alvos: [] };
+
+  const pedacos = texto
+    .split(SEPARADORES)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  const alvos: AlvoDoPedido[] = [];
+  const jaVistos = new Set<string>();
+
+  for (const pedaco of pedacos) {
+    const r = acharAnuncios(pedaco, anuncios);
+    if (r.candidatos.length === 0) continue;
+
+    // O mesmo anúncio citado em dois pedaços é um anúncio só. Sem isto,
+    // "tira o Onix, o Onix branco" tentaria desligar duas vezes.
+    const chave = r.candidatos[0].adId;
+    if (r.semDuvida && jaVistos.has(chave)) continue;
+    if (r.semDuvida) jaVistos.add(chave);
+
+    alvos.push({ trecho: pedaco, ...r });
+  }
+
+  // Nenhum pedaço achou nada: é a frase inteira que não casou com anúncio
+  // nenhum, e quem chamou trata como "não está anunciado".
+  if (alvos.length === 0) return { intencao: "desligar", alvos: [] };
+
+  // Um pedaço só, e ele achou: é o caso comum e nada muda.
+  return { intencao: "desligar", alvos };
 }

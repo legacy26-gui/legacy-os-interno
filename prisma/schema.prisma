@@ -729,6 +729,7 @@ model Client {
   gravacoes             Gravacao[]
   pedidosDeVerba        PedidoDeVerba[]
   metaAcoes             MetaAcao[]
+  vendasAguardando      VendaAguardandoDados[]
 
   @@map("clients")
 }
@@ -884,8 +885,56 @@ model ClientSale {
   createdBy   User?    @relation("SaleCreator", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
 
+  /// De onde veio o lançamento. Null = gente lançou. "robo-whatsapp" = o robô
+  /// registrou a partir do aviso de venda no grupo da loja.
+  ///
+  /// Existe porque venda sem `createdById` ficaria sem dono: ninguém poderia
+  /// apagá-la quando o robô errasse, já que o desfazer é "só a que eu marquei".
+  origem String?
+
+  /// Os anúncios do carro vendido (adId, separados por vírgula), quando a venda
+  /// veio do robô. É o que impede registrar o MESMO carro duas vezes: o aviso no
+  /// grupo pode ser repetido, e cada repetição não pode virar mais uma venda.
+  anuncioIds String?
+
   @@index([clientId, soldAt])
   @@map("client_sales")
+}
+
+/// Uma venda que o robô entendeu no grupo mas ainda não pode registrar.
+///
+/// Só entra no Controle de Vendas venda POR LEAD e COM VALOR, e a frase do grupo
+/// ("vendeu o Virtus") quase nunca traz as duas coisas. Então o robô guarda o que
+/// já sabe e pergunta o que falta, no próprio grupo.
+///
+/// Uma por grupo, de propósito: se duas perguntas ficassem abertas, a resposta
+/// "68 mil" não saberia a qual das duas pertence.
+model VendaAguardandoDados {
+  id       String @id @default(cuid())
+  clientId String
+  client   Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  grupoId String @unique
+
+  /// O carro, como está no anúncio, e os adId dele (os gêmeos "Cópia" incluídos).
+  carro      String
+  anuncioIds String
+
+  /// O que já se sabe. Null = ainda falta.
+  valorCents Int?
+  origemLead Boolean?
+
+  /// O preço que estava escrito no anúncio, só como DICA na pergunta. Nunca vira
+  /// o valor da venda sozinho: preço de anúncio não é preço de venda.
+  precoDoAnuncioCents Int?
+
+  textoOriginal String
+  quem          String?
+
+  criadoEm DateTime @default(now())
+  venceEm  DateTime
+
+  @@map("vendas_aguardando_dados")
 }
 
 // Informação fixada no topo da página do cliente (verba, cidade, contato do

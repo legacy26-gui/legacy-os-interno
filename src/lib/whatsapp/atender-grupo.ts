@@ -13,6 +13,7 @@ import { acharPessoaPeloNumero } from "./atender-privado";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { anotar } from "./trilha";
+import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
 
 // O que o robô faz quando alguém escreve no grupo de uma loja.
@@ -94,7 +95,9 @@ export type Desfecho =
   /** Mais de um carro na mesma mensagem. */
   | { tipo: "desligou-varios"; clientId: string; quantos: number }
   /** Tentou desligar e a Meta recusou. */
-  | { tipo: "falhou"; clientId: string; erro: string };
+  | { tipo: "falhou"; clientId: string; erro: string }
+  /** Falou de venda: registrou, perguntou o que faltava, ou explicou por que não. */
+  | { tipo: "venda"; clientId: string; passo: string };
 
 /**
  * Quantos anúncios no máximo o robô lista quando não sabe qual é.
@@ -176,6 +179,7 @@ export async function atenderMensagemDoGrupo(
       id: true,
       companyName: true,
       whatsappDesligaAuto: true,
+      controlaVendas: true,
       metaAdAccounts: {
         where: { active: true },
         select: { id: true },
@@ -249,6 +253,31 @@ export async function atenderMensagemDoGrupo(
     return { tipo: "loja-nao-autoriza", clientId: loja.id };
   }
 
+  // ── Venda por lead ────────────────────────────────────────────────────
+  //
+  // Vem ANTES de ler a frase como pedido pra desligar, por dois motivos.
+  //
+  // Um: a resposta à pergunta que o robô deixou aberta ("68 mil, lead") não é
+  // pedido de nada, e lida como pedido cairia em "esse carro não está nos
+  // anúncios". Dois: quando é um aviso de venda, o robô desliga o anúncio do
+  // mesmo jeito que sempre fez — aqui só se decide o que MAIS dizer.
+  const venda = await tratarVendaNoGrupo({
+    loja: {
+      id: loja.id,
+      companyName: loja.companyName,
+      controlaVendas: loja.controlaVendas,
+      contas: loja.metaAdAccounts.map((c) => c.id),
+    },
+    grupoId: m.grupoId,
+    texto: semAMarcacao(m.texto),
+    quem: m.quem,
+    messageId: m.messageId,
+  });
+  if (venda.fim) {
+    if (venda.recado) await responder(m.grupoId, venda.recado, m.messageId);
+    return { tipo: "venda", clientId: loja.id, passo: venda.passo ?? "" };
+  }
+
   // ── 3. e 4. A frase pede, e dá pra saber qual? ────────────────────────
   const contas = loja.metaAdAccounts.map((c) => c.id);
   const criativos = contas.length
@@ -271,6 +300,14 @@ export async function atenderMensagemDoGrupo(
   // raridade de palavras e poderia, sozinho, empurrar a escolha pro anúncio
   // errado. Ver semAMarcacao.
   const pedido = entenderPedidoComVarios(semAMarcacao(m.texto), anuncios);
+  // O carro vendido já estava pausado (ou nem tinha anúncio no ar): não há o que
+  // desligar, e dizer "esse carro não está no ar" seria a resposta errada a um
+  // aviso de venda. O que o robô tem a dizer é sobre a venda.
+  if (venda.recado && pedido.alvos.length === 0) {
+    await responder(m.grupoId, venda.recado, m.messageId);
+    return { tipo: "venda", clientId: loja.id, passo: venda.passo ?? "" };
+  }
+
   if (pedido.intencao === "nenhuma") {
     await anotar(
       m.messageId,
@@ -443,6 +480,10 @@ export async function atenderMensagemDoGrupo(
       `Pronto, tirei do ar:\n${tirados.map((n) => `• *${n}*`).join("\n")}`,
     );
   }
+  // O que o robô tem a dizer sobre a VENDA (parabéns, ou a pergunta do valor)
+  // vai na mesma mensagem da pausa: duas mensagens seguidas pra um aviso só é o
+  // robô falando sozinho no grupo do cliente.
+  if (venda.recado) partes.push(venda.recado);
   if (falhas.length > 0) {
     partes.push(
       `Não consegui tirar ${falhas.join("; ")}. Já avisei a equipe — ` +
@@ -462,7 +503,10 @@ export async function atenderMensagemDoGrupo(
     tirados.length > 0 &&
     falhas.length === 0 &&
     emDuvida.length === 0 &&
-    pedido.sugestoes.length === 0
+    pedido.sugestoes.length === 0 &&
+    // "Se não era esse, a gente liga de volta" depois de "Parabéns pela venda"
+    // seria o robô pedindo desculpa por uma venda que acabou de comemorar.
+    !venda.recado
   ) {
     partes.push("Se não era esse, me avisa aqui que a gente liga de volta na hora.");
   }

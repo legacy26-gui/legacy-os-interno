@@ -77,11 +77,20 @@ export async function marcarVenda(
 }
 
 /**
- * Apaga uma venda que a própria pessoa marcou.
+ * Apaga uma venda: a que a própria pessoa marcou, ou a que o ROBÔ registrou numa
+ * loja dela.
  *
- * Só a própria, e por isso o `createdById` entra no `where` do delete em vez
- * de uma conferência antes: assim não existe janela entre conferir e apagar, e
- * id de venda de outra pessoa simplesmente não encontra nada.
+ * ── A regra continua estreita ────────────────────────────────────────────
+ *
+ * Gente só apaga o que ela mesma lançou. A venda registrada pelo robô a partir
+ * do grupo é a exceção, e existe por uma razão só: ela não tem `createdById`, e
+ * sem esta porta ficaria sem dono — ninguém poderia desfazer um valor que o robô
+ * entendeu errado. Mas só quem enxerga AQUELA loja (o mesmo filtro que monta a
+ * lista) pode apagá-la; um gestor não apaga a venda do robô numa loja de outro.
+ *
+ * O critério entra no `where` do delete, e não numa conferência antes: assim não
+ * existe janela entre conferir e apagar, e id de venda que não é dela
+ * simplesmente não encontra nada.
  *
  * Existe porque errar o valor marcando às pressas é comum, e sem desfazer a
  * pessoa teria que pedir pra alguém corrigir — ou, pior, marcar outra venda
@@ -90,13 +99,21 @@ export async function marcarVenda(
 export async function apagarVendaQueMarquei(saleId: string) {
   const user = await requireModuleAccess("gestao-contas");
 
+  const quePodeApagar = {
+    id: saleId,
+    OR: [
+      { createdById: user.id },
+      { origem: "robo-whatsapp", client: filtroDeClientes(user) },
+    ],
+  };
+
   const venda = await prisma.clientSale.findFirst({
-    where: { id: saleId, createdById: user.id },
+    where: quePodeApagar,
     select: { clientId: true },
   });
   if (!venda) return;
 
-  await prisma.clientSale.deleteMany({ where: { id: saleId, createdById: user.id } });
+  await prisma.clientSale.deleteMany({ where: quePodeApagar });
   revalidarTelasDeVenda(venda.clientId);
 }
 

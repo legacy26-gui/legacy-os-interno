@@ -41,6 +41,7 @@ export default async function MarcarVendaPage() {
         soldAt: true,
         description: true,
         createdById: true,
+        origem: true,
         client: { select: { companyName: true } },
         createdBy: { select: { name: true } },
       },
@@ -114,12 +115,14 @@ export default async function MarcarVendaPage() {
                   <p className="text-xs text-foreground-muted truncate">
                     {formatCurrency(Number(v.value))}
                     {v.createdBy && ` · por ${v.createdBy.name.split(" ")[0]}`}
+                    {v.origem === "robo-whatsapp" && " · pelo robô do WhatsApp"}
                     {v.description && ` · ${v.description}`}
                   </p>
                 </div>
-                {/* Só quem marcou pode desfazer. Para as outras o botão nem
-                    aparece — e o servidor confere de novo de qualquer jeito. */}
-                {v.createdById === user.id && (
+                {/* Só quem marcou pode desfazer — e a venda do robô, que não tem
+                    quem a marcou, por quem enxerga a loja (esta lista já é só das
+                    lojas dela). O servidor confere de novo de qualquer jeito. */}
+                {(v.createdById === user.id || v.origem === "robo-whatsapp") && (
                   <ApagarVenda saleId={v.id} loja={v.client.companyName} />
                 )}
               </div>

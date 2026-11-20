@@ -70,6 +70,10 @@ export interface Pedido extends Achado {
  */
 const PEDIDOS_DE_DESLIGAR = [
   "vendeu",
+  // Quem VENDEU escreve na primeira pessoa: "vendi o Virtus", "vendemos o
+  // Compass". Sem estes, o aviso mais natural de todos passava batido.
+  "vendi",
+  "vendemos",
   "vendido",
   "vendida",
   "ja foi",
@@ -150,6 +154,9 @@ const DESMENTIDOS = [
   "nao desative",
   "nem vendeu",
   "sera que vendeu",
+  "nao vendi",
+  "nao vendemos",
+  "nem vendi",
 ];
 // Cuidado ao mexer aqui: o texto é comparado SEM pontuação, então um
 // desmentido escrito "vendeu?" vira "vendeu" e passa a desmentir toda frase
@@ -273,6 +280,23 @@ export function pedeParaDesligar(texto: string): boolean {
       ? t.includes(termo)
       : new RegExp(`(^|\\s)${termo}(\\s|$)`).test(t);
   });
+}
+
+/**
+ * A frase AVISA uma venda? ("vendeu o Virtus", "vendemos o Compass")
+ *
+ * Mais estreito que pedeParaDesligar, que também aceita "pode tirar" e "saiu":
+ * tirar um anúncio do ar não é vender o carro, e registrar venda por causa de um
+ * "pode pausar" encheria o controle de vendas que não aconteceram.
+ *
+ * Os mesmos filtros de sempre valem: pergunta ("vendeu o Virtus?") e negação
+ * ("ainda não vendeu", "se vender") não são aviso.
+ */
+export function pedeVenda(texto: string): boolean {
+  if (texto.trim().endsWith("?")) return false;
+  const t = achatar(texto);
+  if (DESMENTIDOS.some((d) => t.includes(achatar(d)))) return false;
+  return /(^|\s)(vendeu|vendi|vendemos|vendido|vendida)(\s|$)/.test(t);
 }
 
 /**

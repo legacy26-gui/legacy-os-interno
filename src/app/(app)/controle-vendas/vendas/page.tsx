@@ -95,6 +95,7 @@ export default async function VendaAVendaPage({
         description: true,
         client: { select: { id: true, companyName: true } },
         createdBy: { select: { name: true } },
+        origem: true,
       },
       // A data manda; o lançamento desempata. Duas vendas no mesmo dia saem
       // com a lançada por último em cima, que é a que a pessoa acabou de pôr
@@ -269,6 +270,7 @@ export default async function VendaAVendaPage({
                         {v.description || "Sem descrição"}
                         {v.createdBy &&
                           ` · por ${v.createdBy.name.split(" ")[0]}`}
+                        {v.origem === "robo-whatsapp" && " · pelo robô do WhatsApp"}
                       </p>
                     </div>
                     {podeVerValores && (

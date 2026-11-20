@@ -99,16 +99,50 @@ Nesta máquina (4 núcleos, sem placa de vídeo), modelo `small`:
 
 Um vídeo de 1 minuto transcreve em uns 18 segundos.
 
+## O primeiro vídeo de verdade, e o que ele ensinou
+
+13,7s de pátio: vendedor na frente de um L200 Sport 2005, plano único, som
+com vento, `mean_volume` em -31 dB.
+
+A frase era *"...uma camionete barata, custo acessível, 4x4, diesel. Vou
+apresentar pra vocês essa linda L200 Sport 2005."*
+
+| | o que saiu |
+|---|---|
+| `small` | "4x4 **Otizio**" |
+| `small` + vocabulário | "4x4 **otíceo**" |
+| `medium` | "4x4 **Tisio**" |
+| **`medium` + vocabulário** | **"4x4, diesel."** |
+
+**Nenhum dos dois sozinho acertou. É a combinação.** Trocar de modelo sem a
+dica de vocabulário não resolveu, e a dica sem o modelo maior também não.
+
+Por isso o vocabulário de loja está embutido (`VOCABULARIO_DA_LOJA`), e por
+isso o padrão de trabalho é o `medium`. "Diesel" não é palavra qualquer:
+aparece em quase todo vídeo de picape e de SUV, e ia queimada errada na tela.
+
+Quando aparecer nome novo saindo errado, o lugar barato de consertar é
+aquela lista — bem antes de pensar em trocar de modelo de novo.
+
+O resto a `small` já acertava sozinha, inclusive a parte que parecia difícil:
+"L200 Sport 2005", "camionete", "custo acessível", "4x4".
+
+### O preço do medium
+
+| | `small` | `medium` |
+|---|---|---|
+| tamanho | 487 MB | 1,5 GB |
+| velocidade | 3,4x o tempo real | 1,35x o tempo real |
+| vídeo de 1 min | ~18 s | ~45 s |
+
+Esteira completa no vídeo de 13,7s, com `medium`: **14 segundos**, de ponta a
+ponta, incluindo corte, transcrição, limpeza e queima.
+
 ## O que ainda NÃO foi provado
 
-**A qualidade da transcrição em português.** O teste de fumaça foi em inglês
-(a amostra que vem com o whisper.cpp) e os testes da esteira usam som
-fabricado. Não existe TTS nesta máquina pra gerar fala brasileira, e julgar
-legenda por som sintético não vale nada.
-
-Isso só se resolve com um vídeo de pátio de verdade. Se o `small` errar
-muito em gíria, nome de carro e versão ("Highline", "EXL", "Dynamique"), o
-caminho é o modelo `medium` — três vezes mais lento, bem melhor em português.
+**Nenhum exemplo de edição foi medido ainda.** O estilo da legenda hoje é
+escolha minha (branco, contorno preto, caixa normal, embaixo), não cópia de
+referência nenhuma.
 
 ## Onde isto vai morar
 

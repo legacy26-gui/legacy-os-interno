@@ -38,6 +38,34 @@ import os from "node:os";
 // pra frente, e o erro acumula até a palavra aparecer segundos longe da boca.
 // É um defeito que ninguém vê rodando o script e todo mundo vê no vídeo.
 
+// ── O vocabulário, que vale mais que trocar de modelo ────────────────────
+//
+// O Whisper aceita uma dica do que esperar ouvir, e no vídeo de pátio ela
+// muda o resultado mais que o tamanho do modelo. Medido no primeiro vídeo
+// real que chegou — um L200 Sport 2005 no pátio:
+//
+//   small  ................................ "4x4 Otizio"
+//   small  + este vocabulário .............. "4x4 otíceo"
+//   medium ................................. "4x4 Tisio"
+//   medium + este vocabulário .............. "4x4, diesel."   ← certo
+//
+// Nenhum dos dois sozinho acertou. É a combinação.
+//
+// E "diesel" não é palavra qualquer: aparece em quase todo vídeo de picape e
+// de SUV. Errado, ia queimado na tela.
+//
+// Vale por em novos nomes conforme aparecerem errados — é o lugar barato de
+// consertar transcrição, bem antes de trocar de modelo.
+const VOCABULARIO_DA_LOJA = [
+  "Vocabulário de loja de carros:",
+  "L200, Hilux, S10, Ranger, Pajero, Triton, Amarok, Toro, Strada, Saveiro,",
+  "Compass, Renegade, Duster, Creta, Kicks, Tracker, HB20, Onix, Virtus,",
+  "Argo, Mobi, Polo, Gol, Civic, Corolla, Fit, City, Tucson, Sportage.",
+  "Turbo diesel, a diesel, flex, aspirado, 4x4, 4x2, câmbio automático,",
+  "câmbio manual, único dono, IPVA pago, tabela FIPE, entrada facilitada,",
+  "financiamento, camionete, caminhonete, picape, seminovo, zero quilômetro.",
+].join(" ");
+
 const USO = `
 uso: node scripts/video/editar.mjs <entrada> [opções]
 
@@ -48,6 +76,8 @@ uso: node scripts/video/editar.mjs <entrada> [opções]
   --pausa <seg>         pausa mínima pra ser cortada (padrão: 0.6)
   --sobra <seg>         fôlego mantido nas pontas do corte (padrão: 0.15)
   --idioma <cod>        idioma da fala (padrão: pt)
+  --vocabulario <txt>   palavras que o modelo deve esperar ouvir
+  --sem-vocabulario     não dá dica nenhuma ao modelo
   --whisper <caminho>   o whisper-cli
   --modelo <caminho>    o modelo ggml
   --fonte <nome>        fonte da legenda (padrão: DejaVu Sans)
@@ -63,6 +93,7 @@ function lerArgumentos(argv) {
     pausa: 0.6,
     sobra: 0.15,
     idioma: "pt",
+    vocabulario: VOCABULARIO_DA_LOJA,
     whisper: process.env.WHISPER_CLI ?? null,
     modelo: process.env.WHISPER_MODELO ?? null,
     fonte: "DejaVu Sans",
@@ -81,6 +112,8 @@ function lerArgumentos(argv) {
     else if (t === "--pausa") a.pausa = Number(proximo());
     else if (t === "--sobra") a.sobra = Number(proximo());
     else if (t === "--idioma") a.idioma = proximo();
+    else if (t === "--vocabulario") a.vocabulario = proximo();
+    else if (t === "--sem-vocabulario") a.vocabulario = "";
     else if (t === "--whisper") a.whisper = proximo();
     else if (t === "--modelo") a.modelo = proximo();
     else if (t === "--fonte") a.fonte = proximo();
@@ -299,6 +332,8 @@ async function transcrever(video, pasta, a) {
     "-l", a.idioma,
     "-osrt", "-of", base,
     "-ml", "16", "--split-on-word",
+    // Ver VOCABULARIO_DA_LOJA: vale mais que trocar de modelo.
+    ...(a.vocabulario ? ["--prompt", a.vocabulario] : []),
   ]);
   const srt = `${base}.srt`;
   if (!fs.existsSync(srt)) throw new Error("o whisper não gerou o .srt");

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { entenderPedidoComVarios } from "@/lib/whatsapp/entender-pedido";
+import { semAMarcacao, foiMencionado } from "@/lib/whatsapp/mencao";
 
 // A janela de diagnóstico do robô de WhatsApp.
 //
@@ -47,6 +49,59 @@ export async function GET(
   const { segredo } = await ctx.params;
   if (!esperado || esperado.length < 16 || !iguais(segredo, esperado)) {
     return new NextResponse("não encontrado", { status: 404 });
+  }
+
+  // ── Repetir uma frase contra os anúncios de verdade ───────────────────
+  //
+  // ?grupo=<id>&texto=<a mensagem> devolve o que o robô DECIDIRIA com ela.
+  // É a única forma de responder "por que ele não achou o carro?" sem
+  // mandar mensagem nenhuma pra ninguém — e sem precisar que alguém do
+  // outro lado descreva o que viu.
+  const url = new URL(_req.url);
+  const grupoPedido = url.searchParams.get("grupo");
+  const textoPedido = url.searchParams.get("texto");
+  if (grupoPedido && textoPedido) {
+    const loja = await prisma.client.findFirst({
+      where: { whatsappGrupoId: grupoPedido },
+      select: {
+        id: true,
+        companyName: true,
+        whatsappDesligaAuto: true,
+        metaAdAccounts: { where: { active: true }, select: { id: true } },
+      },
+    });
+    if (!loja) {
+      return NextResponse.json({ erro: "nenhuma loja com esse grupo" });
+    }
+    const contas = loja.metaAdAccounts.map((c) => c.id);
+    const criativos = contas.length
+      ? await prisma.metaAdCreative.findMany({
+          where: { adAccountId: { in: contas }, effectiveStatus: "ACTIVE" },
+          select: { adId: true, adName: true, titulo: true, legenda: true },
+        })
+      : [];
+    const anuncios = criativos.map((c) => ({
+      adId: c.adId,
+      nome: c.adName,
+      textos: [c.titulo, c.legenda].filter((t): t is string => !!t),
+    }));
+    const limpo = semAMarcacao(textoPedido);
+    const pedido = entenderPedidoComVarios(limpo, anuncios);
+    return NextResponse.json({
+      loja: loja.companyName,
+      roboAutorizado: loja.whatsappDesligaAuto,
+      contasDeAnuncio: contas.length,
+      anunciosAtivos: anuncios.length,
+      nomesDosAnuncios: anuncios.map((a) => a.nome),
+      marcouORobo: foiMencionado(textoPedido, "554288126561", []),
+      textoSemMarcacao: limpo,
+      intencao: pedido.intencao,
+      alvos: pedido.alvos.map((a) => ({
+        trecho: a.trecho,
+        semDuvida: a.semDuvida,
+        candidatos: a.candidatos.map((c) => c.nome),
+      })),
+    });
   }
 
   const recados = await prisma.recadoDaZapi.findMany({

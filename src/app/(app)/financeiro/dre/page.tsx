@@ -78,6 +78,14 @@ export default async function DrePage({
     { label: "(−) Custos variáveis", value: -cur.variaveisOperacionais, tone: "out" as const },
     { label: "(=) EBITDA", value: cur.ebitda, tone: "result" as const },
     { label: "(=) Lucro líquido", value: lucro, tone: "final" as const },
+    // Retirada vem DEPOIS do lucro: é o sócio tirando dinheiro, não custo da
+    // operação. Só aparece quando houve.
+    ...(cur.retiradas > 0
+      ? [
+          { label: "(−) Retiradas pessoais", value: -cur.retiradas, tone: "out" as const },
+          { label: "(=) Ficou na empresa", value: cur.sobraDepoisDasRetiradas, tone: "result" as const },
+        ]
+      : []),
   ];
   const maxCascata = Math.max(...cascata.map((c) => Math.abs(c.value)), 1);
 
@@ -244,6 +252,13 @@ export default async function DrePage({
           Entram aqui só receitas e saídas <strong>confirmadas</strong> — despesa fixa aguardando sua confirmação ainda
           não é custo do mês. EBITDA = resultado operacional antes de impostos sobre lucro, juros e depreciação. Como
           não controlamos imobilizado nem empréstimos, EBITDA e lucro líquido dão o mesmo valor aqui.
+          {cur.retiradas > 0 && (
+            <>
+              {" "}
+              <strong>Retiradas</strong> são gastos pessoais pagos com o caixa da empresa: não são custo, por isso saem
+              depois do lucro. O detalhe fica na página Pessoal, que só o dono vê.
+            </>
+          )}
         </p>
       </div>
 

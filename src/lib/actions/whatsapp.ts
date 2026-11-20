@@ -283,6 +283,13 @@ export async function definirGrupoInterno(
     };
   }
 
+  const financeiro = await prisma.grupoFinanceiro.findUnique({ where: { grupoId }, select: { grupoId: true } });
+  if (financeiro) {
+    return {
+      erro: "Este é o grupo financeiro, onde ficam os gastos. Ele não pode ser interno — a equipe veria os gastos pessoais.",
+    };
+  }
+
   await prisma.grupoInterno.upsert({
     where: { grupoId },
     create: { grupoId, nome: nome.slice(0, 200) },
@@ -292,6 +299,72 @@ export async function definirGrupoInterno(
   return {
     ok: "Pronto. A equipe já pode marcar a IA com @ neste grupo e perguntar.",
   };
+}
+
+/**
+ * Marca (ou desmarca) o grupo onde o dono anota os gastos.
+ *
+ * O dono é QUEM MARCA: só as mensagens dele nesse grupo viram lançamento, e os
+ * gastos pessoais lançados ali só aparecem na página Pessoal dele. Grupo de loja
+ * e grupo interno não podem ser financeiro: gasto pessoal não é assunto de
+ * cliente nem da equipe.
+ */
+export async function definirGrupoFinanceiro(
+  grupoId: string,
+  nome: string,
+  ligar: boolean,
+): Promise<WhatsappState> {
+  const user = await requireModuleAccess("configuracoes");
+  if (user.role !== "ADMIN") {
+    return { erro: "Só o administrador define o grupo financeiro." };
+  }
+
+  if (!ligar) {
+    await prisma.grupoFinanceiro.deleteMany({ where: { grupoId, donoId: user.id } });
+    revalidatePath("/configuracoes/whatsapp");
+    return { ok: "O robô não lança mais gastos deste grupo." };
+  }
+
+  const [deLoja, interno, deOutro] = await Promise.all([
+    prisma.client.findFirst({ where: { whatsappGrupoId: grupoId }, select: { companyName: true } }),
+    prisma.grupoInterno.findUnique({ where: { grupoId }, select: { grupoId: true } }),
+    prisma.grupoFinanceiro.findUnique({ where: { grupoId }, select: { donoId: true } }),
+  ]);
+  if (deLoja) {
+    return { erro: `Este grupo é o da ${deLoja.companyName}. Grupo de cliente não pode ser o financeiro.` };
+  }
+  if (interno) {
+    return { erro: "Este grupo é interno da equipe. Os gastos pessoais apareceriam pra todo mundo — use um grupo só seu." };
+  }
+  if (deOutro && deOutro.donoId !== user.id) {
+    return { erro: "Este grupo já é o financeiro de outra pessoa." };
+  }
+  const comNumero = await prisma.user.findUnique({ where: { id: user.id }, select: { whatsapp: true } });
+  if (!comNumero?.whatsapp) {
+    return {
+      erro: "Cadastre o seu número de WhatsApp no seu usuário primeiro: o robô só lança o que VOCÊ escreve, e é pelo número que ele sabe que é você.",
+    };
+  }
+
+  await prisma.grupoFinanceiro.upsert({
+    where: { grupoId },
+    create: { grupoId, nome: nome.slice(0, 200), donoId: user.id },
+    update: { nome: nome.slice(0, 200) },
+  });
+  revalidatePath("/configuracoes/whatsapp");
+  return {
+    ok: "Pronto. Manda um gasto no grupo, tipo \"almoço 45\", que o robô lança e confirma.",
+  };
+}
+
+/** Os grupos financeiros do usuário atual. */
+export async function listarGruposFinanceiros(): Promise<string[]> {
+  const user = await requireModuleAccess("configuracoes");
+  const linhas = await prisma.grupoFinanceiro.findMany({
+    where: { donoId: user.id },
+    select: { grupoId: true },
+  });
+  return linhas.map((l) => l.grupoId);
 }
 
 /** Os grupos marcados como internos, pra tela saber quais estão ligados. */

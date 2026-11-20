@@ -20,6 +20,7 @@ import {
 } from "@/lib/actions/whatsapp";
 import type { EstadoDaLigacao, GrupoNaTela } from "@/lib/whatsapp/ligacao";
 import { GruposInternos } from "./grupos-internos";
+import { GrupoFinanceiro } from "./grupo-financeiro";
 import { RecadosDaZapi } from "./recados";
 import { definirGrupoDoWhatsapp } from "@/lib/actions/meta-ads";
 
@@ -38,6 +39,7 @@ export function PainelDoWhatsapp({
   envioAutomatico,
   lojas: lojasIniciais,
   gruposInternos,
+  gruposFinanceiros,
 }: {
   estado: EstadoDaLigacao;
   variaveis: { nome: string; onde: string }[];
@@ -47,6 +49,7 @@ export function PainelDoWhatsapp({
   lojas: Loja[];
   /** Os grupos já marcados como internos da agência. */
   gruposInternos: string[];
+  gruposFinanceiros: string[];
 }) {
   const [lojas, setLojas] = useState(lojasIniciais);
   const [grupos, setGrupos] = useState<GrupoNaTela[] | null>(null);
@@ -155,6 +158,8 @@ export function PainelDoWhatsapp({
           <Recebimento webhook={webhook} />
 
           <GruposInternos grupos={grupos} jaInternos={gruposInternos} />
+
+          <GrupoFinanceiro grupos={grupos} jaFinanceiros={gruposFinanceiros} internos={gruposInternos} />
 
       <Teste conectado={estado.conectado} />
 

@@ -146,6 +146,10 @@ export interface DreMonth {
   resultadoFinanceiro: number;
   lucroLiquido: number;
   margemLiquida: number;
+  /** Gastos pessoais pagos com o caixa da empresa. Não é custo: sai DEPOIS do lucro. */
+  retiradas: number;
+  /** Lucro menos retiradas: o que de fato ficou na empresa. */
+  sobraDepoisDasRetiradas: number;
   pontoEquilibrio: number;
   clientesFaturados: number;
   clientesInadimplentes: number;
@@ -161,7 +165,7 @@ export async function getDreMonth(empresa: Empresa, refDate: Date): Promise<DreM
   const monthEnd = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
   const monthLabelRaw = refDate.toLocaleDateString("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" });
 
-  const [paid, pending, expenses] = await Promise.all([
+  const [paid, pending, expenses, retiradasAgg] = await Promise.all([
     prisma.revenue.findMany({
       where: { empresa, status: "PAGO", dueDate: { gte: monthStart, lt: monthEnd } },
       select: { clientId: true, value: true },
@@ -176,7 +180,14 @@ export async function getDreMonth(empresa: Empresa, refDate: Date): Promise<DreM
       where: { empresa, date: { gte: monthStart, lt: monthEnd }, paid: true },
       select: { category: true, value: true, fixedExpenseId: true },
     }),
+    // Retirada (gasto pessoal pago com o caixa da empresa) NÃO é despesa: não
+    // entra no EBITDA nem no lucro. Aparece depois dele, como o que o sócio tirou.
+    prisma.gastoPessoal.aggregate({
+      where: { empresa, date: { gte: monthStart, lt: monthEnd } },
+      _sum: { value: true },
+    }),
   ]);
+  const retiradas = Number(retiradasAgg._sum.value ?? 0);
 
   const receitaConfirmada = paid.reduce((s, r) => s + Number(r.value), 0);
   const receitaPendente = pending.reduce((s, r) => s + Number(r.value), 0);
@@ -241,6 +252,8 @@ export async function getDreMonth(empresa: Empresa, refDate: Date): Promise<DreM
     resultadoFinanceiro,
     lucroLiquido,
     margemLiquida: receitaConfirmada > 0 ? (lucroLiquido / receitaConfirmada) * 100 : 0,
+    retiradas,
+    sobraDepoisDasRetiradas: lucroLiquido - retiradas,
     pontoEquilibrio: totalDespesas,
     clientesFaturados,
     clientesInadimplentes,
@@ -290,7 +303,7 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
   const monthEnd = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
   const windowStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() - (monthsBack - 1), 1));
 
-  const [paid, expenses, pendingThisMonth, cashSetting] = await Promise.all([
+  const [paid, despesas, pendingThisMonth, cashSetting, retiradasDoCaixa] = await Promise.all([
     prisma.revenue.findMany({
       where: { empresa, status: "PAGO", dueDate: { lt: monthEnd } },
       select: { value: true, dueDate: true, description: true },
@@ -305,7 +318,16 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
       select: { value: true },
     }),
     prisma.cashSetting.findUnique({ where: { empresa } }),
+    // Retirada é dinheiro que SAIU do caixa: no fluxo de caixa ela conta igual.
+    prisma.gastoPessoal.findMany({
+      where: { empresa, date: { lt: monthEnd } },
+      select: { value: true, date: true },
+    }),
   ]);
+  const expenses = [
+    ...despesas,
+    ...retiradasDoCaixa.map((r) => ({ value: r.value, date: r.date, category: "Retiradas", fixedExpenseId: null })),
+  ];
 
   const key = (d: Date) => d.toISOString().slice(0, 7);
   const entradasPorMes = new Map<string, number>();

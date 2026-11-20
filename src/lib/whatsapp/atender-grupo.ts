@@ -15,6 +15,7 @@ import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { anotar } from "./trilha";
 import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
+import { atenderGrupoFinanceiro, type DesfechoFinanceiro } from "@/lib/financeiro-ia/atender-financeiro";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
 import {
   conjuntosNoAr,
@@ -78,6 +79,8 @@ export interface MensagemDoGrupo {
 }
 
 export type Desfecho =
+  /** O grupo financeiro do dono: gasto anotado virou lançamento (ver atender-financeiro.ts). */
+  | { tipo: "financeiro"; desfecho: DesfechoFinanceiro }
   /** Grupo que não é de nenhuma loja — nem foi lido. */
   | { tipo: "grupo-desconhecido" }
   /** Grupo interno da agência: a IA respondeu uma pergunta da equipe. */
@@ -171,6 +174,23 @@ export async function atenderMensagemDoGrupo(
   // deste arquivo depois do @: se a IA respondesse pergunta em qualquer
   // grupo, bastaria alguém perguntar "quais lojas estão sem verba?" no grupo
   // de um cliente pra ela listar as lojas dos OUTROS clientes ali dentro.
+  // ── 0a. É o grupo FINANCEIRO de alguém? ───────────────────────────────
+  //
+  // Vem antes de tudo: ali não se pede pra desligar carro nem se pergunta de
+  // loja — cada mensagem do dono é um gasto. Ver atender-financeiro.ts.
+  const financeiro = await prisma.grupoFinanceiro.findUnique({
+    where: { grupoId: m.grupoId },
+    select: { donoId: true },
+  });
+  if (financeiro) {
+    await anotar(m.messageId, m.grupoId, "grupo-financeiro");
+    const desfecho = await atenderGrupoFinanceiro(
+      { grupoId: m.grupoId, texto: semAMarcacao(m.texto), telefone: m.telefone, messageId: m.messageId },
+      financeiro,
+    );
+    return { tipo: "financeiro", desfecho };
+  }
+
   const interno = await prisma.grupoInterno.findUnique({
     where: { grupoId: m.grupoId },
     select: { grupoId: true },

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeftRight, BarChart3, FileBarChart, Waves } from "lucide-react";
+import { ArrowLeftRight, BarChart3, FileBarChart, Receipt, User, Waves } from "lucide-react";
 
 const TABS = [
   { href: "/financeiro", label: "Entradas e saídas", icon: ArrowLeftRight },
+  { href: "/financeiro/gastos", label: "Gastos da empresa", icon: Receipt },
+  { href: "/financeiro/pessoal", label: "Pessoal", icon: User },
   { href: "/financeiro/analise", label: "Análise financeira", icon: BarChart3 },
   { href: "/financeiro/dre", label: "DRE", icon: FileBarChart },
   { href: "/financeiro/dfc", label: "DFC", icon: Waves },

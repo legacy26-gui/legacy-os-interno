@@ -1,15 +1,11 @@
+import { CATEGORIAS_EMPRESA } from "@/lib/financeiro-ia/interpretar-gasto";
+
 // Únicos dias de vencimento/pagamento aceitos no sistema.
 export const PAYMENT_DAYS = [5, 10, 15, 20, 25, 30] as const;
 
-export const EXPENSE_CATEGORIES = [
-  "Salários",
-  "Aluguel",
-  "Ferramentas/Software",
-  "Impostos",
-  "Marketing",
-  "Comissões",
-  "Outros",
-];
+// As mesmas categorias que o robô do grupo financeiro usa: lançar na tela e
+// lançar pelo WhatsApp tem que cair nas mesmas gavetas do DRE.
+export const EXPENSE_CATEGORIES: readonly string[] = CATEGORIAS_EMPRESA;
 
 // Planos contratados disponíveis no cadastro de cliente.
 export const PLAN_OPTIONS = [

@@ -10,6 +10,7 @@ import {
   verEnderecoDoWebhook,
   verEnvioAutomatico,
   listarGruposInternos,
+  listarGruposFinanceiros,
 } from "@/lib/actions/whatsapp";
 import { VARIAVEIS_DA_ZAPI } from "@/lib/whatsapp/ligacao";
 import { PainelDoWhatsapp } from "./painel";
@@ -41,11 +42,12 @@ export default async function WhatsappPage() {
   if (user.role !== "ADMIN") redirect("/dashboard?erro=acesso-negado");
   if (!veTodasAsEmpresas(user.empresas)) redirect("/dashboard?erro=so-grupo");
 
-  const [estado, webhook, envioAutomatico, gruposInternos] = await Promise.all([
+  const [estado, webhook, envioAutomatico, gruposInternos, gruposFinanceiros] = await Promise.all([
     verEstadoDaLigacao(),
     verEnderecoDoWebhook(),
     verEnvioAutomatico(),
     listarGruposInternos(),
+    listarGruposFinanceiros(),
   ]);
 
   const lojas = await prisma.client.findMany({
@@ -81,6 +83,7 @@ export default async function WhatsappPage() {
         webhook={webhook}
         envioAutomatico={envioAutomatico}
         gruposInternos={gruposInternos}
+        gruposFinanceiros={gruposFinanceiros}
         lojas={lojas.map((l) => ({
           id: l.id,
           nome: l.companyName,

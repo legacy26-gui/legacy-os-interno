@@ -204,51 +204,39 @@ export function dinheiro(cents: number): string {
 /** A partir de quantas vendas no mês o robô diz "excepcional". "Acima de 2." */
 export const VENDAS_PARA_EXCEPCIONAL = 3;
 
-/** Antes do dia 10, a 1ª venda do mês pode ser dita como tal; do dia 10 em diante, não. */
-export const DIA_ATE_O_QUAL_A_PRIMEIRA_APARECE = 10;
-
 /**
  * A mensagem de parabéns que vai pro grupo do cliente.
  *
- * Só afirma o que o Controle de Vendas sabe: o número da venda no mês é contado
- * lá, e o gasto do carro é a soma dos anúncios dele. "Excepcional" só aparece
- * quando o mês passou de duas vendas — palavra forte demais pra gastar à toa, e
- * o cliente percebe quando o elogio é automático.
+ *   🎉 Parabéns, *Loja*, pela venda!
+ *   Valor investido: *R$ 200,00*
+ *   Leads: *40*
+ *
+ * A PRIMEIRA venda do mês não diz que é a primeira (decisão do Guilherme: fica
+ * feio). Da segunda em diante o número do mês é dito, e da terceira vem o
+ * "excepcional" — palavra forte demais pra gastar à toa.
+ *
+ * Valor investido e leads vêm em linhas separadas e só quando há dado: "Leads: 0"
+ * ou "R$ 0,00" no momento da comemoração seria um número que provavelmente é
+ * falta de leitura e não a verdade.
  */
 export function textoDeParabens(opcoes: {
   /** O nome da LOJA: quem recebe os parabéns é ela, não "o pessoal". */
   loja: string;
   vendasNoMes: number;
-  /** O dia do mês (1–31) em que a venda foi registrada, na hora da casa. */
-  diaDoMes: number;
   gastoCents: number;
   /** Quantos leads os anúncios do carro trouxeram. */
   leads?: number;
 }): string {
   const n = opcoes.vendasNoMes;
   const excepcional = n >= VENDAS_PARA_EXCEPCIONAL;
-  // "Primeira venda do mês" só tem graça no começo do mês. No dia 20, dizer que é
-  // a primeira soa como cobrança ("só agora?"). Da segunda em diante, o número
-  // sempre é dito: é o que dá sentido ao "excepcional".
-  const dizOMes = n >= 2 || opcoes.diaDoMes < DIA_ATE_O_QUAL_A_PRIMEIRA_APARECE;
   const linhas = [
     `🎉 Parabéns, *${opcoes.loja}*, pela venda!` +
-      (dizOMes
+      (n >= 2
         ? ` Essa é a *${n}ª venda do mês*${excepcional ? " — resultado excepcional!" : "."}`
         : ""),
   ];
-  if (opcoes.gastoCents > 0) {
-    // O custo e os leads, juntos: foi o que o Guilherme pediu no primeiro uso real
-    // ("envia o custo total dos anúncios pra nós, e quantos leads chegaram"). Só
-    // cita leads quando houve — "trouxe 0 leads" no grupo do cliente, no momento
-    // da comemoração, seria um dado verdadeiro dito na hora errada.
-    const leads = opcoes.leads ?? 0;
-    linhas.push(
-      `O anúncio desse carro consumiu *${dinheiro(opcoes.gastoCents)}*` +
-        (leads > 0 ? ` e trouxe *${leads} ${leads === 1 ? "lead" : "leads"}*` : "") +
-        " até vender.",
-    );
-  }
+  if (opcoes.gastoCents > 0) linhas.push(`Valor investido: *${dinheiro(opcoes.gastoCents)}*`);
+  if ((opcoes.leads ?? 0) > 0) linhas.push(`Leads: *${opcoes.leads}*`);
   return linhas.join("\n");
 }
 

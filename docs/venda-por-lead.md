@@ -131,6 +131,12 @@ e o lançamento no Controle de Vendas.
 - **Parabéns**: vai pra LOJA pelo nome ("Parabéns, *Vilela Motors*, pela venda!"), com a
   venda do mês e, sempre que há dado, o valor investido no carro e os leads.
 - As perguntas não trazem mais exemplo ("68 mil"): só "Qual foi o *valor* da venda?".
-- **"1ª venda do mês"**: só aparece antes do dia 10. Do dia 10 em diante, a primeira venda
-  recebe só "Parabéns, *Loja*, pela venda!". Da 2ª em diante o número do mês sempre é dito.
+- **Formato do parabéns** (cada dado na sua linha, só quando há dado):
+  ```
+  🎉 Parabéns, *Vilela Motors*, pela venda!
+  Valor investido: *R$ 200,00*
+  Leads: *40*
+  ```
+  A **1ª venda do mês nunca diz que é a primeira**. Da 2ª em diante entra "Essa é a *Nª venda
+  do mês*", e da 3ª o "resultado excepcional!".
 - **Valor**: a regra da casa é contar o preço do anúncio quando a pessoa não disser outro.

@@ -367,7 +367,7 @@ async function registrar(
   });
 
   // A venda do mês, contada DEPOIS de gravar: a que acabou de entrar é a n-ésima.
-  const [ano, mes, dia] = diaDaCasa(e.agora).split("-").map(Number);
+  const [ano, mes] = diaDaCasa(e.agora).split("-").map(Number);
   const inicioDoMes = new Date(Date.UTC(ano, mes - 1, 1));
   const vendasNoMes = await prisma.clientSale.count({
     where: { clientId: e.loja.id, soldAt: { gte: inicioDoMes, lte: hoje } },
@@ -400,5 +400,5 @@ async function registrar(
       `Se estiver errada, apaga em Marcar Venda → Últimas vendas marcadas.`,
   );
 
-  return textoDeParabens({ loja: e.loja.companyName, vendasNoMes, diaDoMes: dia, gastoCents, leads });
+  return textoDeParabens({ loja: e.loja.companyName, vendasNoMes, gastoCents, leads });
 }

@@ -258,11 +258,11 @@ export function textoDaPergunta(opcoes: {
   if (opcoes.faltaValor && opcoes.faltaOrigem) {
     return (
       "Pra eu registrar essa venda no controle: qual foi o *valor* e ela veio de " +
-      "*lead do anúncio*? Ex.: *68 mil, lead* ou *68 mil, balcão*." + dica + marcar
+      "*lead do anúncio*?" + dica + marcar
     );
   }
   if (opcoes.faltaValor) {
-    return "Qual foi o *valor* da venda? Ex.: *68 mil*." + dica + marcar;
+    return "Qual foi o *valor* da venda?" + dica + marcar;
   }
   return (
     "Essa venda veio de *lead do anúncio*? Responde *sim*, ou *não* se foi " +

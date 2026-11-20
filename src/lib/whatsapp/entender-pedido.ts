@@ -468,10 +468,151 @@ export interface AlvoDoPedido extends Achado {
   trecho: string;
 }
 
+/**
+ * Uma palavra do pedido que não existe nos anúncios, mas se parece com uma
+ * que existe — quase sempre um erro de digitação ou de autocorretor.
+ */
+export interface Sugestao {
+  /** A palavra como veio escrita, sem acento e em minúsculas. */
+  digitado: string;
+  /** A palavra do anúncio que ela provavelmente queria ser. */
+  quis: string;
+  /** Os anúncios que têm essa palavra no nome. */
+  anuncios: AnuncioConhecido[];
+}
+
 export interface PedidoComVarios {
   intencao: Intencao;
   /** Um por carro citado que achou alguma coisa. Vazio = nada casou. */
   alvos: AlvoDoPedido[];
+  /** Palavras que não existem mas lembram uma que existe. */
+  sugestoes: Sugestao[];
+}
+
+// ─────────────────────────── "Quis dizer…?" ───────────────────────────────
+//
+// ── Por que isto existe ──────────────────────────────────────────────────
+//
+// O Guilherme pediu pra pausar o Virtus e o celular (o autocorretor) escreveu
+// "virtual". "Virtual" não existe em nenhum anúncio, então o pedaço não achou
+// nada e o robô respondeu o caso de "esse carro não está no ar" — que está
+// ERRADO: o carro está no ar, só o nome veio torto. Quem lê isso conclui que
+// o robô não conhece o carro.
+//
+// O certo é o que uma pessoa faria: "virtual não existe, quis dizer Virtus?".
+//
+// ── Os limites, que são o que impede isto de virar ruído ─────────────────
+//
+// Só entra palavra que o anúncio NÃO tem. Se "virtus" está no nome de algum
+// anúncio, o pedaço teria achado e nem chegaria aqui.
+//
+// Palavra de até 3 letras não conta ("gol", "uno", "fit"): perto assim, tudo
+// se parece com tudo, e o robô perguntaria "quis dizer Gol?" pra qualquer
+// "god" ou "gás".
+//
+// A primeira letra tem que bater: erro de digitação raramente troca a
+// primeira, e exigir isso corta boa parte dos falsos positivos.
+//
+// E a distância aceita cresce com o tamanho da palavra: 1 troca até 6 letras,
+// 2 até 9, 3 de 10 em diante. "virtual" → "virtus" são 2 trocas em 7 letras.
+// Com as 4 primeiras letras iguais aceita até 2 mesmo em palavra curta:
+// "virtal" → "virtus".
+//
+// Pergunta errada custa uma linha no grupo. Pergunta nenhuma, no caso do
+// Virtus, custou o pedido inteiro — e a confiança de quem mandou.
+
+/** Distância de edição, contando a troca de letras vizinhas como UMA
+ *  ("virtsu" é um erro só, não dois). */
+export function distancia(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (!m) return n;
+  if (!n) return m;
+  const d: number[][] = Array.from({ length: m + 1 }, (_, i) => [
+    i,
+    ...Array<number>(n).fill(0),
+  ]);
+  for (let j = 0; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const custo = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + custo);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[m][n];
+}
+
+/** Quantas letras do começo as duas palavras têm em comum. */
+function prefixoComum(a: string, b: string): number {
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i;
+}
+
+function limiteDeErros(tamanho: number): number {
+  if (tamanho <= 6) return 1;
+  if (tamanho <= 9) return 2;
+  return 3;
+}
+
+/**
+ * Palavras do pedaço que não existem nos anúncios mas lembram uma que existe.
+ *
+ * Devolve no máximo uma sugestão por palavra digitada, a mais próxima — e
+ * nunca a própria palavra, nem número, nem palavra sem força.
+ */
+export function sugerirNomes(
+  pedaco: string,
+  anuncios: AnuncioConhecido[],
+): Sugestao[] {
+  // O vocabulário são os NOMES dos anúncios — é com o nome que a pessoa fala.
+  const vocabulario = new Map<string, AnuncioConhecido[]>();
+  for (const a of anuncios) {
+    for (const p of palavrasDoNome(a)) {
+      if (p.length < 4 || soNumero(p)) continue;
+      const lista = vocabulario.get(p) ?? [];
+      lista.push(a);
+      vocabulario.set(p, lista);
+    }
+  }
+  if (vocabulario.size === 0) return [];
+
+  // Também conta como "existe" o que aparece na legenda: se a pessoa escreveu
+  // uma palavra que o anúncio realmente tem, não é erro de digitação.
+  const existentes = new Set<string>();
+  for (const a of anuncios) for (const p of palavrasDoAnuncio(a)) existentes.add(p);
+
+  const achadas: Sugestao[] = [];
+  for (const digitada of new Set(palavras(pedaco))) {
+    if (digitada.length < 4) continue;
+    if (soNumero(digitada) || PALAVRAS_SEM_FORCA.has(digitada)) continue;
+    if (existentes.has(digitada)) continue;
+
+    let melhor: { palavra: string; erros: number } | null = null;
+    for (const palavra of vocabulario.keys()) {
+      if (palavra[0] !== digitada[0]) continue;
+      const erros = distancia(digitada, palavra);
+      if (erros === 0) continue;
+      // Dentro do limite do tamanho — ou, num meio-termo, até 2 erros quando
+      // as 4 primeiras letras batem: "virtal" tem 2 letras erradas em 6, mas
+      // começar com "virt" é evidência forte de que era "virtus".
+      const noLimite = erros <= limiteDeErros(Math.max(digitada.length, palavra.length));
+      const comecoIgual = erros <= 2 && prefixoComum(digitada, palavra) >= 4;
+      if (!noLimite && !comecoIgual) continue;
+      if (!melhor || erros < melhor.erros) melhor = { palavra, erros };
+    }
+    if (melhor) {
+      achadas.push({
+        digitado: digitada,
+        quis: melhor.palavra,
+        anuncios: vocabulario.get(melhor.palavra) ?? [],
+      });
+    }
+  }
+  return achadas;
 }
 
 const SEPARADORES = /\s+e\s+|\s*[,;+]\s*|\n+/i;
@@ -480,7 +621,9 @@ export function entenderPedidoComVarios(
   texto: string,
   anuncios: AnuncioConhecido[],
 ): PedidoComVarios {
-  if (!pedeParaDesligar(texto)) return { intencao: "nenhuma", alvos: [] };
+  if (!pedeParaDesligar(texto)) {
+    return { intencao: "nenhuma", alvos: [], sugestoes: [] };
+  }
 
   const pedacos = texto
     .split(SEPARADORES)
@@ -488,11 +631,19 @@ export function entenderPedidoComVarios(
     .filter(Boolean);
 
   const alvos: AlvoDoPedido[] = [];
+  const sugestoes: Sugestao[] = [];
   const jaVistos = new Set<string>();
 
   for (const pedaco of pedacos) {
     const r = acharAnuncios(pedaco, anuncios);
-    if (r.candidatos.length === 0) continue;
+    if (r.candidatos.length === 0) {
+      // Pedaço que não achou nada: se tem uma palavra que lembra um carro
+      // anunciado, vira pergunta em vez de silêncio. Ver sugerirNomes.
+      for (const sug of sugerirNomes(pedaco, anuncios)) {
+        if (!sugestoes.some((x) => x.quis === sug.quis)) sugestoes.push(sug);
+      }
+      continue;
+    }
 
     // O mesmo CARRO citado em dois pedaços é um carro só. Sem isto, "tira o
     // Onix, o Onix branco" tentaria desligar duas vezes — e por carro, não
@@ -504,10 +655,23 @@ export function entenderPedidoComVarios(
     alvos.push({ trecho: pedaco, ...r });
   }
 
+  // Não pergunta "quis dizer Virtus?" quando o Virtus já está entre os alvos:
+  // "pausar virtual e virtus 2021" tirou o 2021, e perguntar do Virtus depois
+  // disso seria ruído — o carro já saiu.
+  const jaEntre = new Set(
+    alvos.flatMap((a) => a.candidatos.map((c) => c.adId)),
+  );
+  const faltam = sugestoes.filter((sg) =>
+    sg.anuncios.some((a) => !jaEntre.has(a.adId)),
+  );
+
   // Nenhum pedaço achou nada: é a frase inteira que não casou com anúncio
-  // nenhum, e quem chamou trata como "não está anunciado".
-  if (alvos.length === 0) return { intencao: "desligar", alvos: [] };
+  // nenhum, e quem chamou trata como "não está anunciado" — a menos que haja
+  // sugestão, e aí trata como erro de digitação.
+  if (alvos.length === 0) {
+    return { intencao: "desligar", alvos: [], sugestoes: faltam };
+  }
 
   // Um pedaço só, e ele achou: é o caso comum e nada muda.
-  return { intencao: "desligar", alvos };
+  return { intencao: "desligar", alvos, sugestoes: faltam };
 }

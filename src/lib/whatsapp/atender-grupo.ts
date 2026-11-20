@@ -5,6 +5,7 @@ import { enviarTexto } from "./zapi";
 import {
   entenderPedidoComVarios,
   type AnuncioConhecido,
+  type Sugestao,
 } from "./entender-pedido";
 import { foiMencionado, marcacoesDoTexto, semAMarcacao } from "./mencao";
 import { lidDoRobo } from "./identidade-do-robo";
@@ -84,6 +85,8 @@ export type Desfecho =
   | { tipo: "respondeu-da-loja"; clientId: string }
   /** Pediu, mas não dá pra saber qual carro. Perguntou no grupo. */
   | { tipo: "perguntou"; clientId: string; quantos: number }
+  /** Uma palavra do pedido lembrava um carro anunciado: perguntou "quis dizer?". */
+  | { tipo: "sugeriu"; clientId: string; quantas: number }
   /** O carro não está anunciado. A equipe foi avisada no privado. */
   | { tipo: "nao-anunciado"; clientId: string; avisados: number }
   /** Desligou e avisou no grupo. Pode ter sido mais de um carro. */
@@ -291,6 +294,28 @@ export async function atenderMensagemDoGrupo(
   // Então o detalhe vai pro privado de quem cuida da loja, e no grupo fica
   // uma linha curta — curta, mas não silêncio: quem escreveu pediu uma coisa
   // e precisa saber que foi lido.
+  // ── Erro de digitação, não carro ausente ──────────────────────────────
+  //
+  // Pediram "virtual" e a loja tem Virtus. O celular trocou a palavra, o carro
+  // está no ar — e responder "esse carro não está nos anúncios" seria dizer à
+  // pessoa que o robô não conhece o carro dela. Aqui o robô PERGUNTA, no
+  // próprio grupo: um erro de digitação é da conversa, não um problema nosso
+  // que precise ir pro privado.
+  if (pedido.alvos.length === 0 && pedido.sugestoes.length > 0) {
+    await anotar(
+      m.messageId,
+      m.grupoId,
+      "sugeriu",
+      `${loja.companyName} · ${pedido.sugestoes.map((x) => x.quis).join(", ")}`,
+    );
+    await responder(m.grupoId, textoDaSugestao(pedido.sugestoes), m.messageId);
+    return {
+      tipo: "sugeriu",
+      clientId: loja.id,
+      quantas: pedido.sugestoes.length,
+    };
+  }
+
   if (pedido.alvos.length === 0) {
     await anotar(
       m.messageId,
@@ -427,7 +452,18 @@ export async function atenderMensagemDoGrupo(
   if (emDuvida.length > 0) {
     partes.push(textoDaPergunta(emDuvida));
   }
-  if (tirados.length > 0 && falhas.length === 0 && emDuvida.length === 0) {
+  // Uma palavra que não casou mas lembra um carro, numa mensagem em que o
+  // resto foi atendido: "pausar virtual e o gol" tirou o gol e ainda deve
+  // perguntar do virtual.
+  if (pedido.sugestoes.length > 0) {
+    partes.push(textoDaSugestao(pedido.sugestoes));
+  }
+  if (
+    tirados.length > 0 &&
+    falhas.length === 0 &&
+    emDuvida.length === 0 &&
+    pedido.sugestoes.length === 0
+  ) {
     partes.push("Se não era esse, me avisa aqui que a gente liga de volta na hora.");
   }
 
@@ -437,7 +473,11 @@ export async function atenderMensagemDoGrupo(
     return { tipo: "falhou", clientId: loja.id, erro: falhas.join("; ") };
   }
   if (tirados.length === 0) {
-    return { tipo: "perguntou", clientId: loja.id, quantos: emDuvida.length };
+    return {
+      tipo: "perguntou",
+      clientId: loja.id,
+      quantos: emDuvida.length + pedido.sugestoes.length,
+    };
   }
   if (tirados.length === 1) {
     return {
@@ -625,6 +665,37 @@ function textoDaPergunta(candidatos: AnuncioConhecido[]): string {
     `Qual desses eu tiro do ar?\n\n${lista}` +
     (sobrando > 0 ? `\n…e mais ${sobrando}.` : "") +
     `\n\n${comoResponder}`
+  );
+}
+
+/**
+ * "Virtual não existe nos anúncios. Quis dizer Virtus?"
+ *
+ * Mostra os anúncios com o nome certo pra pessoa conferir se é aquele, e
+ * termina ensinando como responder: a regra do @ vale pra toda mensagem,
+ * inclusive pra resposta a esta pergunta. Um robô que perguntasse e ignorasse
+ * calado o "sim" pareceria quebrado.
+ *
+ * Não pede "sim" nem guarda estado: refazer o pedido com a palavra certa é a
+ * confirmação. É o mesmo caminho do "qual desses?", e é mais seguro que
+ * lembrar o que foi perguntado há dez minutos.
+ */
+function textoDaSugestao(sugestoes: Sugestao[]): string {
+  const blocos = sugestoes.slice(0, 2).map((sg) => {
+    const mostrar = (palavra: string) =>
+      palavra.charAt(0).toUpperCase() + palavra.slice(1);
+    const lista = sg.anuncios
+      .slice(0, MAXIMO_NA_PERGUNTA)
+      .map((a) => `• ${a.nome}`)
+      .join("\n");
+    return (
+      `"${sg.digitado}" não existe nos anúncios. Quis dizer *${mostrar(sg.quis)}*?\n` +
+      lista
+    );
+  });
+  return (
+    blocos.join("\n\n") +
+    "\n\nSe for, me marca com @ de novo com o nome certo e eu desligo."
   );
 }
 

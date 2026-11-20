@@ -125,6 +125,13 @@ export async function GET(
       marcacoes: marcacoesDoTexto(textoPedido).map((x) => x.digitos.length),
       textoSemMarcacao: limpo,
       intencao: pedido.intencao,
+      // "virtual não existe, quis dizer Virtus?" — palavras que lembram um
+      // carro anunciado.
+      sugestoes: pedido.sugestoes.map((x) => ({
+        digitado: x.digitado,
+        quis: x.quis,
+        anuncios: x.anuncios.map((a) => a.nome),
+      })),
       alvos: pedido.alvos.map((a) => ({
         trecho: a.trecho,
         semDuvida: a.semDuvida,

@@ -302,7 +302,7 @@ export function decidirDestino(dito: "empresa" | "pessoal" | null, tendencia: Te
 const ENCHIMENTO = new Set([
   "gastei", "gasto", "gastos", "paguei", "pago", "pagamento", "pagar", "comprei", "compra", "compras",
   "foi", "deu", "com", "no", "na", "nos", "nas", "em", "de", "do", "da", "dos", "das_", "o", "a", "os",
-  "as", "um", "uma", "r$", "reais", "real", "pix", "cartao", "debito", "credito", "hoje", "ontem",
+  "as", "um", "uma", "r$", "reais", "real", "treinamento", "treinamentos", "pix", "cartao", "debito", "credito", "hoje", "ontem",
   "anteontem", "dia", "pessoal", "pessoais", "particular", "empresa", "agencia", "firma", "e", "mais",
   "tudo", "todos", "todas", "isso", "ai", "lancar", "lanca", "lança", "anota", "anotar", "por", "pra", "para",
   "valor", "conto", "contos", "pila", "mil", "k", "-", ":", "+",

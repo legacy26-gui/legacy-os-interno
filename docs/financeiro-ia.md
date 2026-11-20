@@ -46,6 +46,26 @@ formulário da tela:
   seguinte); o que foi lançado antes de informar já está dentro do número que você disse.
 - Retiradas pessoais também saem do caixa.
 
+### Contas a pagar: o que FALTA sair
+
+Dizer o que ainda vai ser pago não é um gasto — é uma **conta a pagar**, que entra na projeção
+do fim do mês e só desconta do caixa quando for paga:
+
+| Mensagem | O que acontece |
+|---|---|
+| `gastos faltam andrielli e brendon 7.500, tatiana já está paga, igor tbm` | anota **uma** conta "Andrielli e Brendon" R$ 7.500 (vence no fim do mês); Tatiana e Igor são repetidos como "não contei (já pagos)" |
+| `falta pagar aluguel 3.200 dia 25` | conta a pagar com vencimento dia 25 |
+| `o que falta pagar?` | lista as contas a pagar anotadas (inclui os fixos ainda não confirmados) |
+| `paguei andrielli` | dá baixa na conta (valor inteiro), com a data de **hoje** — é hoje que sai do caixa |
+| `paguei andrielli 3.750` | baixa **parcial**: vira um gasto pago de 3.750 e a conta a pagar encolhe o mesmo tanto |
+| `paguei uber 23` (sem conta a pagar com esse nome) | gasto comum, como sempre |
+
+- Gente da equipe é empresa: o robô **não** pergunta "pessoal ou empresa?" nesse caso.
+- "andrielli e brendon 7.500" é **um** valor para os dois; pra separar, escreva `andrielli 3.750, brendon 3.750`.
+- Sem valor ("faltam pagar andrielli") o robô não inventa nada.
+- `desfaz` apaga a última conta a pagar anotada, mas **não desfaz uma baixa** (pagamento): se deu baixa errada,
+  ajuste na tela de Entradas e saídas.
+
 **Projeção do fim do mês** (cartão no topo do DFC e resposta no grupo):
 
 ```

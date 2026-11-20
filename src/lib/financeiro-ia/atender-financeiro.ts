@@ -23,6 +23,8 @@ import { lerComIa } from "./ler-com-ia";
 import { ehPerguntaDeGasto } from "./interpretar-pergunta";
 import { lerSaldoDito, pedeSaldoOuProjecao } from "./interpretar-saldo";
 import { projetarFimDoMes, textoDaProjecao } from "./projecao";
+import { lerAPagar, lerPagamentoDeConta, pedeListaAPagar } from "./interpretar-a-pagar";
+import { classificar, normal } from "./interpretar-gasto";
 import { perguntaDeGastoTemAssunto, responderPerguntaDeGasto } from "./responder-gasto";
 
 // O grupo "financeiro (gastos)": o Guilherme anota CADA gasto ali, e o robô lança.
@@ -68,6 +70,9 @@ export type DesfechoFinanceiro =
   | { tipo: "resumo" }
   | { tipo: "respondeu-pergunta" }
   | { tipo: "saldo-atualizado" }
+  | { tipo: "anotou-a-pagar"; quantas: number }
+  | { tipo: "deu-baixa" }
+  | { tipo: "listou-a-pagar" }
   | { tipo: "respondeu-saldo" }
   | { tipo: "nao-entendeu" }
   | { tipo: "silencio" };
@@ -245,6 +250,40 @@ export async function atenderGrupoFinanceiro(
     const p = await projetarFimDoMes(/\b(treinamento|treinamentos)\b/i.test(m.texto) ? "TREINAMENTOS" : "AGENCIA", agora);
     await dizer(m, textoDaProjecao(p));
     return { tipo: "respondeu-saldo" };
+  }
+
+  // ── 2d. O que FALTA pagar ───────────────────────────────────────────────
+  //
+  // "gastos faltam Andrielli e Brendon 7.500, Tatiana já está paga": NÃO é gasto novo. É
+  // conta a pagar, que entra na projeção do fim do mês. Vem antes do leitor de gastos:
+  // sem isto a frase inteira virava descrição de um gasto e a pergunta "pessoal ou
+  // empresa?" aparecia pra gente da equipe.
+  if (pedeListaAPagar(m.texto)) {
+    await anotar(m.messageId, m.grupoId, "financeiro-lista-a-pagar");
+    await dizer(m, await textoDaListaAPagar(/\b(treinamento|treinamentos)\b/i.test(m.texto) ? "TREINAMENTOS" : "AGENCIA", agora));
+    return { tipo: "listou-a-pagar" };
+  }
+  const aPagar = lerAPagar(m.texto, hoje);
+  if (aPagar) {
+    if (aPagar.pessoal) {
+      await dizer(m, "Conta pessoal a pagar eu ainda não projeto — só as da empresa. Quando pagar, me manda o gasto com a palavra *pessoal*.");
+      return { tipo: "nao-entendeu" };
+    }
+    await anotar(m.messageId, m.grupoId, "financeiro-a-pagar", `${aPagar.itens.length} contas · ${aPagar.jaPagos.length} já pagos`);
+    await dizer(m, await anotarAPagar(grupo.donoId, aPagar, loteId, hoje, agora));
+    return { tipo: "anotou-a-pagar", quantas: aPagar.itens.length };
+  }
+
+  // "paguei a Andrielli": dá baixa na conta a pagar em vez de criar um gasto igual (contaria duas vezes).
+  const pagamento = lerPagamentoDeConta(m.texto);
+  if (pagamento) {
+    const baixa = await darBaixa(grupo.donoId, pagamento, hoje, agora, loteId);
+    if (baixa) {
+      await anotar(m.messageId, m.grupoId, "financeiro-baixa");
+      await dizer(m, baixa);
+      return { tipo: "deu-baixa" };
+    }
+    // Nenhuma conta a pagar com esse nome: é um gasto que saiu e ninguém tinha previsto.
   }
 
   // ── 3a. "quanto gastei de Uber com o Igor esse mês?" ──────────────────
@@ -456,4 +495,153 @@ async function atualizarSaldo(cents: number, empresa: "AGENCIA" | "TREINAMENTOS"
   linhas.push("A partir de agora cada gasto que você anotar sai desse saldo, e cada entrada confirmada soma.");
   linhas.push("", textoDaProjecao(await projetarFimDoMes(empresa, agora)));
   return linhas.join("\n");
+}
+
+// ── Contas a pagar ────────────────────────────────────────────────────────
+
+const diaMes = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+
+/**
+ * Anota as contas a pagar como saída NÃO confirmada (`paid: false`): é o que o "A pagar" da
+ * Análise e a projeção do fim do mês já somam. Não mexe no saldo, no DRE nem no DFC — só
+ * quando for paga (ver `darBaixa`).
+ */
+async function anotarAPagar(
+  donoId: string,
+  leitura: ReturnType<typeof lerAPagar> & object,
+  loteId: string,
+  hoje: string,
+  agora: Date,
+): Promise<string> {
+  const empresa = leitura.treinamentos ? "TREINAMENTOS" : "AGENCIA";
+  for (const i of leitura.itens) {
+    await prisma.expense.create({
+      data: {
+        empresa,
+        description: i.descricao.slice(0, 200),
+        // Gente da equipe: salário. Imposto, software etc. a regra de categorias reconhece.
+        category: classificar(i.descricao)?.empresa ?? "Salários",
+        value: new Prisma.Decimal(i.cents).div(100),
+        date: comoData(i.vence),
+        paid: false,
+        responsibleId: donoId,
+        origem: "robo-whatsapp",
+        loteId,
+      },
+    });
+  }
+  try {
+    for (const rota of ["/financeiro", "/financeiro/dfc", "/financeiro/analise"]) revalidatePath(rota);
+  } catch {
+    // fora do Next
+  }
+
+  const linhas = [
+    "Anotei *a pagar* (entra na projeção do mês, ainda não saiu do caixa):",
+    ...leitura.itens.map((i) => `• ${i.descricao} — *${reais(i.cents)}* · vence ${diaMes(comoData(i.vence))}`),
+  ];
+  if (leitura.jaPagos.length > 0) {
+    linhas.push("", `Não contei: ${leitura.jaPagos.join(", ")} (já ${leitura.jaPagos.length === 1 ? "pago" : "pagos"}).`);
+  }
+  linhas.push("", "Quando pagar, manda *paguei andrielli* que eu dou baixa. Errou? Manda *desfaz*.");
+  const p = await projetarFimDoMes(empresa, agora);
+  if (p.saldoHojeCents !== null) linhas.push("", `O mês fecha com: *${reais(p.fechaEmCents ?? 0)}*  (sem o dia a dia: ${reais(p.semRitmoCents ?? 0)})`);
+  void hoje;
+  return linhas.join("\n");
+}
+
+/** As contas a pagar do mês (e as atrasadas de antes), pra ele ver o que o robô tem anotado. */
+async function textoDaListaAPagar(empresa: "AGENCIA" | "TREINAMENTOS", agora: Date): Promise<string> {
+  const [ano, mes] = diaDaCasa(agora).split("-").map(Number);
+  const fim = new Date(Date.UTC(ano, mes, 1));
+  const desde = new Date(Date.UTC(ano, mes - 4, 1));
+  const lista = await prisma.expense.findMany({
+    where: { empresa, paid: false, date: { gte: desde, lt: fim } },
+    orderBy: { date: "asc" },
+    take: 40,
+  });
+  if (lista.length === 0) return "Não tenho nenhuma conta a pagar anotada neste mês. Pra anotar: *faltam andrielli e brendon 7.500*.";
+  const total = lista.reduce((s, x) => s + Math.round(Number(x.value) * 100), 0);
+  return [
+    `*A pagar (${lista.length}):* ${reais(total)}`,
+    ...lista.map((x) => `• ${x.description} — ${reais(Math.round(Number(x.value) * 100))} · ${diaMes(x.date)}${x.fixedExpenseId ? " (fixo)" : ""}`),
+    "",
+    "Pagou? Manda *paguei* e o nome.",
+  ].join("\n");
+}
+
+/**
+ * "paguei a Andrielli": procura a conta a pagar pelo nome e dá baixa.
+ *
+ *   - valor igual (ou sem valor): a conta vira paga, com a data de HOJE — é hoje que o
+ *     dinheiro sai, e é essa data que desconta do saldo;
+ *   - valor MENOR: pagamento parcial — vira um gasto pago desse valor e a conta a pagar
+ *     diminui o mesmo tanto;
+ *   - valor MAIOR: a conta vira paga pelo valor novo;
+ *   - mais de uma conta com esse nome: não adivinha, pede o nome inteiro.
+ * `null` quando não há conta a pagar com esse nome — aí é um gasto comum.
+ */
+async function darBaixa(
+  donoId: string,
+  pg: { termos: string[]; cents: number | null },
+  hoje: string,
+  agora: Date,
+  loteId: string,
+): Promise<string | null> {
+  const [ano, mes] = diaDaCasa(agora).split("-").map(Number);
+  const abertas = await prisma.expense.findMany({
+    where: { paid: false, date: { gte: new Date(Date.UTC(ano, mes - 4, 1)), lt: new Date(Date.UTC(ano, mes, 1)) } },
+    orderBy: { date: "asc" },
+  });
+  const casam = abertas.filter((x) => {
+    const palheiro = normal(`${x.description} ${x.category}`);
+    return pg.termos.every((t) => palheiro.includes(t));
+  });
+  if (casam.length === 0) return null;
+  if (casam.length > 1) {
+    return `Achei mais de uma conta a pagar com isso:\n${casam.slice(0, 6).map((x) => `• ${x.description} — ${reais(Math.round(Number(x.value) * 100))}`).join("\n")}\n\nMe manda de novo com o nome inteiro.`;
+  }
+
+  const conta = casam[0];
+  const devidoCents = Math.round(Number(conta.value) * 100);
+  const pagoCents = pg.cents ?? devidoCents;
+  const dia = comoData(hoje);
+  const nome = conta.description;
+
+  if (pagoCents < devidoCents) {
+    await prisma.$transaction([
+      prisma.expense.create({
+        data: {
+          empresa: conta.empresa,
+          description: `${nome} (parcial)`.slice(0, 200),
+          category: conta.category,
+          value: new Prisma.Decimal(pagoCents).div(100),
+          date: dia,
+          paid: true,
+          paidDate: dia,
+          responsibleId: donoId,
+          origem: "robo-whatsapp",
+          loteId,
+        },
+      }),
+      prisma.expense.update({ where: { id: conta.id }, data: { value: new Prisma.Decimal(devidoCents - pagoCents).div(100) } }),
+    ]);
+    avisarTelas();
+    return `Dei baixa de *${reais(pagoCents)}* em ${nome}. Ainda falta *${reais(devidoCents - pagoCents)}* a pagar.`;
+  }
+
+  await prisma.expense.update({
+    where: { id: conta.id },
+    data: { paid: true, paidDate: dia, date: dia, value: new Prisma.Decimal(pagoCents).div(100) },
+  });
+  avisarTelas();
+  return `Dei baixa: *${nome}* — ${reais(pagoCents)} pago. Já saiu do saldo em caixa e entrou no DRE.`;
+}
+
+function avisarTelas() {
+  try {
+    for (const rota of ["/financeiro", "/financeiro/dre", "/financeiro/dfc", "/financeiro/analise", "/financeiro/gastos"]) revalidatePath(rota);
+  } catch {
+    // fora do Next
+  }
 }

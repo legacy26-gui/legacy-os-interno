@@ -137,7 +137,7 @@ depois.
 Página só roda quando alguém abre, então sem um relógio de fora ninguém
 descobre que a gravação de ontem não foi entregue. O robô é
 `/api/alertas/rodar`, chamado pelo agendador da Vercel **uma vez por dia, às
-8h de Brasília** (`vercel.json`, `0 11 * * *` em UTC).
+9h de Brasília** (`vercel.json`, `0 12 * * *` em UTC). Era 8h; o Guilherme mudou pra 9h.
 
 Uma vez por dia basta: os quatro alertas são todos de ritmo diário — nenhum
 muda de hora em hora. É por isso que a central funciona no plano grátis da
@@ -243,7 +243,7 @@ disso se piorar.
 ### Só de segunda a sexta
 
 Decisão do Guilherme: fim de semana ninguém é incomodado. Nada é anotado como
-"avisado" no sábado e no domingo, então segunda às 8h sai tudo que estiver em
+"avisado" no sábado e no domingo, então segunda às 9h sai tudo que estiver em
 aberto, com o estado de segunda. O dia é o de **Caxias** (America/Sao_Paulo),
 não o do servidor: às 22h de sexta o UTC já virou sábado.
 

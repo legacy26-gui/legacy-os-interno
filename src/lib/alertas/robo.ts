@@ -275,7 +275,7 @@ export async function rodarAlertas(
     const noWhatsapp = !!numero && numero.length >= 10 && zapPronta;
 
     // Fim de semana: quem é avisado por WhatsApp não é incomodado. Nada é
-    // anotado como "avisado", então segunda às 8h sai o que estiver em aberto.
+    // anotado como "avisado", então segunda às 9h sai o que estiver em aberto.
     if (noWhatsapp && !ehDiaUtilNaCasa(hoje)) continue;
 
     let paraPush: Alerta[] = aAvisar;
@@ -351,7 +351,7 @@ export async function rodarAlertas(
     }
   }
 
-  // Deixa o carimbo da passagem: a tela mostra "conferido às 8h03", e a porta
+  // Deixa o carimbo da passagem: a tela mostra "conferido às 9h03", e a porta
   // do robô usa isto como acelerador contra chamada repetida de fora.
   await prisma.roboExecucao.upsert({
     where: { nome: ROBO_DOS_ALERTAS },

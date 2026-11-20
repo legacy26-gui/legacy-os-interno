@@ -26,7 +26,7 @@ import {
 // ── Por que só de segunda a sexta ────────────────────────────────────────
 //
 // Decisão do Guilherme: fim de semana ninguém é incomodado. O que piorar no
-// sábado e no domingo chega na segunda às 8h, com o estado de segunda — e como
+// sábado e no domingo chega na segunda às 9h, com o estado de segunda — e como
 // o robô só avisa o que PIOROU desde a última vez, nada se perde no caminho.
 
 /**

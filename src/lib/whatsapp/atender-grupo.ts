@@ -16,7 +16,13 @@ import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { anotar } from "./trilha";
 import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
-import { conjuntosNoAr, pedeConjunto, semPalavraConjunto } from "./conjuntos";
+import {
+  conjuntosNoAr,
+  pausarConjuntosVazios,
+  pedeConjunto,
+  semPalavraConjunto,
+  textoDosConjuntosVazios,
+} from "./conjuntos";
 
 // O que o robô faz quando alguém escreve no grupo de uma loja.
 //
@@ -421,6 +427,7 @@ export async function atenderMensagemDoGrupo(
   const quem = [m.quem, m.telefone].filter(Boolean).join(" · ") || null;
 
   const tirados: string[] = [];
+  const idsTirados: string[] = [];
   const falhas: string[] = [];
   const emDuvida: AnuncioConhecido[] = [];
 
@@ -477,6 +484,7 @@ export async function atenderMensagemDoGrupo(
 
       if (r.ok) {
         tirados.push(objeto.nome);
+        idsTirados.push(candidato.adId);
         await anotar(m.messageId, m.grupoId, "pausou", objeto.nome);
       } else {
         falhas.push(`${objeto.nome} (${r.erro})`);
@@ -490,6 +498,18 @@ export async function atenderMensagemDoGrupo(
     }
   }
 
+  // O conjunto onde estavam ficou sem anúncio ativo? Então sai também. Se ainda há
+  // outro carro nele, fica como está.
+  const vazios = await pausarConjuntosVazios({
+    clientId: loja.id,
+    adIds: idsTirados,
+    quemId: null,
+    pedidoPor: quem,
+    pedidoTexto: m.texto,
+  });
+  for (const n of vazios.pausados) await anotar(m.messageId, m.grupoId, "pausou-conjunto-vazio", n);
+  falhas.push(...vazios.falhas);
+
   // ── Uma resposta só, com tudo que aconteceu ───────────────────────────
   const partes: string[] = [];
   if (tirados.length === 1) {
@@ -499,6 +519,7 @@ export async function atenderMensagemDoGrupo(
       `Pronto, tirei do ar:\n${tirados.map((n) => `• *${n}*`).join("\n")}`,
     );
   }
+  if (vazios.pausados.length > 0) partes.push(textoDosConjuntosVazios(vazios.pausados));
   // O que o robô tem a dizer sobre a VENDA (parabéns, ou a pergunta do valor)
   // vai na mesma mensagem da pausa: duas mensagens seguidas pra um aviso só é o
   // robô falando sozinho no grupo do cliente.

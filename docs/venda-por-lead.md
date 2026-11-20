@@ -155,3 +155,16 @@ conjunto inteiro — e os anúncios dentro dele param junto. Vale no grupo (dire
 - A resposta diz quantos anúncios estavam dentro do conjunto.
 - Quando a Meta recusa, a equipe da loja é avisada de verdade (antes a resposta dizia "já
   avisei a equipe" sem avisar).
+
+### Conjunto vazio sai junto
+
+Depois de tirar os anúncios de um carro (no grupo ou no privado, com ou sem a palavra
+"conjunto"), o robô olha o conjunto onde eles estavam:
+
+- **Nenhum anúncio ligado sobrou** → pausa o conjunto também e diz: "Como não sobrou nenhum
+  anúncio ativo nele, pausei também o conjunto *X*."
+- **Ainda tem outro carro ligado** → o conjunto fica como está.
+
+"Ligado" é o que a pessoa deixou ligado (status não pausado/arquivado/excluído); o robô não
+usa o status efetivo, que também fica "pausado" quando falta saldo. Anúncio ainda não
+sincronizado (sem conjunto no cadastro) não conta: sem saber o que há dentro, não pausa.

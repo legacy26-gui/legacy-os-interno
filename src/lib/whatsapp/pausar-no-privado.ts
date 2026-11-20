@@ -4,7 +4,13 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { CARTEIRA_NO_META, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
-import { conjuntosNoAr, pedeConjunto, semPalavraConjunto } from "./conjuntos";
+import {
+  conjuntosNoAr,
+  pausarConjuntosVazios,
+  pedeConjunto,
+  semPalavraConjunto,
+  textoDosConjuntosVazios,
+} from "./conjuntos";
 import {
   achatar,
   entenderPedidoComVarios,
@@ -640,6 +646,8 @@ export async function executarPausa(
 ): Promise<ResultadoDaPausa> {
   const feitos = new Map<string, string[]>();
   const falhas: string[] = [];
+  // Os anúncios que saíram, por loja: depois conferimos se o conjunto ficou vazio.
+  const anunciosTirados = new Map<string, string[]>();
 
   for (const alvo of acao.alvos) {
     const daCarteira = await prisma.client.findFirst({
@@ -676,15 +684,33 @@ export async function executarPausa(
         ...(feitos.get(alvo.loja) ?? []),
         nivel === "conjunto" ? `conjunto ${objeto.nome}` : objeto.nome,
       ]);
+      if (nivel === "anuncio") {
+        anunciosTirados.set(alvo.clientId, [...(anunciosTirados.get(alvo.clientId) ?? []), alvo.adId]);
+      }
     } else {
       falhas.push(`${objeto.nome} (${r.erro})`);
     }
+  }
+
+  // Conjunto que ficou sem anúncio ativo sai junto; com outro carro dentro, fica.
+  const vazios: string[] = [];
+  for (const [clientId, adIds] of anunciosTirados) {
+    const r = await pausarConjuntosVazios({
+      clientId,
+      adIds,
+      quemId: pessoa.id,
+      pedidoPor: `${pessoa.name} (privado)`,
+      pedidoTexto: acao.pedido,
+    });
+    vazios.push(...r.pausados);
+    falhas.push(...r.falhas);
   }
 
   const partes: string[] = [];
   for (const [loja, nomes] of feitos) {
     partes.push(`Pronto, pausei na ${negrito(loja)}:\n${lista(nomes)}`);
   }
+  if (vazios.length > 0) partes.push(textoDosConjuntosVazios(vazios));
   if (falhas.length > 0) {
     partes.push(`Não consegui pausar:\n${lista(falhas)}\n\nFaz pelo Legacy OS.`);
   }

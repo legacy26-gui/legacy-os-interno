@@ -145,17 +145,21 @@ export async function tratarVendaNoGrupo(a: {
   }
   if (!aviso && !pend) return NADA;
 
-  // ── Resposta à pergunta que ficou aberta ─────────────────────────────
-  if (!aviso && pend) {
+  /**
+   * Lê a mensagem como RESPOSTA à pergunta que ficou aberta.
+   * `null` quando ela não responde nada — e aí quem chamou segue o fluxo normal.
+   */
+  const comoResposta = async (): Promise<ResultadoDaVenda | null> => {
+    if (!pend) return null;
     // Mensagem comprida ou com "?" é conversa, não resposta: sem isto, qualquer
     // pergunta com um número no meio seria lida como valor de venda.
-    if (texto.length > 160 || texto.includes("?")) return NADA;
+    if (texto.length > 160 || texto.includes("?")) return null;
 
     const r = lerRespostaDaPendencia(texto, {
       valor: pend.valorCents === null,
       origem: pend.origemLead === null,
     });
-    if (r.valorCents === null && r.origemLead === null) return NADA;
+    if (r.valorCents === null && r.origemLead === null) return null;
 
     const fechado = await concluirOuPerguntar({
       loja,
@@ -171,7 +175,10 @@ export async function tratarVendaNoGrupo(a: {
       messageId: a.messageId,
     });
     return { fim: true, ...fechado };
-  }
+  };
+
+  // ── Resposta à pergunta que ficou aberta ─────────────────────────────
+  if (!aviso && pend) return (await comoResposta()) ?? NADA;
 
   // ── Um aviso de venda ────────────────────────────────────────────────
   const conhecidos = await anunciosDaLoja(loja.contas);
@@ -179,9 +186,23 @@ export async function tratarVendaNoGrupo(a: {
 
   const lido = entenderPedidoComVarios(texto, conhecidos);
   const certos = lido.alvos.filter((x) => x.semDuvida);
-  // Sem carro certo, quem trata é o fluxo de desligar (que pergunta "qual
-  // desses?" ou avisa que não está anunciado). Aqui não há o que registrar.
-  if (certos.length === 0) return NADA;
+  if (certos.length === 0) {
+    // ── "vendido por 39.900" COM uma pergunta aberta ────────────────────
+    //
+    // Respondendo ao "qual foi o valor?", a pessoa escreve do jeito que se fala:
+    // "vendido por 39.900". A frase tem a palavra "vendido", então parece um aviso
+    // NOVO — e como não nomeia carro nenhum, caía no "esse carro não está no ar".
+    // Foi o que aconteceu no primeiro uso real, no grupo da Vilela Motors.
+    //
+    // Aviso que não nomeia carro e chega com uma pergunta aberta é a resposta a
+    // ela. Se o texto também não responde nada, aí sim segue o fluxo normal.
+    const resposta = await comoResposta();
+    if (resposta) return resposta;
+
+    // Sem pergunta aberta: quem trata é o fluxo de desligar (que pergunta "qual
+    // desses?" ou avisa que não está anunciado). Aqui não há o que registrar.
+    return NADA;
+  }
 
   if (certos.length > 1) {
     await anotar(a.messageId, grupoId, "venda-varios-carros", loja.companyName);
@@ -312,9 +333,12 @@ async function registrar(e: Estado, valorCents: number): Promise<string> {
   // pelo mesmo acumulado que o Copiloto usa pra responder "quanto gastou".
   const vida = await prisma.metaLifetime.findMany({
     where: { adAccountId: { in: e.loja.contas }, adId: { in: e.ids } },
-    select: { spendCents: true },
+    select: { spendCents: true, leads: true },
   });
   const gastoCents = vida.reduce((s, v) => s + v.spendCents, 0);
+  // Quantos leads o carro trouxe, somando os anúncios dele: o gestor pediu os dois
+  // números juntos ("o custo total dos anúncios e quantos leads chegaram").
+  const leads = vida.reduce((s, v) => s + v.leads, 0);
 
   const hoje = diaDaCasaComoData(e.agora);
   await prisma.clientSale.create({
@@ -359,10 +383,12 @@ async function registrar(e: Estado, valorCents: number): Promise<string> {
     `*${e.loja.companyName}* — registrei uma venda por lead no controle:\n` +
       `• ${e.carro}\n` +
       `• Valor: ${dinheiro(valorCents)}\n` +
-      `• Gasto de anúncio do carro: ${dinheiro(gastoCents)}\n` +
+      `• Gasto de anúncio do carro: ${dinheiro(gastoCents)}` +
+      (leads > 0 ? ` · ${leads} ${leads === 1 ? "lead" : "leads"}` : "") +
+      `\n` +
       `• Quem avisou no grupo: ${e.quem ?? "não identificado"}\n\n` +
       `Se estiver errada, apaga em Marcar Venda → Últimas vendas marcadas.`,
   );
 
-  return textoDeParabens({ vendasNoMes, gastoCents });
+  return textoDeParabens({ vendasNoMes, gastoCents, leads });
 }

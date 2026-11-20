@@ -240,7 +240,7 @@ export async function atenderMensagemDoGrupo(
       `*${loja.companyName}* — me marcaram no grupo e pediram alguma coisa, ` +
         `mas o robô NÃO está autorizado a mexer em anúncio nessa loja.\n\n` +
         `Quem escreveu: ${m.quem ?? "não identificado"}\n` +
-        `A mensagem: "${m.texto.slice(0, 200)}"\n\n` +
+        `A mensagem: "${semAMarcacao(m.texto).slice(0, 200)}"\n\n` +
         `Pra ele poder agir: Configurações → WhatsApp → na linha da ` +
         `${loja.companyName}, marca "Desligar anúncio sozinho quando pedirem ` +
         `neste grupo".`,
@@ -365,7 +365,7 @@ export async function atenderMensagemDoGrupo(
       loja.id,
       `*${loja.companyName}* — pediram pra tirar um carro do ar e eu não achei ` +
         `qual.\n\nQuem escreveu: ${m.quem ?? "não identificado"}\n` +
-        `A mensagem: "${m.texto.slice(0, 200)}"\n\n` +
+        `A mensagem: "${semAMarcacao(m.texto).slice(0, 200)}"\n\n` +
         (anuncios.length === 0
           ? "Esta loja não tem nenhum anúncio ativo no momento."
           : `Os ${anuncios.length} anúncios no ar hoje:\n${emCartaz}` +
@@ -593,7 +593,7 @@ async function responderSobreALoja(
     await avisarAEquipeDaLoja(
       clientId,
       `*${nomeDaLoja}* — perguntaram no grupo e eu não consegui responder: ` +
-        `${r.erro ?? "não veio resposta."}\n\nA pergunta: "${m.texto.slice(0, 200)}"`,
+        `${r.erro ?? "não veio resposta."}\n\nA pergunta: "${semAMarcacao(m.texto).slice(0, 200)}"`,
     );
     return { tipo: "sem-pedido", clientId };
   }

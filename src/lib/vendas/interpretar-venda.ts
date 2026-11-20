@@ -215,6 +215,8 @@ export const VENDAS_PARA_EXCEPCIONAL = 3;
 export function textoDeParabens(opcoes: {
   vendasNoMes: number;
   gastoCents: number;
+  /** Quantos leads os anúncios do carro trouxeram. */
+  leads?: number;
 }): string {
   const n = opcoes.vendasNoMes;
   const excepcional = n >= VENDAS_PARA_EXCEPCIONAL;
@@ -224,7 +226,16 @@ export function textoDeParabens(opcoes: {
     }`,
   ];
   if (opcoes.gastoCents > 0) {
-    linhas.push(`O anúncio desse carro consumiu *${dinheiro(opcoes.gastoCents)}* até vender.`);
+    // O custo e os leads, juntos: foi o que o Guilherme pediu no primeiro uso real
+    // ("envia o custo total dos anúncios pra nós, e quantos leads chegaram"). Só
+    // cita leads quando houve — "trouxe 0 leads" no grupo do cliente, no momento
+    // da comemoração, seria um dado verdadeiro dito na hora errada.
+    const leads = opcoes.leads ?? 0;
+    linhas.push(
+      `O anúncio desse carro consumiu *${dinheiro(opcoes.gastoCents)}*` +
+        (leads > 0 ? ` e trouxe *${leads} ${leads === 1 ? "lead" : "leads"}*` : "") +
+        " até vender.",
+    );
   }
   return linhas.join("\n");
 }

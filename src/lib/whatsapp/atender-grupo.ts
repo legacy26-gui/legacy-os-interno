@@ -6,7 +6,8 @@ import {
   entenderPedidoComVarios,
   type AnuncioConhecido,
 } from "./entender-pedido";
-import { foiMencionado, semAMarcacao } from "./mencao";
+import { foiMencionado, marcacoesDoTexto, semAMarcacao } from "./mencao";
+import { lidDoRobo } from "./identidade-do-robo";
 import { acharPessoaPeloNumero } from "./atender-privado";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
@@ -100,6 +101,44 @@ export type Desfecho =
  */
 const MAXIMO_NA_PERGUNTA = 5;
 
+/**
+ * Falaram comigo? — pelo telefone OU pelo "@lid".
+ *
+ * Primeiro o barato: o telefone, que não custa chamada nenhuma. Só se o
+ * texto TEM uma marcação e ela não bateu é que se pergunta à Z-API qual é o
+ * nosso lid. Conversa de grupo sem marcação nenhuma — a maior parte — nunca
+ * chega a custar uma consulta.
+ *
+ * Devolve também o que foi visto, porque "descartei a mensagem" sem dizer
+ * por quê foi o que fez o silêncio da R2 durar dois dias: a trilha precisa
+ * poder responder "a marcação tinha 14 dígitos e eu só conhecia 12".
+ */
+async function fuiChamado(m: MensagemDoGrupo): Promise<{
+  chamado: boolean;
+  porLid: boolean;
+  /** Quantos dígitos tinha cada marcação — o tamanho, nunca o número. */
+  tamanhos: number[];
+  /** Quantos dígitos tem o lid que a Z-API deu, ou null se não deu. */
+  tamanhoDoLid: number | null;
+}> {
+  const tamanhos = marcacoesDoTexto(m.texto).map((x) => x.digitos.length);
+
+  if (foiMencionado(m.texto, m.numeroDoRobo, m.mencionados)) {
+    return { chamado: true, porLid: false, tamanhos, tamanhoDoLid: null };
+  }
+  // Sem marcação nenhuma, ou sem saber o próprio número: nada a perguntar.
+  if (tamanhos.length === 0 || !m.numeroDoRobo) {
+    return { chamado: false, porLid: false, tamanhos, tamanhoDoLid: null };
+  }
+
+  const lid = await lidDoRobo(m.numeroDoRobo);
+  if (!lid) {
+    return { chamado: false, porLid: false, tamanhos, tamanhoDoLid: null };
+  }
+  const chamado = foiMencionado(m.texto, m.numeroDoRobo, m.mencionados, [lid]);
+  return { chamado, porLid: chamado, tamanhos, tamanhoDoLid: lid.length };
+}
+
 export async function atenderMensagemDoGrupo(
   m: MensagemDoGrupo,
 ): Promise<Desfecho> {
@@ -149,14 +188,22 @@ export async function atenderMensagemDoGrupo(
   //
   // Antes de tudo que custa: sem o @ a mensagem não é dele, e o grupo inteiro
   // de conversa normal morre aqui sem gastar consulta de criativo nenhuma.
-  if (!foiMencionado(m.texto, m.numeroDoRobo, m.mencionados)) {
+  const chamada = await fuiChamado(m);
+  if (!chamada.chamado) {
     await anotar(
       m.messageId,
       m.grupoId,
       "sem-mencao",
-      `${loja.companyName} · robô=${m.numeroDoRobo ?? "(não veio)"}`,
+      `${loja.companyName} · robô=${m.numeroDoRobo ?? "(não veio)"} · ` +
+        `marcações=[${chamada.tamanhos.join(",")}] dígitos · ` +
+        `lid=${chamada.tamanhoDoLid ?? "não achei"}`,
     );
     return { tipo: "sem-mencao", clientId: loja.id };
+  }
+  if (chamada.porLid) {
+    // O caso que antes caía em silêncio. Fica registrado pra ser possível
+    // ver, depois, que a marcação por lid é o que está acontecendo.
+    await anotar(m.messageId, m.grupoId, "marcado-por-lid", loja.companyName);
   }
 
   // ── 3. Esta loja deixou o robô agir? ──────────────────────────────────
@@ -495,8 +542,19 @@ async function responderSobreALoja(
  * palpite dela custa duas chamadas ao modelo.
  */
 async function atenderNoGrupoInterno(m: MensagemDoGrupo): Promise<Desfecho> {
-  if (!foiMencionado(m.texto, m.numeroDoRobo, m.mencionados)) {
+  const chamada = await fuiChamado(m);
+  if (!chamada.chamado) {
+    await anotar(
+      m.messageId,
+      m.grupoId,
+      "interno-sem-mencao",
+      `marcações=[${chamada.tamanhos.join(",")}] dígitos · ` +
+        `lid=${chamada.tamanhoDoLid ?? "não achei"}`,
+    );
     return { tipo: "interno-sem-dono" };
+  }
+  if (chamada.porLid) {
+    await anotar(m.messageId, m.grupoId, "marcado-por-lid", "grupo interno");
   }
 
   // Quem escreveu, pelo telefone dele dentro do grupo. Sem telefone ou sem

@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { entenderPedidoComVarios } from "@/lib/whatsapp/entender-pedido";
-import { semAMarcacao, foiMencionado } from "@/lib/whatsapp/mencao";
+import {
+  semAMarcacao,
+  foiMencionado,
+  marcacoesDoTexto,
+} from "@/lib/whatsapp/mencao";
+import { lidDoRobo } from "@/lib/whatsapp/identidade-do-robo";
 
 // A janela de diagnóstico do robô de WhatsApp.
 //
@@ -58,6 +63,28 @@ export async function GET(
   // mandar mensagem nenhuma pra ninguém — e sem precisar que alguém do
   // outro lado descreva o que viu.
   const url = new URL(_req.url);
+
+  // ── A Z-API sabe me dizer o meu "@lid"? ───────────────────────────────
+  //
+  // ?lid=1 — pergunta à Z-API, com as credenciais que ELA já tem, qual é o
+  // identificador privado do número do robô. É o que decide se o robô
+  // reconhece a marcação que o WhatsApp manda no lugar do telefone (ver
+  // mencao.ts). Devolve só o tamanho: o identificador em si não sai daqui.
+  if (url.searchParams.get("lid")) {
+    const ultimo = await prisma.recadoDaZapi.findFirst({
+      where: { numeroDoRobo: { not: null } },
+      orderBy: { recebidoEm: "desc" },
+      select: { numeroDoRobo: true },
+    });
+    const numero = ultimo?.numeroDoRobo ?? null;
+    const lid = numero ? await lidDoRobo(numero) : null;
+    return NextResponse.json({
+      numeroDoRobo: numero,
+      achouOLid: !!lid,
+      digitosDoLid: lid ? lid.length : null,
+    });
+  }
+
   const grupoPedido = url.searchParams.get("grupo");
   const textoPedido = url.searchParams.get("texto");
   if (grupoPedido && textoPedido) {
@@ -94,6 +121,8 @@ export async function GET(
       anunciosAtivos: anuncios.length,
       nomesDosAnuncios: anuncios.map((a) => a.nome),
       marcouORobo: foiMencionado(textoPedido, "554288126561", []),
+      // O tamanho de cada marcação: 12 = telefone, 14 = lid.
+      marcacoes: marcacoesDoTexto(textoPedido).map((x) => x.digitos.length),
       textoSemMarcacao: limpo,
       intencao: pedido.intencao,
       alvos: pedido.alvos.map((a) => ({

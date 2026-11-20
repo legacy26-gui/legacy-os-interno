@@ -262,6 +262,38 @@ export async function dadosDoAparelho(): Promise<
 }
 
 /**
+ * O "@lid" de um número: o identificador privado que o WhatsApp usa no lugar
+ * do telefone em parte das marcações. Ver mencao.ts.
+ *
+ * A Z-API NÃO converte lid em telefone (a doc diz que o aplicativo proíbe),
+ * mas converte telefone em lid — e é só isso que precisamos: o lid do NOSSO
+ * número, pra reconhecer quando alguém nos marca.
+ *
+ * Devolve só dígitos ("81896604192873"), sem o "@lid". `lid: null` quando a
+ * Z-API respondeu mas não trouxe um — que é um resultado, não um erro.
+ */
+export async function lidDoNumero(
+  telefone: string,
+): Promise<{ ok: true; lid: string | null } | { ok: false; erro: string }> {
+  const digitos = telefone.replace(/\D/g, "");
+  if (digitos.length < 10) return { ok: false, erro: "Número curto demais." };
+
+  const r = await buscar<unknown>(`phone-exists/${digitos}`);
+  if (!r.ok) return r;
+
+  // A doc mostra uma lista, mas a Z-API já devolveu objeto solto em outras
+  // rotas. Aceita os dois pra não depender de um formato que pode mudar.
+  const item = Array.isArray(r.dados) ? r.dados[0] : r.dados;
+  const lid =
+    item && typeof item === "object" && "lid" in item
+      ? (item as { lid?: unknown }).lid
+      : null;
+  if (typeof lid !== "string") return { ok: true, lid: null };
+  const so = lid.replace(/\D/g, "");
+  return { ok: true, lid: so.length >= 8 ? so : null };
+}
+
+/**
  * Manda um texto — serve pro teste de que a ligação está de pé.
  *
  * Aceita grupo (`...-group`) ou telefone, porque o teste mais honesto é o

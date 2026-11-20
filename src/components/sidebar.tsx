@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
-  Trophy, Video, Car, BellRing, TrendingUp, Megaphone, Sparkles,
+  Trophy, Video, Car, Package, BellRing, TrendingUp, Megaphone, Sparkles,
   PanelLeftClose, PanelLeftOpen, CheckCheck,
 } from "lucide-react";
 import type { Empresa, Role } from "@/generated/prisma/enums";
@@ -51,6 +51,8 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
       { href: "/ranking-lojas", label: "Ranking de Lojas", icon: Trophy, module: "gestao-contas" },
       { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
+      // O estoque lido do site de cada loja: base da inteligência comercial.
+      { href: "/estoque", label: "Estoque", icon: Package, module: "gestao-contas" },
       { href: "/controle-vendas", label: "Controle de Vendas", icon: TrendingUp, module: "gestao-contas" },
       { href: "/meta-ads", label: "Meta Ads", icon: Megaphone, module: "clientes" },
       // Só a direção entra (a tela redireciona quem não vê a casa inteira),

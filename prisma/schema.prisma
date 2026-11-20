@@ -734,6 +734,8 @@ model Client {
   vendasAguardando      VendaAguardandoDados[]
 
   @@map("clients")
+  estoqueDaLoja EstoqueDaLoja?
+  estoqueCarros EstoqueCarro[]
 }
 
 /// O que o sistema MANDOU a Meta fazer, e o que ela respondeu.
@@ -2116,4 +2118,70 @@ model ConexaoDoWhatsapp {
   conferidoEm    DateTime @default(now())
 
   @@map("conexao_whatsapp")
+}
+
+/// O site da loja de onde o sistema lê o estoque (hoje: AutoCerto). Uma linha por loja.
+///
+/// O estoque serve à inteligência comercial (há quantos dias o carro está parado, o que
+/// entrou, o que saiu). O preço de VENDA continua vindo do anúncio, não daqui.
+model EstoqueDaLoja {
+  id             String    @id @default(cuid())
+  clientId       String    @unique
+  client         Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  siteUrl        String
+  /// "autocerto" por enquanto: cada sistema de estoque tem um leitor.
+  sistema        String    @default("autocerto")
+  ultimaLeituraEm DateTime?
+  /// Quantos carros a última lista trouxe.
+  ultimoTotal    Int?
+  /// O que deu errado na última leitura (null = deu certo).
+  ultimoErro     String?
+  criadoEm       DateTime  @default(now())
+
+  @@map("estoque_da_loja")
+}
+
+/// Um carro do estoque do site. Nunca é apagado: carro que saiu da lista ganha `sumiuEm`,
+/// e a data de entrada é o que permite dizer "parado há 75 dias".
+model EstoqueCarro {
+  id            String    @id @default(cuid())
+  clientId      String
+  client        Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// O código do carro no sistema de estoque (no AutoCerto, o número da URL).
+  codigo        String
+  titulo        String
+  marca         String?
+  modelo        String?
+  versao        String?
+  anoModelo     Int?
+  anoFabricacao Int?
+  cor           String?
+  km            Int?
+  /// O preço que o SITE mostra. Informativo — a venda usa o preço do anúncio.
+  precoCents    Int?
+  url           String
+  foto          String?
+  primeiraVezEm DateTime  @default(now())
+  ultimaVezEm   DateTime  @default(now())
+  /// Preenchido quando o carro some da lista; volta a null se reaparecer.
+  sumiuEm       DateTime?
+  /// Quando a página do carro foi lida pela última vez (pra renovar em rodízio).
+  detalheEm     DateTime?
+  precos        EstoquePreco[]
+
+  @@unique([clientId, codigo])
+  @@index([clientId, sumiuEm])
+  @@map("estoque_carros")
+}
+
+/// Histórico de preço do site: uma linha só quando o preço MUDA.
+model EstoquePreco {
+  id         String       @id @default(cuid())
+  carroId    String
+  carro      EstoqueCarro @relation(fields: [carroId], references: [id], onDelete: Cascade)
+  precoCents Int
+  vistoEm    DateTime     @default(now())
+
+  @@index([carroId, vistoEm])
+  @@map("estoque_precos")
 }

@@ -10,6 +10,14 @@
       "schedule": "0 12 * * *"
     },
     {
+      "path": "/api/estoque/ler",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/estoque/ler",
+      "schedule": "0 18 * * *"
+    },
+    {
       "path": "/api/relatorios/mandar",
       "schedule": "*/5 11-12 * * 1"
     }

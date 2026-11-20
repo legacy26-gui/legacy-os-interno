@@ -52,7 +52,7 @@ export async function conectarSiteDaLoja(clientId: string, endereco: string): Pr
     update: { siteUrl: origem, sistema: "autocerto", ultimoErro: null },
   });
   const r = await lerEstoqueDaLoja(clientId);
-  revalidatePath("/estoque");
+  revalidatePath("/inteligencia-comercial/estoque");
   if (!r.ok) return { erro: `Liguei o site, mas a primeira leitura falhou: ${r.erro}` };
   return { ok: `${loja.companyName}: site ligado. Li ${r.total} carros${r.detalhesLidos ? ` (${r.detalhesLidos} páginas de carro)` : ""}. Daqui pra frente leio duas vezes por dia.` };
 }
@@ -62,7 +62,7 @@ export async function lerEstoqueAgora(clientId: string): Promise<EstoqueState> {
   const { loja } = await lojaDaPessoa(clientId);
   if (!loja) return { erro: "Não achei essa loja na sua carteira." };
   const r = await lerEstoqueDaLoja(clientId);
-  revalidatePath("/estoque");
+  revalidatePath("/inteligencia-comercial/estoque");
   if (!r.ok) return { erro: r.erro ?? "A leitura falhou." };
   const partes = [`${r.total} carros no site`];
   if (r.novos) partes.push(`${r.novos} novo${r.novos > 1 ? "s" : ""}`);
@@ -76,6 +76,6 @@ export async function desligarSiteDaLoja(clientId: string): Promise<EstoqueState
   if (user.role !== "ADMIN") return { erro: "Só o administrador desliga o site de uma loja." };
   if (!loja) return { erro: "Não achei essa loja na sua carteira." };
   await prisma.estoqueDaLoja.deleteMany({ where: { clientId } });
-  revalidatePath("/estoque");
+  revalidatePath("/inteligencia-comercial/estoque");
   return { ok: "Leitura desligada. O histórico dos carros fica guardado." };
 }

@@ -8,14 +8,21 @@ import {
   LayoutDashboard, Users, Wallet, FileText, Target, ListChecks,
   UserCog, CalendarClock, LifeBuoy, Settings,
   Gauge, ClipboardList, BookOpen, ChevronDown, Menu, X, FileBarChart, BarChart3, Waves, ClipboardPen,
-  Trophy, Video, Car, Package, BellRing, TrendingUp, Megaphone, Sparkles,
+  Trophy, Video, Car, Lightbulb, BellRing, TrendingUp, Megaphone, Sparkles,
   PanelLeftClose, PanelLeftOpen, CheckCheck,
 } from "lucide-react";
 import type { Empresa, Role } from "@/generated/prisma/enums";
 import { canAccessModule, moduleServesEmpresa, type ModuleKey } from "@/lib/permissions";
 import { EMPRESA_CURTA } from "@/lib/empresa";
 
-type NavLeaf = { href: string; label: string; icon: typeof LayoutDashboard; module: ModuleKey | null };
+type NavLeaf = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  module: ModuleKey | null;
+  /** Outros endereços que também acendem este item (telas que vivem dentro dele, com URL própria). */
+  tambemAtivoEm?: string[];
+};
 type NavGroup = { label: string; items: NavLeaf[] };
 
 // Itens soltos no topo, sempre visíveis (sujeitos à permissão do módulo).
@@ -49,11 +56,17 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Operacional",
     items: [
       { href: "/gestao-contas", label: "Gestão de Contas", icon: Gauge, module: "gestao-contas" },
-      { href: "/ranking-lojas", label: "Ranking de Lojas", icon: Trophy, module: "gestao-contas" },
       { href: "/marcar-venda", label: "Marcar Venda", icon: Car, module: "gestao-contas" },
-      // O estoque lido do site de cada loja: base da inteligência comercial.
-      { href: "/estoque", label: "Estoque", icon: Package, module: "gestao-contas" },
-      { href: "/controle-vendas", label: "Controle de Vendas", icon: TrendingUp, module: "gestao-contas" },
+      // Uma aba só pro que analisa as lojas: visão geral, estoque lido do site, ranking e
+      // controle de vendas (as abas ficam por dentro — ver abas-da-inteligencia.tsx). O
+      // Marcar Venda fica de fora de propósito: é tarefa do dia a dia, a um clique.
+      {
+        href: "/inteligencia-comercial",
+        label: "Inteligência Comercial",
+        icon: Lightbulb,
+        module: "gestao-contas",
+        tambemAtivoEm: ["/ranking-lojas", "/controle-vendas"],
+      },
       { href: "/meta-ads", label: "Meta Ads", icon: Megaphone, module: "clientes" },
       // Só a direção entra (a tela redireciona quem não vê a casa inteira),
       // e fica junto do Meta Ads porque é sobre os números dele que se
@@ -191,7 +204,8 @@ export function Sidebar({
   // o item "pai" acende junto com a sub-página (ex: Financeiro + DRE).
   const EXACT_ONLY = ["/dashboard", "/financeiro"];
 
-  function isActive(href: string) {
+  function isActive(href: string, tambemAtivoEm: string[] = []) {
+    if (tambemAtivoEm.some((p) => pathname.startsWith(p))) return true;
     return EXACT_ONLY.includes(href) ? pathname === href : pathname.startsWith(href);
   }
 
@@ -251,12 +265,12 @@ export function Sidebar({
         <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-0.5">
           {isEmployee
             ? employeeItems.map((item) => (
-                <NavLink key={item.href} {...item} active={isActive(item.href)} onClick={() => setOpen(false)} />
+                <NavLink key={item.href} {...item} active={isActive(item.href, item.tambemAtivoEm)} onClick={() => setOpen(false)} />
               ))
             : (
               <>
                 {topItems.map((item) => (
-                  <NavLink key={item.href} {...item} active={isActive(item.href)} onClick={() => setOpen(false)} />
+                  <NavLink key={item.href} {...item} active={isActive(item.href, item.tambemAtivoEm)} onClick={() => setOpen(false)} />
                 ))}
                 <div className="mt-2 flex flex-col gap-0.5">
                   {groups.map((group) => (
@@ -284,10 +298,10 @@ function NavFolder({
   onNavigate,
 }: {
   group: NavGroup;
-  isActive: (href: string) => boolean;
+  isActive: (href: string, tambemAtivoEm?: string[]) => boolean;
   onNavigate: () => void;
 }) {
-  const hasActiveChild = group.items.some((item) => isActive(item.href));
+  const hasActiveChild = group.items.some((item) => isActive(item.href, item.tambemAtivoEm));
   const [expanded, setExpanded] = useState(hasActiveChild);
 
   return (
@@ -311,7 +325,7 @@ function NavFolder({
         className={`flex-col gap-0.5 mb-1 ${expanded ? "flex" : "hidden"}`}
       >
         {group.items.map((item) => (
-          <NavLink key={item.href} {...item} active={isActive(item.href)} onClick={onNavigate} />
+          <NavLink key={item.href} {...item} active={isActive(item.href, item.tambemAtivoEm)} onClick={onNavigate} />
         ))}
       </div>
     </div>

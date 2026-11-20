@@ -118,8 +118,10 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   // O ranking das lojas vive fora de /gestao-contas pra ser uma aba própria no
   // menu, mas quem vê é o mesmo pessoal que lança as vendas.
   { prefix: "/ranking-lojas", module: "gestao-contas" },
-  // O estoque lido do site de cada loja: da carteira de quem lança as vendas.
-  { prefix: "/estoque", module: "gestao-contas" },
+  // A Inteligência Comercial (visão geral e estoque lido do site) é da carteira de quem
+  // lança as vendas. Ranking e Controle de Vendas, que entram nas abas dela, seguem nos
+  // endereços e módulos de sempre.
+  { prefix: "/inteligencia-comercial", module: "gestao-contas" },
   // Mesma coisa pro controle de vendas: é a venda da loja, lançada na Gestão
   // de Contas. Como "gestao-contas" não está liberado pro Treinamentos, esta
   // tela fica fora de lá automaticamente.

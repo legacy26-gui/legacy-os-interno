@@ -7,7 +7,7 @@ site é só informativo (e guardado no histórico, pra comparar).
 
 ## Ligar uma loja
 
-Menu **Estoque** → "Lojas sem site ligado" → colar o endereço do site (ex.: `https://r2multimarcas.com.br`)
+Menu **Inteligência Comercial** → aba **Estoque** → "Lojas sem site ligado" → colar o endereço do site (ex.: `https://r2multimarcas.com.br`)
 → **Ligar site**. Só o administrador liga. O sistema confere que é AutoCerto **antes de gravar** e já faz a
 primeira leitura (e deixa claro quantos carros achou). Tem **Ler agora** e **Desligar leitura** em cada loja.
 
@@ -48,3 +48,11 @@ leitura aparece na tela da loja.
 
 A contagem "há N dias no estoque" começa quando o sistema viu o carro pela primeira vez: o que já estava no
 site no dia em que a leitura foi ligada aparece como "hoje". A idade real só vem com o tempo.
+
+## Onde fica no sistema
+
+Na aba **Inteligência Comercial** do menu (uma só), com abas por dentro: **Visão geral** (3 números do
+mês: vendas por lead, loja que mais vendeu, carros no ar nos sites), **Estoque** (esta tela),
+**Ranking de lojas** e **Controle de vendas** (as telas de sempre, nos endereços de sempre, agora com
+as abas em cima). O **Marcar Venda** continua solto no menu: é tarefa do dia a dia. O menu enxuto do
+gestor de tráfego não mudou. A Visão geral mostra só contagens, sem valor em reais.

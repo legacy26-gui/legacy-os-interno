@@ -19,6 +19,8 @@ import {
   type GastoLido,
 } from "./interpretar-gasto";
 import { lerComIa } from "./ler-com-ia";
+import { ehPerguntaDeGasto } from "./interpretar-pergunta";
+import { perguntaDeGastoTemAssunto, responderPerguntaDeGasto } from "./responder-gasto";
 
 // O grupo "financeiro (gastos)": o Guilherme anota CADA gasto ali, e o robô lança.
 //
@@ -55,6 +57,7 @@ export type DesfechoFinanceiro =
   | { tipo: "respondeu-pendencia"; lancados: number }
   | { tipo: "desfez"; apagados: number }
   | { tipo: "resumo" }
+  | { tipo: "respondeu-pergunta" }
   | { tipo: "nao-entendeu" }
   | { tipo: "silencio" };
 
@@ -212,8 +215,19 @@ export async function atenderGrupoFinanceiro(
     return desfazerUltimo(m, grupo.donoId, agora, hoje);
   }
 
+  // ── 3a. "quanto gastei de Uber com o Igor esse mês?" ──────────────────
+  //
+  // Pergunta com assunto: soma o que foi lançado e responde. Vem ANTES do resumo
+  // e do lançamento: "quanto gastei com uber" tem a palavra uber e nenhum valor, e
+  // não pode virar um gasto.
+  if (ehPerguntaDeGasto(m.texto) && perguntaDeGastoTemAssunto(m.texto, agora)) {
+    await anotar(m.messageId, m.grupoId, "financeiro-pergunta");
+    await responder(m.grupoId, await responderPerguntaDeGasto(grupo.donoId, m.texto, agora), m.messageId);
+    return { tipo: "respondeu-pergunta" };
+  }
+
   // ── 3. "resumo" ───────────────────────────────────────────────────────
-  if (pedeResumo(m.texto)) {
+  if (pedeResumo(m.texto) || ehPerguntaDeGasto(m.texto)) {
     await responder(m.grupoId, await textoDoResumo(grupo.donoId, agora), m.messageId);
     return { tipo: "resumo" };
   }

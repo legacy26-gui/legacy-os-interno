@@ -26,6 +26,25 @@ lança no financeiro: gasto da empresa vai pro DRE; gasto pessoal vira **retirad
 
 Não precisa marcar o robô com @ nesse grupo. Mensagem sem número (um "bom dia") passa em silêncio.
 
+## Perguntar quanto gastou (grupo financeiro e privado)
+
+Pergunta livre, respondida com o que foi lançado — soma da empresa e do pessoal:
+
+| Pergunta | Resposta |
+|---|---|
+| `quanto gastei de uber com o igor esse mês?` | soma dos lançamentos que têm **uber e igor** na descrição/categoria, com a lista |
+| `quanto gastei com mercado?` | esse mês é o padrão |
+| `quanto gastei de uber mês passado / em setembro / hoje / ontem / essa semana / semana passada / nos últimos 7 dias / esse ano / no total?` | o período pedido |
+| `quanto gastei com alimentação?` | por categoria também |
+| `quanto gastei de mercado pessoal?` | só o pessoal (ou `empresa`, `treinamentos`) |
+| `quanto gastei esse mês?` | sem assunto: o resumo geral |
+
+- Todos os termos precisam aparecer (uber **e** igor). Se não há nenhum com os dois, o robô mostra o que
+  existe de cada um separado.
+- O robô só liga "Igor" ao Uber se o nome estiver na **descrição**: escreva `uber 23 igor`.
+- Responde sem IA (conta de dinheiro por regra), também no **privado** — só para quem vê o Financeiro (ADMIN),
+  e o pessoal somado é sempre o de quem pergunta.
+
 ## A regra de empresa × pessoal (decisão do Guilherme)
 
 "Sempre sai da empresa; quando for pessoal eu aviso. Na dúvida, pergunta."

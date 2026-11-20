@@ -7,6 +7,8 @@ import { lidDoRobo } from "./identidade-do-robo";
 import { anotar } from "./trilha";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { canAccessModule } from "@/lib/permissions";
+import { ehPerguntaDeGasto } from "@/lib/financeiro-ia/interpretar-pergunta";
+import { perguntaDeGastoTemAssunto, responderPerguntaDeGasto } from "@/lib/financeiro-ia/responder-gasto";
 import type { Turno } from "@/lib/copiloto/cerebro";
 import {
   descartarPendente,
@@ -68,6 +70,8 @@ export type DesfechoPrivado =
   | { tipo: "sem-acesso"; userId: string }
   /** Perguntou demais na última hora. */
   | { tipo: "teto"; userId: string }
+  /** Perguntou quanto gastou com algo: respondido pelo financeiro, sem IA. */
+  | { tipo: "respondeu-gasto"; userId: string }
   /** Respondeu. */
   | { tipo: "respondeu"; userId: string; temAcoes: boolean }
   /** Mandou pausar algo: o robô disse o que ia pausar e espera o "sim". */
@@ -238,6 +242,17 @@ export async function atenderMensagemPrivada(
     await anotar(m.messageId, `privado ${ponta}`, "privado-desconhecido");
     await responder(m.telefone, RECADO_PARA_DESCONHECIDO, m.messageId);
     return { tipo: "desconhecido" };
+  }
+
+  // ── Pergunta sobre os GASTOS do dono ──────────────────────────────────
+  //
+  // "Quanto gastei de Uber com o Igor esse mês?" no privado também. Só quem vê o
+  // financeiro (ADMIN) — e o pessoal que entra na conta é sempre o DELE, porque a
+  // consulta filtra por quem escreveu.
+  if (canAccessModule(pessoa.role, "financeiro", pessoa.email) && ehPerguntaDeGasto(m.texto) && perguntaDeGastoTemAssunto(m.texto, agora)) {
+    await anotar(m.messageId, `privado ${ponta}`, "privado-pergunta-de-gasto");
+    await responder(m.telefone, await responderPerguntaDeGasto(pessoa.id, m.texto, agora), m.messageId);
+    return { tipo: "respondeu-gasto", userId: pessoa.id };
   }
 
   // ── Da casa, mas sem acesso ao módulo ────────────────────────────────

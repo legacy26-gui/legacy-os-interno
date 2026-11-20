@@ -166,7 +166,9 @@ export async function desempenhoDasLojas(
   if (lojas.length === 0) {
     return {
       oQueFoi: "Desempenho das lojas",
-      dados: [],
+      // Mesmo formato do caso normal: duas formas diferentes pro mesmo tipo
+      // de resposta é convite pro modelo ler errado uma delas.
+      dados: { total: null, lojas: [] },
       aviso: "Não há loja nenhuma na sua carteira.",
     };
   }
@@ -216,13 +218,36 @@ export async function desempenhoDasLojas(
     return (b._cplOrdenar ?? 0) - (a._cplOrdenar ?? 0);
   });
 
+  // ── O total, somado aqui e não pelo modelo ────────────────────────────
+  //
+  // "Quanto foi investido no total?" é uma das perguntas mais comuns, e sem
+  // esta linha a resposta saía de o modelo somar a coluna de cabeça. Ele
+  // quase sempre acerta — e "quase sempre" é inaceitável em dinheiro que vai
+  // ser repetido pro cliente.
+  //
+  // A soma é das linhas CRUAS, não dos textos já formatados: somar
+  // "R$ 1.234,56" de volta pra número seria desfazer o que acabou de ser
+  // feito, e é onde entram os erros de centavo.
+  const totalCents = linhas.reduce((soma, l) => soma + l._gasto, 0);
+  const totalLeads = linhas.reduce((soma, l) => soma + l.resultados, 0);
+
   return {
-    oQueFoi: `Desempenho de cada loja da carteira em ${periodo.rotulo}, da mais cara por resultado para a mais barata`,
-    dados: ordenado.map(({ _cplOrdenar, _gasto, ...resto }) => {
-      void _cplOrdenar;
-      void _gasto;
-      return resto;
-    }),
+    oQueFoi: `Desempenho de cada loja da carteira em ${periodo.rotulo}, da mais cara por resultado para a mais barata, com o total somado pelo sistema`,
+    dados: {
+      total: {
+        lojas: linhas.length,
+        investido: reais(totalCents),
+        resultados: totalLeads,
+        custoPorResultado:
+          totalLeads > 0 ? reais(Math.round(totalCents / totalLeads)) : null,
+        periodo: periodo.rotulo,
+      },
+      lojas: ordenado.map(({ _cplOrdenar, _gasto, ...resto }) => {
+        void _cplOrdenar;
+        void _gasto;
+        return resto;
+      }),
+    },
   };
 }
 

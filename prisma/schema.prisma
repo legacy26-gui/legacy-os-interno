@@ -343,19 +343,19 @@ model RecadoDaZapi {
   fromMe  Boolean?
 
   /// De onde veio: o id do grupo, ou o telefone de quem mandou no privado.
-  de String?
+  de           String?
   /// Dentro de um grupo, quem escreveu.
   participante String?
   /// O número que a Z-API diz ser o do robô. Sem isto não dá pra saber se o
   /// @ da mensagem era pra ele — é o suspeito número um.
   numeroDoRobo String?
   /// Os marcados, quando a Z-API manda a lista.
-  mencionados String?
+  mencionados  String?
 
   /// O texto tinha "@" seguido de dígitos? É o que a detecção procura.
   temArrobaComNumero Boolean @default(false)
   /// Tamanho do texto, só pra saber que havia texto.
-  tamanhoDoTexto Int @default(0)
+  tamanhoDoTexto     Int     @default(0)
 
   @@index([recebidoEm])
   @@map("recados_da_zapi")
@@ -1944,4 +1944,45 @@ model MetaAdCreative {
 
   @@unique([adAccountId, adId])
   @@map("meta_ad_creatives")
+}
+
+/// Cada passo do robô de WhatsApp atendendo uma mensagem.
+///
+/// ── Por que isto precisou existir ─────────────────────────────────────────
+///
+/// Porque o robô ficou mudo no grupo da R2 e eu não tinha NADA pra olhar.
+/// A mensagem chegava, a rota respondia "recebido", e o atendimento — que
+/// roda depois da resposta HTTP — decidia em silêncio. Pior: três `catch`
+/// vazios no caminho (a rota, o `responder()` e o aviso à equipe) jogavam
+/// qualquer erro no lixo, e o `responder()` ainda ignorava o retorno do
+/// envio. A Z-API podia estar RECUSANDO falar no grupo e o sistema registrava
+/// sucesso.
+///
+/// Cada investigação virava uma ida e volta pedindo print pra quem estava do
+/// outro lado. Agora cada decisão deixa uma linha aqui, e a próxima mensagem
+/// que chegar explica sozinha o que aconteceu com ela.
+///
+/// ── O que NÃO entra aqui ──────────────────────────────────────────────────
+///
+/// Texto de mensagem de cliente. O `detalhe` guarda nome de anúncio, contagem
+/// e código de erro — nunca a conversa. E passa por uma máscara que apaga
+/// sequências que tenham cara de token, porque erro de serviço às vezes
+/// devolve a URL que chamou, e na Z-API a URL carrega a credencial.
+model PassoDoRobo {
+  id     String   @id @default(cuid())
+  quando DateTime @default(now())
+
+  /// A mensagem que estava sendo atendida, pra juntar os passos dela.
+  messageId String?
+  /// O grupo (ou telefone) de onde ela veio.
+  de        String?
+
+  /// O nome do passo: "chegou", "sem-mencao", "pausou", "envio-recusado"…
+  passo   String
+  /// O que mais ajuda a entender aquele passo. Nunca a mensagem do cliente.
+  detalhe String?
+
+  @@index([quando])
+  @@index([messageId])
+  @@map("passo_do_robo")
 }

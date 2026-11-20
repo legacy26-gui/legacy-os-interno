@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { atenderMensagemDoGrupo } from "@/lib/whatsapp/atender-grupo";
 import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
 import { primeiraVez } from "@/lib/whatsapp/so-uma-vez";
+import { anotar } from "@/lib/whatsapp/trilha";
 import { guardarRecado } from "@/lib/whatsapp/guardar-recado";
 
 // A porta por onde mensagem de grupo entra no sistema.
@@ -142,6 +143,9 @@ export async function POST(
   //
   // Vem depois das conferências baratas e ANTES de qualquer trabalho: é o
   // último ponto em que dá pra ir embora sem ter feito nada. Ver so-uma-vez.ts.
+  const idDaMensagem =
+    typeof corpo.messageId === "string" ? corpo.messageId : null;
+
   if (!(await primeiraVez(corpo.messageId))) {
     return NextResponse.json({ ok: true, ignorado: "repetida" });
   }
@@ -163,10 +167,20 @@ export async function POST(
     after(async () => {
       try {
         await atenderMensagemPrivada({ telefone: de, texto });
-      } catch {
+      } catch (e) {
         // Erro aqui não tem a quem ser devolvido: a resposta HTTP já saiu.
         // O sintoma pra quem escreveu é não receber nada, e o reenvio da
         // Z-API não vai trazer de volta — a posse já está tomada.
+        //
+        // Então ele vira linha na trilha. Era este `catch` vazio, e os dois
+        // irmãos dele no atendimento de grupo, que faziam o robô emudecer
+        // sem deixar nada pra investigar.
+        await anotar(
+          idDaMensagem,
+          de,
+          "privado-estourou",
+          e instanceof Error ? e.message : String(e),
+        );
       }
     });
     return NextResponse.json({ ok: true, privado: "recebido" });
@@ -194,10 +208,20 @@ export async function POST(
         numeroDoRobo:
           typeof corpo.connectedPhone === "string" ? corpo.connectedPhone : null,
         mencionados: marcados(corpo),
+        messageId: idDaMensagem,
       });
-    } catch {
+    } catch (e) {
       // A resposta HTTP já saiu; não há a quem devolver o erro. O robô avisa
       // no grupo quando falha ao mexer na Meta — ver atender-grupo.ts.
+      //
+      // E aqui fica a linha que faltava: um erro no meio do atendimento
+      // parecia, de fora, exatamente igual a "o robô decidiu não fazer nada".
+      await anotar(
+        idDaMensagem,
+        grupoId,
+        "atendimento-estourou",
+        e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e),
+      );
     }
   });
 

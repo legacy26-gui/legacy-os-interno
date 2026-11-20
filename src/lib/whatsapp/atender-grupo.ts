@@ -10,6 +10,7 @@ import { foiMencionado, semAMarcacao } from "./mencao";
 import { acharPessoaPeloNumero } from "./atender-privado";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
+import { anotar } from "./trilha";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
 
 // O que o robô faz quando alguém escreve no grupo de uma loja.
@@ -56,6 +57,13 @@ export interface MensagemDoGrupo {
   numeroDoRobo?: string | null;
   /** A lista de marcados, quando a Z-API manda uma. */
   mencionados?: string[];
+  /**
+   * O id da mensagem na Z-API, só pra juntar os passos da trilha.
+   *
+   * Não participa de decisão nenhuma: quem garante atendimento único é o
+   * `primeiraVez` na rota, antes daqui.
+   */
+  messageId?: string | null;
 }
 
 export type Desfecho =
@@ -95,6 +103,11 @@ const MAXIMO_NA_PERGUNTA = 5;
 export async function atenderMensagemDoGrupo(
   m: MensagemDoGrupo,
 ): Promise<Desfecho> {
+  // A primeira linha da trilha. Sem ela, não dá pra distinguir "o
+  // atendimento nem começou" de "começou e decidiu ficar quieto" — e essa
+  // distinção foi o que faltou pra achar o silêncio no grupo da R2.
+  await anotar(m.messageId, m.grupoId, "chegou", `${m.texto.length} caracteres`);
+
   // ── 0. É um grupo INTERNO da agência? ─────────────────────────────────
   //
   // Aqui a conversa é outra: ninguém pede pra desligar carro, a equipe
@@ -109,7 +122,10 @@ export async function atenderMensagemDoGrupo(
     where: { grupoId: m.grupoId },
     select: { grupoId: true },
   });
-  if (interno) return atenderNoGrupoInterno(m);
+  if (interno) {
+    await anotar(m.messageId, m.grupoId, "grupo-interno");
+    return atenderNoGrupoInterno(m);
+  }
 
   // ── 1. O grupo é de alguma loja? ──────────────────────────────────────
   const loja = await prisma.client.findFirst({
@@ -124,13 +140,22 @@ export async function atenderMensagemDoGrupo(
       },
     },
   });
-  if (!loja) return { tipo: "grupo-desconhecido" };
+  if (!loja) {
+    await anotar(m.messageId, m.grupoId, "grupo-desconhecido");
+    return { tipo: "grupo-desconhecido" };
+  }
 
   // ── 2. Falaram com ele? ───────────────────────────────────────────────
   //
   // Antes de tudo que custa: sem o @ a mensagem não é dele, e o grupo inteiro
   // de conversa normal morre aqui sem gastar consulta de criativo nenhuma.
   if (!foiMencionado(m.texto, m.numeroDoRobo, m.mencionados)) {
+    await anotar(
+      m.messageId,
+      m.grupoId,
+      "sem-mencao",
+      `${loja.companyName} · robô=${m.numeroDoRobo ?? "(não veio)"}`,
+    );
     return { tipo: "sem-mencao", clientId: loja.id };
   }
 
@@ -155,6 +180,7 @@ export async function atenderMensagemDoGrupo(
   // configuração nossa na conversa do cliente; "Anotado, avisei a equipe" diz
   // a verdade que importa pra quem escreveu: foi lido.
   if (!loja.whatsappDesligaAuto) {
+    await anotar(m.messageId, m.grupoId, "loja-nao-autoriza", loja.companyName);
     await avisarAEquipeDaLoja(
       loja.id,
       `*${loja.companyName}* — me marcaram no grupo e pediram alguma coisa, ` +
@@ -168,6 +194,7 @@ export async function atenderMensagemDoGrupo(
     await responder(
       m.grupoId,
       "Anotado! Já avisei a equipe pra cuidar disso.",
+      m.messageId,
     );
     return { tipo: "loja-nao-autoriza", clientId: loja.id };
   }
@@ -195,6 +222,12 @@ export async function atenderMensagemDoGrupo(
   // errado. Ver semAMarcacao.
   const pedido = entenderPedidoComVarios(semAMarcacao(m.texto), anuncios);
   if (pedido.intencao === "nenhuma") {
+    await anotar(
+      m.messageId,
+      m.grupoId,
+      "nao-e-pedido-vira-pergunta",
+      `${loja.companyName} · ${anuncios.length} anúncios no ar`,
+    );
     // Não é pedido pra tirar carro: então é pergunta sobre a loja, e a IA
     // responde ali mesmo — recortada NAQUELA loja.
     return responderSobreALoja(m, loja.id, loja.companyName);
@@ -212,6 +245,12 @@ export async function atenderMensagemDoGrupo(
   // uma linha curta — curta, mas não silêncio: quem escreveu pediu uma coisa
   // e precisa saber que foi lido.
   if (pedido.alvos.length === 0) {
+    await anotar(
+      m.messageId,
+      m.grupoId,
+      "carro-nao-anunciado",
+      `${loja.companyName} · ${anuncios.length} anúncios no ar`,
+    );
     const emCartaz = anuncios.slice(0, 12).map((a) => `• ${a.nome}`).join("\n");
     const aviso = await avisarAEquipeDaLoja(
       loja.id,
@@ -229,6 +268,7 @@ export async function atenderMensagemDoGrupo(
       m.grupoId,
       "Anotado! Esse carro não está entre os anúncios que estão no ar agora. " +
         "Já avisei a equipe pra conferir.",
+      m.messageId,
     );
 
     return {
@@ -256,35 +296,70 @@ export async function atenderMensagemDoGrupo(
   const falhas: string[] = [];
   const emDuvida: AnuncioConhecido[] = [];
 
+  await anotar(
+    m.messageId,
+    m.grupoId,
+    "entendi",
+    pedido.alvos
+      .map(
+        (a) =>
+          `${a.semDuvida ? "certo" : "dúvida"}:${a.semDuvida ? a.mesmoCarro.map((c) => c.nome).join(" + ") : `${a.candidatos.length} candidatos`}`,
+      )
+      .join(" | "),
+  );
+
   for (const alvo of pedido.alvos) {
     if (!alvo.semDuvida) {
       for (const c of alvo.candidatos) emDuvida.push(c);
       continue;
     }
 
-    // De novo pelo cadastro da loja, e não pelo id que veio da leitura: é a
-    // mesma trava que impede um id trocado no navegador de pausar a campanha
-    // de outra pessoa. Custa uma consulta e fecha a porta.
-    const objeto = await acharObjetoDaLoja(
-      loja.id,
-      "anuncio",
-      alvo.candidatos[0].adId,
-    );
-    if (!objeto) continue;
+    // ── Todos os anúncios do carro, não só o primeiro ───────────────────
+    //
+    // A loja anuncia o mesmo carro mais de uma vez: na R2 havia
+    // "FORD KA 1.0 – 2016 —" e "FORD KA 1.0 – 2016 — Cópia" no ar juntos.
+    // Desligar um e deixar o outro é o pior desfecho possível — o robô
+    // responde "pronto, tirei do ar", todo mundo acredita, e o carro vendido
+    // continua gastando verba pelo anúncio gêmeo. Ver nomeNormalizado.
+    for (const candidato of alvo.mesmoCarro) {
+      // De novo pelo cadastro da loja, e não pelo id que veio da leitura: é a
+      // mesma trava que impede um id trocado no navegador de pausar a campanha
+      // de outra pessoa. Custa uma consulta e fecha a porta.
+      const objeto = await acharObjetoDaLoja(loja.id, "anuncio", candidato.adId);
+      if (!objeto) {
+        await anotar(
+          m.messageId,
+          m.grupoId,
+          "anuncio-nao-e-da-loja",
+          candidato.nome,
+        );
+        continue;
+      }
 
-    const r = await mudarStatus({
-      clientId: loja.id,
-      quemId: null,
-      nivel: "anuncio",
-      objeto,
-      ligar: false,
-      origem: "whatsapp",
-      pedidoPor: quem,
-      pedidoTexto: m.texto,
-    });
+      const r = await mudarStatus({
+        clientId: loja.id,
+        quemId: null,
+        nivel: "anuncio",
+        objeto,
+        ligar: false,
+        origem: "whatsapp",
+        pedidoPor: quem,
+        pedidoTexto: m.texto,
+      });
 
-    if (r.ok) tirados.push(objeto.nome);
-    else falhas.push(`${objeto.nome} (${r.erro})`);
+      if (r.ok) {
+        tirados.push(objeto.nome);
+        await anotar(m.messageId, m.grupoId, "pausou", objeto.nome);
+      } else {
+        falhas.push(`${objeto.nome} (${r.erro})`);
+        await anotar(
+          m.messageId,
+          m.grupoId,
+          "a-meta-recusou",
+          `${objeto.nome}: ${r.erro}`,
+        );
+      }
+    }
   }
 
   // ── Uma resposta só, com tudo que aconteceu ───────────────────────────
@@ -309,7 +384,7 @@ export async function atenderMensagemDoGrupo(
     partes.push("Se não era esse, me avisa aqui que a gente liga de volta na hora.");
   }
 
-  if (partes.length > 0) await responder(m.grupoId, partes.join("\n\n"));
+  if (partes.length > 0) await responder(m.grupoId, partes.join("\n\n"), m.messageId);
 
   if (falhas.length > 0 && tirados.length === 0) {
     return { tipo: "falhou", clientId: loja.id, erro: falhas.join("; ") };
@@ -382,6 +457,7 @@ async function responderSobreALoja(
     await responder(
       m.grupoId,
       "Não consegui buscar isso agora. Já avisei a equipe.",
+      m.messageId,
     );
     await avisarAEquipeDaLoja(
       clientId,
@@ -394,7 +470,7 @@ async function responderSobreALoja(
   // Ação proposta NÃO vira texto aqui: "daria pra pausar o anúncio X" dito no
   // grupo do cliente é a agência sugerindo serviço na frente dele, sem
   // ninguém da casa ter olhado. Quem decide isso é a equipe, no sistema.
-  await responder(m.grupoId, r.resposta);
+  await responder(m.grupoId, r.resposta, m.messageId);
   return { tipo: "respondeu-da-loja", clientId };
 }
 
@@ -433,6 +509,7 @@ async function atenderNoGrupoInterno(m: MensagemDoGrupo): Promise<Desfecho> {
       m.grupoId,
       "Oi! Eu respondo sobre as lojas, mas só pra quem está cadastrado no " +
         "Legacy OS — e não reconheci este número. Fala com o Guilherme.",
+      m.messageId,
     );
     return { tipo: "interno-sem-dono" };
   }
@@ -499,11 +576,38 @@ function textoDaPergunta(candidatos: AnuncioConhecido[]): string {
  * Falha de resposta NUNCA derruba o atendimento: se o anúncio já foi
  * desligado e o aviso não saiu, o estrago de estourar aqui seria a Z-API
  * tentando de novo e o robô desligando duas vezes.
+ *
+ * ── Mas agora ela deixa rastro ──────────────────────────────────────────
+ *
+ * Esta função era o buraco mais fundo do arquivo. Ela fazia
+ * `try { await enviarTexto(...) } catch {}` — e `enviarTexto` NÃO estoura
+ * quando a Z-API recusa: ela DEVOLVE `{ ok: false, erro }`. O retorno era
+ * ignorado, então a recusa não virava nem exceção nem registro.
+ *
+ * Resultado: a Z-API podia estar proibindo o robô de falar no grupo (sem ser
+ * admin, grupo com id trocado, instância fora do ar) e o atendimento
+ * registrava sucesso. Do lado de fora era "o robô ficou mudo"; do lado de
+ * dentro era "tudo certo". Dois dias de investigação moraram neste `catch`.
  */
-async function responder(grupoId: string, texto: string): Promise<void> {
+async function responder(
+  grupoId: string,
+  texto: string,
+  messageId?: string | null,
+): Promise<void> {
   try {
-    await enviarTexto(grupoId, texto);
-  } catch {
-    // Silêncio de propósito — ver acima.
+    const r = await enviarTexto(grupoId, texto);
+    await anotar(
+      messageId,
+      grupoId,
+      r.ok ? "respondeu" : "envio-recusado",
+      r.ok ? `${texto.length} caracteres` : r.erro,
+    );
+  } catch (e) {
+    await anotar(
+      messageId,
+      grupoId,
+      "envio-estourou",
+      e instanceof Error ? e.message : String(e),
+    );
   }
 }

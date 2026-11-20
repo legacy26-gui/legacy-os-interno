@@ -99,15 +99,20 @@ export async function GET(
       alvos: pedido.alvos.map((a) => ({
         trecho: a.trecho,
         semDuvida: a.semDuvida,
+        // O que ele desligaria: mais de um quando a loja anunciou o mesmo
+        // carro duas vezes.
+        desligaria: a.mesmoCarro.map((c) => c.nome),
         candidatos: a.candidatos.map((c) => c.nome),
       })),
     });
   }
 
-  const recados = await prisma.recadoDaZapi.findMany({
-    orderBy: { recebidoEm: "desc" },
-    take: 12,
-  });
+  const [recados, trilha] = await Promise.all([
+    prisma.recadoDaZapi.findMany({ orderBy: { recebidoEm: "desc" }, take: 12 }),
+    // A trilha: o que o atendimento DECIDIU com cada mensagem. É a parte que
+    // não existia, e por isso o silêncio não tinha explicação possível.
+    prisma.passoDoRobo.findMany({ orderBy: { quando: "desc" }, take: 60 }),
+  ]);
 
   // Os grupos que apareceram nos recados, pra cruzar com o cadastro.
   const vistos = [
@@ -132,6 +137,15 @@ export async function GET(
 
   return NextResponse.json({
     agora: new Date().toISOString(),
+    // Do mais novo pro mais velho: "chegou" → "entendi" → "pausou" →
+    // "respondeu". Onde a sequência parar é onde o robô parou.
+    trilha: trilha.map((t) => ({
+      quando: t.quando,
+      messageId: t.messageId,
+      de: t.de,
+      passo: t.passo,
+      detalhe: t.detalhe,
+    })),
     // O que a Z-API mandou, do mais novo pro mais velho.
     recados: recados.map((r) => ({
       quando: r.recebidoEm,

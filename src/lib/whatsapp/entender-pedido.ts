@@ -39,15 +39,25 @@ export type Intencao =
   /** Qualquer outra coisa — e aí o robô não faz nada. */
   | "nenhuma";
 
-export interface Pedido {
-  intencao: Intencao;
+/** O que a leitura de um pedaço de frase devolve. */
+export interface Achado {
   /** Os anúncios que a frase pode estar citando, do mais provável ao menos. */
   candidatos: AnuncioConhecido[];
   /**
-   * `true` só quando há UM candidato e ele ganhou com folga. É esta bandeira,
-   * e nada mais, que autoriza desligar sem perguntar.
+   * `true` só quando UM carro ganhou com folga, por palavra que é dele e de
+   * mais ninguém, e essa palavra está no NOME do anúncio.
    */
   semDuvida: boolean;
+  /**
+   * Os anúncios do carro que ganhou — mais de um quando a loja anunciou o
+   * mesmo carro duas vezes. É esta lista que se desliga, não só o primeiro:
+   * tirar um e deixar o outro é deixar o carro vendido no ar.
+   */
+  mesmoCarro: AnuncioConhecido[];
+}
+
+export interface Pedido extends Achado {
+  intencao: Intencao;
 }
 
 // ── O vocabulário ────────────────────────────────────────────────────────
@@ -166,6 +176,9 @@ const PALAVRAS_SEM_FORCA = new Set([
   "carro", "veiculo", "anuncio", "anuncios", "campanha", "oferta", "promo",
   "promocao", "estoque", "loja", "venda", "vendas", "novo", "nova", "usado",
   "usada", "seminovo", "zero", "km", "ano", "modelo", "completo",
+  // marcas de versão do anúncio, não do carro: a loja duplica o anúncio e
+  // acrescenta isto ao nome
+  "copia", "video",
   // os próprios verbos do pedido
   ...PEDIDOS_DE_DESLIGAR.flatMap((p) => p.split(" ")),
 ]);
@@ -193,6 +206,49 @@ function palavras(texto: string): string[] {
 function palavrasDoAnuncio(a: AnuncioConhecido): Set<string> {
   const todas = [a.nome, ...a.textos].flatMap(palavras);
   return new Set(todas.filter((p) => !PALAVRAS_SEM_FORCA.has(p)));
+}
+
+/** Só as palavras do NOME — é o nome que identifica o carro. */
+function palavrasDoNome(a: AnuncioConhecido): Set<string> {
+  return new Set(palavras(a.nome).filter((p) => !PALAVRAS_SEM_FORCA.has(p)));
+}
+
+/** Ano, cilindrada, versão. Não identifica carro nenhum sozinho. */
+function soNumero(p: string): boolean {
+  return /^\d+$/.test(p);
+}
+
+/**
+ * O nome do anúncio sem o que a loja acrescenta ao duplicar.
+ *
+ * ── Por que isto existe ──────────────────────────────────────────────────
+ *
+ * Porque a loja anuncia o mesmo carro mais de uma vez. Na R2, no dia em que
+ * isto foi escrito, estavam no ar ao mesmo tempo:
+ *
+ *   FORD KA 1.0 – 2016 —
+ *   FORD KA 1.0 – 2016 — Cópia
+ *
+ * São dois anúncios do MESMO Ka. Isso estragava duas coisas de uma vez.
+ *
+ * A primeira: "ka" aparecia em dois anúncios, então não era palavra exclusiva
+ * de ninguém — e exclusividade é o que autoriza desligar sem perguntar. Numa
+ * loja cheia de duplicatas, NENHUMA palavra era exclusiva, e o robô não tinha
+ * certeza de nada nunca. Era isto, mais que qualquer outra coisa, que o
+ * deixava preso em "qual desses?".
+ *
+ * A segunda: mesmo acertando, desligar um só deixaria o carro vendido no ar
+ * pelo outro anúncio.
+ *
+ * Com o nome normalizado, os dois viram um carro: a palavra volta a ser
+ * exclusiva, e quando o robô age ele tira os dois do ar juntos.
+ */
+export function nomeNormalizado(nome: string): string {
+  return achatar(nome)
+    .split(" ")
+    .filter((p) => p !== "copia" && p !== "video")
+    .join(" ")
+    .trim();
 }
 
 // ── A leitura ────────────────────────────────────────────────────────────
@@ -239,7 +295,12 @@ export function entenderPedido(
   anuncios: AnuncioConhecido[],
 ): Pedido {
   if (!pedeParaDesligar(texto)) {
-    return { intencao: "nenhuma", candidatos: [], semDuvida: false };
+    return {
+      intencao: "nenhuma",
+      candidatos: [],
+      semDuvida: false,
+      mesmoCarro: [],
+    };
   }
   return { intencao: "desligar", ...acharAnuncios(texto, anuncios) };
 }
@@ -255,53 +316,122 @@ export function entenderPedido(
 function acharAnuncios(
   texto: string,
   anuncios: AnuncioConhecido[],
-): { candidatos: AnuncioConhecido[]; semDuvida: boolean } {
+): Achado {
   const daFrase = new Set(
     palavras(texto).filter((p) => !PALAVRAS_SEM_FORCA.has(p)),
   );
   if (daFrase.size === 0 || anuncios.length === 0) {
-    return { candidatos: [], semDuvida: false };
+    return { candidatos: [], semDuvida: false, mesmoCarro: [] };
   }
 
   const porAnuncio = anuncios.map((a) => ({
     anuncio: a,
-    palavras: palavrasDoAnuncio(a),
+    carro: nomeNormalizado(a.nome),
+    noNome: palavrasDoNome(a),
+    todas: palavrasDoAnuncio(a),
   }));
 
-  // Em quantos anúncios cada palavra aparece. É o que separa "onix" de
-  // "hyundai" numa loja só de Hyundai.
-  const emQuantos = new Map<string, number>();
-  for (const { palavras: ps } of porAnuncio) {
-    for (const p of ps) emQuantos.set(p, (emQuantos.get(p) ?? 0) + 1);
-  }
-
-  const notas = porAnuncio.map(({ anuncio, palavras: ps }) => {
-    let nota = 0;
-    let temExclusiva = false;
-    for (const p of daFrase) {
-      if (!ps.has(p)) continue;
-      const quantos = emQuantos.get(p) ?? 1;
-      nota += 1 / quantos;
-      if (quantos === 1) temExclusiva = true;
+  // ── Raridade contada por CARRO, não por anúncio ───────────────────────
+  //
+  // É o que separa "onix" de "hyundai" numa loja só de Hyundai. Mas contar
+  // por anúncio fazia a loja com duplicata nunca ter palavra exclusiva — ver
+  // nomeNormalizado. Agora os dois anúncios do mesmo Ka contam um Ka.
+  const carrosComAPalavra = new Map<string, Set<string>>();
+  for (const { carro, todas } of porAnuncio) {
+    for (const p of todas) {
+      let onde = carrosComAPalavra.get(p);
+      if (!onde) {
+        onde = new Set();
+        carrosComAPalavra.set(p, onde);
+      }
+      onde.add(carro);
     }
-    return { anuncio, nota, temExclusiva };
+  }
+  const emQuantosCarros = (p: string) => carrosComAPalavra.get(p)?.size ?? 1;
+
+  // ── O nome vale mais que a legenda ────────────────────────────────────
+  //
+  // Porque a legenda é texto de venda, e texto de venda fala de outros
+  // carros. Na R2, o anúncio chamado "cruze 2014" tem "Virtus" escrito na
+  // legenda — e com legenda valendo igual ao nome ele aparecia como primeiro
+  // candidato de "tira o virtus", na frente dos dois Virtus de verdade.
+  const PESO_DA_LEGENDA = 0.25;
+
+  const notas = porAnuncio.map(({ anuncio, carro, noNome, todas }) => {
+    let nota = 0;
+    let forteNoNome = false;
+    let forteNaLegenda = false;
+    let exclusiva = false;
+    for (const p of daFrase) {
+      const estaNoNome = noNome.has(p);
+      const estaNaLegenda = !estaNoNome && todas.has(p);
+      if (!estaNoNome && !estaNaLegenda) continue;
+
+      const carros = emQuantosCarros(p);
+      nota += (estaNoNome ? 1 : PESO_DA_LEGENDA) / carros;
+
+      // ── Número não identifica carro ─────────────────────────────────────
+      //
+      // "pausar os anúncios do mobi 2018": a R2 não tem Mobi nenhum no ar, e
+      // "2018" casou com o Argo 2018, o Renegade 2018 e o Civic 2018. O robô
+      // devolveu três carros que ninguém pediu, não teve certeza de nenhum, e
+      // o Mobi — que era o assunto — não existia pra ele.
+      //
+      // Agora o número continua pontuando (é ele que separa o Virtus 2021 do
+      // Virtus 2020), mas não qualifica ninguém sozinho: sem uma palavra de
+      // verdade em comum, o anúncio não é candidato. "mobi 2018" volta a ser
+      // "esse carro não está no ar" — que é a verdade e é o que interessa.
+      if (soNumero(p)) continue;
+      if (estaNoNome) forteNoNome = true;
+      else forteNaLegenda = true;
+    }
+    return { anuncio, carro, nota, forteNoNome, forteNaLegenda };
   });
 
-  const comNota = notas
-    .filter((n) => n.nota > 0)
-    .sort((a, b) => b.nota - a.nota);
+  let comNota = notas.filter(
+    (n) => n.nota > 0 && (n.forteNoNome || n.forteNaLegenda),
+  );
+  // Se alguém casou pelo nome, quem casou só pela legenda sai da frente: ele
+  // sobraria pra engordar a pergunta "qual desses?" com o carro errado.
+  if (comNota.some((n) => n.forteNoNome)) {
+    comNota = comNota.filter((n) => n.forteNoNome);
+  }
+  comNota.sort((a, b) => b.nota - a.nota);
 
   if (comNota.length === 0) {
-    return { candidatos: [], semDuvida: false };
+    return { candidatos: [], semDuvida: false, mesmoCarro: [] };
   }
 
   const primeiro = comNota[0];
-  const segundo = comNota[1];
-  const folga = !segundo || primeiro.nota >= segundo.nota * 2;
+  // Os anúncios do MESMO carro que o primeiro — eles não competem com ele,
+  // eles vão junto com ele.
+  const mesmoCarro = comNota.filter((n) => n.carro === primeiro.carro);
+  const concorrentes = comNota.filter((n) => n.carro !== primeiro.carro);
+  const folga = concorrentes.length === 0 || primeiro.nota >= concorrentes[0].nota * 2;
 
+  // ── O que autoriza desligar sem perguntar ─────────────────────────────
+  //
+  // Duas coisas, e as duas precisam ser verdade:
+  //
+  //   1. FOLGA: o carro que ganhou valeu pelo menos o dobro do segundo carro
+  //      diferente. Dois Duster empatados não têm folga, e aí o robô pergunta.
+  //   2. A palavra que o escolheu não é número, e está no NOME do anúncio.
+  //
+  // Antes havia uma terceira: a palavra tinha que ser exclusiva daquele carro
+  // na loja. Ela saiu porque reprovava o caso mais claro que existe — "vendeu
+  // o Virtus 2021" numa loja com dois Virtus. "virtus" não é exclusiva de
+  // nenhum dos dois, e era o ANO que resolvia a frase; mas ano não contava
+  // como palavra, então o robô perguntava "Virtus 2021 ou Virtus 2020?" pra
+  // quem acabou de escrever 2021.
+  //
+  // A folga já é a medida de dúvida, e é melhor medida: ela olha o resultado
+  // da frase inteira em vez de uma palavra só. Com os dois Virtus empatados
+  // em "do virtus" não há folga e ele pergunta; com "virtus 2021" o ano
+  // desempata em três por um e ele age.
   return {
-    candidatos: comNota.map((n) => n.anuncio),
-    semDuvida: folga && primeiro.temExclusiva,
+    candidatos: [...mesmoCarro, ...concorrentes].map((n) => n.anuncio),
+    semDuvida: folga && primeiro.forteNoNome,
+    mesmoCarro: mesmoCarro.map((n) => n.anuncio),
   };
 }
 
@@ -333,11 +463,9 @@ function acharAnuncios(
 // que o pedido de fato não casou com anúncio nenhum.
 
 /** O que fazer com um carro citado na mensagem. */
-export interface AlvoDoPedido {
+export interface AlvoDoPedido extends Achado {
   /** O pedaço da frase que gerou isto, pra poder mostrar a quem perguntou. */
   trecho: string;
-  candidatos: AnuncioConhecido[];
-  semDuvida: boolean;
 }
 
 export interface PedidoComVarios {
@@ -366,9 +494,10 @@ export function entenderPedidoComVarios(
     const r = acharAnuncios(pedaco, anuncios);
     if (r.candidatos.length === 0) continue;
 
-    // O mesmo anúncio citado em dois pedaços é um anúncio só. Sem isto,
-    // "tira o Onix, o Onix branco" tentaria desligar duas vezes.
-    const chave = r.candidatos[0].adId;
+    // O mesmo CARRO citado em dois pedaços é um carro só. Sem isto, "tira o
+    // Onix, o Onix branco" tentaria desligar duas vezes — e por carro, não
+    // por anúncio, porque o Ka duplicado tem dois adId e é um Ka.
+    const chave = nomeNormalizado(r.candidatos[0].nome);
     if (r.semDuvida && jaVistos.has(chave)) continue;
     if (r.semDuvida) jaVistos.add(chave);
 

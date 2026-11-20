@@ -307,10 +307,13 @@ export async function enviarTexto(
 ): Promise<ResultadoDoEnvio> {
   const alvo = destino.trim();
   if (!alvo) return { ok: false, erro: "Diga pra onde mandar." };
-  if (!FORMATO_DO_GRUPO.test(alvo) && !/^\d{10,15}$/.test(alvo)) {
+  // Telefone, grupo, ou o "@lid": o identificador privado que o WhatsApp usa no
+  // lugar do telefone em parte das conversas. A Z-API aceita enviar pra ele
+  // direto, e é a única forma de responder a quem escreve com o número oculto.
+  if (!FORMATO_DO_GRUPO.test(alvo) && !/^\d{10,15}$/.test(alvo) && !/^\d{8,25}@lid$/.test(alvo)) {
     return {
       ok: false,
-      erro: "Destino inválido: ou um grupo (“…-group”) ou um telefone com DDI e DDD, só números.",
+      erro: "Destino inválido: um grupo (“…-group”), um telefone com DDI e DDD (só números) ou um “…@lid”.",
     };
   }
   if (!mensagem.trim()) return { ok: false, erro: "A mensagem está vazia." };

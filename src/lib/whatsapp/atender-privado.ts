@@ -3,9 +3,20 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { enviarTexto } from "./zapi";
+import { lidDoRobo } from "./identidade-do-robo";
+import { anotar } from "./trilha";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { canAccessModule } from "@/lib/permissions";
 import type { Turno } from "@/lib/copiloto/cerebro";
+import {
+  descartarPendente,
+  executarPausa,
+  guardarPendente,
+  lerPendente,
+  montarPedidoDePausa,
+  respostaDeConfirmacao,
+  tomarPendente,
+} from "./pausar-no-privado";
 
 // A IA atendendo no privado do WhatsApp.
 //
@@ -59,13 +70,28 @@ export type DesfechoPrivado =
   | { tipo: "teto"; userId: string }
   /** Respondeu. */
   | { tipo: "respondeu"; userId: string; temAcoes: boolean }
+  /** Mandou pausar algo: o robô disse o que ia pausar e espera o "sim". */
+  | { tipo: "pediu-confirmacao"; userId: string; quantos: number }
+  /** Mandou pausar, mas não deu pra saber o quê (ou onde). Perguntou. */
+  | { tipo: "pedido-sem-alvo"; userId: string }
+  /** Disse "sim" e o robô pausou — pelo menos tentou. */
+  | { tipo: "pausou"; userId: string; pausados: number; falhas: number }
+  /** Disse "não", ou mandou outra coisa: a confirmação foi descartada. */
+  | { tipo: "cancelou"; userId: string }
+  /** Disse "sim" tarde demais. Nada foi pausado. */
+  | { tipo: "confirmacao-vencida"; userId: string }
   /** A IA não está configurada, ou falhou. */
   | { tipo: "falhou"; userId: string; erro: string };
 
 export interface MensagemPrivada {
-  /** O telefone de quem escreveu, como a Z-API manda. */
+  /**
+   * De quem escreveu, como a Z-API manda: o telefone, ou "…@lid" quando o
+   * WhatsApp esconde o número. Ver acharPessoaPeloNumero.
+   */
   telefone: string;
   texto: string;
+  /** O id da mensagem na Z-API, só pra juntar os passos da trilha. */
+  messageId?: string | null;
 }
 
 /** Só os dígitos, pra comparar telefone escrito de jeitos diferentes. */
@@ -84,6 +110,13 @@ function soDigitos(s: string): string {
  * carteira de outra. Nesse caso ninguém é dono.
  */
 export async function acharPessoaPeloNumero(telefone: string) {
+  // O WhatsApp está trocando o telefone por um identificador privado ("@lid")
+  // em parte das conversas, e a Z-API só repassa — ver mencao.ts. Quem escreve
+  // assim chega com 14 dígitos que não batem com NENHUM telefone cadastrado, e
+  // sem este caminho seria tratado como desconhecido: uma gestora da casa
+  // recebendo "este número é um atendimento interno".
+  if (/@lid$/i.test(telefone.trim())) return acharPessoaPeloLid(telefone);
+
   const digitos = soDigitos(telefone);
   if (digitos.length < 10) return null;
 
@@ -99,6 +132,40 @@ export async function acharPessoaPeloNumero(telefone: string) {
   });
 
   return donos.length === 1 ? donos[0] : null;
+}
+
+/**
+ * Acha a pessoa da casa dona deste "@lid".
+ *
+ * A Z-API não converte lid em telefone, mas converte telefone em lid. Então o
+ * caminho é o inverso: pergunta o lid de cada número cadastrado (com cache, ver
+ * identidade-do-robo.ts) e compara. A comparação é por IGUALDADE exata: lid não
+ * tem DDI nem nono dígito pra variar, e sufixo só abriria margem pra responder
+ * com a carteira de outra pessoa.
+ */
+async function acharPessoaPeloLid(lid: string) {
+  const alvo = soDigitos(lid);
+  if (alvo.length < 8) return null;
+
+  const gente = await prisma.user.findMany({
+    where: { whatsapp: { not: null }, active: true },
+    select: { id: true, name: true, role: true, email: true, whatsapp: true },
+  });
+
+  const donos = [];
+  for (const p of gente) {
+    const dele = soDigitos(p.whatsapp!);
+    if (dele.length < 10) continue;
+    if ((await lidDoRobo(dele)) === alvo) donos.push(p);
+  }
+  // Ambiguidade, de novo, é ninguém: o erro que acerta quase sempre é o pior.
+  return donos.length === 1 ? donos[0] : null;
+}
+
+/** Só pra o rastro: o fim do número, nunca ele inteiro. */
+function pontaDoNumero(telefone: string): string {
+  const d = soDigitos(telefone);
+  return `${/@lid$/i.test(telefone.trim()) ? "lid" : "tel"}…${d.slice(-4)}`;
 }
 
 /** A memória da conversa, já descartada quando velha demais. */
@@ -160,11 +227,16 @@ export async function atenderMensagemPrivada(
   m: MensagemPrivada,
   agora = new Date(),
 ): Promise<DesfechoPrivado> {
+  const ponta = pontaDoNumero(m.telefone);
+  await anotar(m.messageId, `privado ${ponta}`, "privado-chegou", `${m.texto.length} caracteres`);
   const pessoa = await acharPessoaPeloNumero(m.telefone);
 
   // ── Número de fora ───────────────────────────────────────────────────
   if (!pessoa) {
-    await responder(m.telefone, RECADO_PARA_DESCONHECIDO);
+    // Sem isto, "a gestora não recebeu resposta" e "o número dela não é
+    // reconhecido" eram a mesma coisa de fora, e impossíveis de separar.
+    await anotar(m.messageId, `privado ${ponta}`, "privado-desconhecido");
+    await responder(m.telefone, RECADO_PARA_DESCONHECIDO, m.messageId);
     return { tipo: "desconhecido" };
   }
 
@@ -178,6 +250,7 @@ export async function atenderMensagemPrivada(
       `Oi, ${primeiroNome(pessoa.name)}! Eu respondo sobre as lojas e os ` +
         `anúncios, e o seu acesso não cobre essa parte. Fala com o Guilherme ` +
         `se precisar.`,
+      m.messageId,
     );
     return { tipo: "sem-acesso", userId: pessoa.id };
   }
@@ -188,23 +261,99 @@ export async function atenderMensagemPrivada(
     await responder(
       m.telefone,
       "Você fez muitas perguntas seguidas. Me dá um tempo e volta daqui a pouco.",
+      m.messageId,
     );
     return { tipo: "teto", userId: pessoa.id };
+  }
+
+  // ── A confirmação que estava esperando ───────────────────────────────
+  //
+  // Vem ANTES de tudo: um "sim" não é pergunta pra IA, é resposta a uma coisa
+  // que o robô perguntou. Mandar pro Copiloto faria ele responder "sim o quê?".
+  //
+  // E a confirmação vale só pra PRÓXIMA mensagem. Qualquer outra coisa que a
+  // pessoa escrever cancela a pendência: um "sim" dito meia hora depois, sobre
+  // outro assunto, não pode pausar um anúncio que ela já esqueceu ter pedido.
+  const pendente = await lerPendente(pessoa.id, agora);
+  if (pendente.acao) {
+    const resposta = respostaDeConfirmacao(m.texto);
+
+    if (resposta === "sim" && !pendente.venceu) {
+      // Só um "sim" executa: o dedo duplo e o reenvio da Z-API leem a mesma
+      // pendência, e quem não conseguir tomá-la descobre que já foi tratada.
+      if (!(await tomarPendente(pessoa.id))) {
+        await responder(m.telefone, "Esse pedido já foi tratado.", m.messageId);
+        return { tipo: "cancelou", userId: pessoa.id };
+      }
+      const feito = await executarPausa(pessoa, pendente.acao);
+      await responder(m.telefone, feito.resposta, m.messageId);
+      await guardarMemoria(pessoa.id, [
+        ...historico,
+        { de: "gestor", texto: m.texto.slice(0, 4000) },
+        { de: "copiloto", texto: feito.resposta.slice(0, 4000) },
+      ]);
+      return {
+        tipo: "pausou",
+        userId: pessoa.id,
+        pausados: feito.pausados,
+        falhas: feito.falhas,
+      };
+    }
+
+    if (resposta === "sim") {
+      await descartarPendente(pessoa.id);
+      await responder(
+        m.telefone,
+        "Esse pedido venceu (passou de 10 minutos) e eu não pausei nada. " +
+          "Me pede de novo se ainda quiser.",
+        m.messageId,
+      );
+      return { tipo: "confirmacao-vencida", userId: pessoa.id };
+    }
+
+    // "não", ou qualquer outra coisa: a pendência acaba aqui.
+    await descartarPendente(pessoa.id);
+    if (resposta === "nao") {
+      await responder(m.telefone, "Tudo bem, não pausei nada.", m.messageId);
+      return { tipo: "cancelou", userId: pessoa.id };
+    }
+    // Outra mensagem: segue como conversa nova, já sem a pendência.
+  }
+
+  // ── Uma ordem de pausar ──────────────────────────────────────────────
+  //
+  // Só ORDEM ativa isto ("pausa o Virtus da R2"). A IA recomendando pausar não é
+  // ordem, e "vendeu o Virtus" no privado é uma frase que a pessoa pode estar só
+  // contando: essas vão pra conversa abaixo.
+  const ordem = await montarPedidoDePausa(pessoa, m.texto, agora);
+  if (ordem) {
+    if (ordem.pendente) await guardarPendente(pessoa.id, ordem.pendente, agora);
+    await responder(m.telefone, ordem.resposta, m.messageId);
+    await guardarMemoria(pessoa.id, [
+      ...historico,
+      { de: "gestor", texto: m.texto.slice(0, 4000) },
+      { de: "copiloto", texto: ordem.resposta.slice(0, 4000) },
+    ]);
+    return ordem.pendente
+      ? { tipo: "pediu-confirmacao", userId: pessoa.id, quantos: ordem.pendente.alvos.length }
+      : { tipo: "pedido-sem-alvo", userId: pessoa.id };
   }
 
   const r = await responderComoPessoa(pessoa, m.texto, historico, "whatsapp");
 
   if (r.erro !== undefined || r.resposta === undefined) {
     const erro = r.erro ?? "não veio resposta.";
-    await responder(m.telefone, `Não consegui responder agora: ${erro}`);
+    await responder(m.telefone, `Não consegui responder agora: ${erro}`, m.messageId);
     return { tipo: "falhou", userId: pessoa.id, erro };
   }
   const resposta = r.resposta;
 
   // ── A resposta ───────────────────────────────────────────────────────
   //
-  // Quando a IA propõe mexer em alguma coisa, ela DIZ o que faria e manda
-  // abrir o sistema. Executar daqui ainda não existe — ver a parte 2.
+  // Quando a IA RECOMENDA mexer em alguma coisa, ela diz o que faria — e não faz.
+  // Recomendação não é ordem: o que a pessoa pede de forma direta ("pausa o X
+  // da loja Y") é tratado acima, com confirmação. Pausa de anúncio se pede por
+  // aqui; verba continua só pela tela, onde o valor se confere antes.
   const acoes = r.acoes ?? [];
   const texto =
     resposta +
@@ -217,10 +366,16 @@ export async function atenderMensagemPrivada(
               : `• Daria pra mudar a verba de *${a.nome}* (${a.loja}) para R$ ${a.valorReais} — ${a.porQue}`,
           )
           .join("\n") +
-        "\n\nIsso eu ainda não faço por aqui. Abre o Legacy OS pra executar."
+        "\n\n" +
+        (acoes.some((a) => a.tipo === "mudar_verba")
+          ? "Verba eu só mudo pelo Legacy OS, onde dá pra conferir o valor. "
+          : "") +
+        (acoes.some((a) => a.tipo === "pausar_anuncio")
+          ? "Pra eu pausar, me peça direto: *pausa o NOME DO CARRO da LOJA*."
+          : "")
       : "");
 
-  await responder(m.telefone, texto);
+  await responder(m.telefone, texto, m.messageId);
 
   await guardarMemoria(pessoa.id, [
     ...historico,
@@ -242,10 +397,28 @@ function primeiroNome(nome: string): string {
  * que acontece é a pessoa repetir a pergunta — estourar aqui faria a Z-API
  * reenviar a mensagem e a IA responder duas vezes, cobrando duas vezes.
  */
-async function responder(telefone: string, texto: string): Promise<void> {
+async function responder(
+  telefone: string,
+  texto: string,
+  messageId?: string | null,
+): Promise<void> {
   try {
-    await enviarTexto(telefone, texto);
-  } catch {
-    // Silêncio de propósito — ver acima.
+    const r = await enviarTexto(telefone, texto);
+    // `enviarTexto` NÃO estoura quando a Z-API recusa: devolve { ok: false }.
+    // Ignorar o retorno foi o buraco que deixou o robô do grupo mudo por dois
+    // dias sem ninguém saber — e o privado tinha exatamente o mesmo.
+    await anotar(
+      messageId,
+      `privado ${pontaDoNumero(telefone)}`,
+      r.ok ? "privado-respondeu" : "privado-envio-recusado",
+      r.ok ? `${texto.length} caracteres` : r.erro,
+    );
+  } catch (e) {
+    await anotar(
+      messageId,
+      `privado ${pontaDoNumero(telefone)}`,
+      "privado-envio-estourou",
+      e instanceof Error ? e.message : String(e),
+    );
   }
 }

@@ -142,3 +142,121 @@ conversa aberta — aí ele está ocupado, e piscadinha vira distração.
 **Conferido no navegador:** existe no Meta Ads, arrastou de (1320, 820) para
 (271, 371), arrastar não abriu a conversa, lembrou a posição depois de
 recarregar, o clique abriu, e na página do Copiloto ela não aparece.
+
+
+## No privado do WhatsApp
+
+O mesmo Copiloto da tela, pelo WhatsApp. A pessoa é achada pelo número, e o
+número diz quais lojas ela pode ver — pela mesma função da tela, então ninguém
+descobre por aqui a loja de outro gestor, nem perguntando de propósito.
+
+Número que não é de ninguém da casa recebe um recado curto e **não** aciona a
+IA: é o que impede qualquer pessoa com o número do robô de gastar a nossa chave.
+
+### Pausar anúncio, com confirmação
+
+Pedido do Guilherme: *"só deve executar se for pedido a execução, e com
+confirmação."* Duas coisas, e as duas valem.
+
+**1. Só ORDEM executa.** A IA recomendando ("esse anúncio gasta sem resultado")
+não é ordem. Só vira ação quando a pessoa manda: *"pausa o Virtus da R2"*. E
+quem decide isso é uma regra escrita (`pedidoDeExecucao`), não o modelo: um
+modelo que decide se a frase foi uma ordem erra de um jeito diferente a cada
+vez, e aqui o erro custa um anúncio fora do ar.
+
+Os verbos são mais estreitos que os do grupo, de propósito. No grupo, "vendeu o
+Virtus" vale como pedido, porque a pessoa já marcou o robô com @ e a loja inteira
+lê. No privado o robô conversa, e "o Virtus da R2 vendeu" pode ser só uma
+informação. Ali o robô diz que dá pra pausar e ensina a pedir.
+
+**2. Confirmação.** O robô diz exatamente o que vai pausar:
+
+```
+Vou pausar na *R2*:
+• VOLKSWAGEN VIRTUS 1.6 MSI AUTOMÁTICO 2021
+
+Responde *sim* pra eu pausar (vale 10 minutos) ou *não* pra cancelar.
+```
+
+e só pausa com um "sim" **da mesma pessoa, na mensagem seguinte**, em até 10
+minutos. Guardado em `conversas_do_copiloto.acaoPendente`.
+
+### Por que a confirmação é tão estreita
+
+Valer só pra PRÓXIMA mensagem é de propósito. Uma confirmação que sobrevive a
+outras conversas é uma bomba-relógio: um "sim" dito meia hora depois, sobre outra
+coisa ("sim, a Mega também está sem verba"), pausaria um anúncio que a pessoa já
+tinha esquecido de ter pedido. **Qualquer outra mensagem cancela.**
+
+Por isso também só vale mensagem curta e inteira: "sim mas tira só o 2020" não é
+um "sim", é um pedido novo.
+
+### O que protege de errar de loja
+
+O pior erro possível aqui é pausar o anúncio de OUTRO cliente. Cada trava abaixo
+existe por um caso concreto, e todas estão testadas:
+
+| Situação | O que o robô faz |
+| --- | --- |
+| Carro existe em duas lojas dela e ela não disse qual | Pergunta qual loja |
+| Cita duas lojas na mesma frase | Recusa e pede **um pedido por loja** — fazer metade em silêncio é pior que recusar |
+| Escreve "da Point" e a Point é de outra gestora | Diz que não achou "point" entre as lojas dela. **Não** procura o carro nas outras lojas dela |
+| Loja mudou de gestor entre o pedido e o "sim" | Reconfere a carteira na hora do "sim" e não pausa |
+| Dois "sim" ao mesmo tempo (dedo duplo, reenvio da Z-API) | Só um executa; o outro descobre que já foi tratado |
+| O mesmo carro anunciado duas vezes (o Ka e o Ka "Cópia") | Lista e pausa os DOIS |
+| Uma palavra certa e outra torta ("compass e virtual") | Confirma só o que é certo, diz o que ficou de fora, e avisa que o "sim" cobre só a lista |
+
+A linha do meio foi achada pelo teste, não por revisão: o robô ignorava a palavra
+"point", achava um Onix na loja dela e propunha pausar **esse**. Ela diria "sim"
+achando que era o da Point.
+
+### O que não mudou de mão
+
+Quem executa é `mudarStatus`, a MESMA função da tela e do grupo, com o mesmo
+registro em `meta_acoes` — agora com o nome de quem pediu ("Giovana (privado)") e
+a frase que escreveu. O Copiloto não ganhou caminho próprio pra Meta.
+
+**Verba não muda por aqui.** Só pausar anúncio. Mudar orçamento pelo WhatsApp é
+digitar um valor num celular, e valor errado gasta dinheiro de verdade; na tela
+dá pra conferir antes.
+
+### Número oculto (`@lid`)
+
+O WhatsApp está trocando o telefone por um identificador privado (`@lid`, 14
+dígitos) em parte das conversas, e a Z-API só repassa. Quem escreve assim chega
+com um número que não bate com nenhum telefone cadastrado — e sem tratamento
+seria "desconhecido": uma gestora da casa recebendo "este número é um
+atendimento interno", ou nada.
+
+A Z-API não converte lid em telefone, mas converte telefone em lid. Então o robô
+pergunta o lid de cada número cadastrado (com cache) e compara por **igualdade
+exata**, não por sufixo. A resposta volta pro próprio `@lid`, que a Z-API aceita
+como destino. Testado: a gestora é reconhecida, o lid de outra pessoa não herda a
+carteira dela, e lid que só termina igual não casa.
+
+### A trilha também vale pro privado
+
+Toda mensagem privada deixa uma linha em `passo_do_robo` (`privado-chegou` →
+`privado-respondeu`, ou `privado-desconhecido`, `privado-envio-recusado`…). O
+`responder` do privado tinha o mesmo defeito que deixou o robô do grupo mudo por
+dois dias: ignorava o retorno do envio, e a Z-API recusando virava silêncio sem
+rastro. Só o fim do número é guardado (`lid…2873`), nunca ele inteiro.
+
+### Os avisos
+
+O robô dos alertas manda cliente sem verba e relatório não enviado no WhatsApp do
+gestor — ver `docs/alertas.md`.
+
+### O que foi conferido, e o que não foi
+
+Contra Z-API e Meta falsas, banco de teste, duas gestoras com carteiras
+diferentes: o pedido espera o "sim"; o "sim" pausa uma vez só; "não" cancela;
+outra conversa no meio cancela; "sim" depois de 10 minutos não pausa; o carro com
+dois anúncios cai junto; só a carteira dela; duas lojas na frase recusa; carro em
+duas lojas pergunta qual; loja que mudou de gestor não pausa; dois "sim"
+simultâneos geram uma chamada na Meta; e recomendação da IA ou "vendeu o X" não
+viram execução.
+
+**Não foi conferido:** uma pausa real na Meta a partir do privado, e a entrega num
+WhatsApp de verdade. Isso só a produção responde, depois de os números dos
+gestores estarem cadastrados em Configurações.

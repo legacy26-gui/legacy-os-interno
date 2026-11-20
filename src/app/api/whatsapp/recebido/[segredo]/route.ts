@@ -166,7 +166,7 @@ export async function POST(
     // linha já criada e vai embora.
     after(async () => {
       try {
-        await atenderMensagemPrivada({ telefone: de, texto });
+        await atenderMensagemPrivada({ telefone: de, texto, messageId: idDaMensagem });
       } catch (e) {
         // Erro aqui não tem a quem ser devolvido: a resposta HTTP já saiu.
         // O sintoma pra quem escreveu é não receber nada, e o reenvio da

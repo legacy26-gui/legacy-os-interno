@@ -183,6 +183,11 @@ const PALAVRAS_SEM_FORCA = new Set([
   ...PEDIDOS_DE_DESLIGAR.flatMap((p) => p.split(" ")),
 ]);
 
+/** A palavra não distingue carro nenhum (ligação, cor, verbo do pedido…). */
+export function palavraSemForca(p: string): boolean {
+  return PALAVRAS_SEM_FORCA.has(p);
+}
+
 // ── As ferramentas de texto ──────────────────────────────────────────────
 
 /** Minúsculas, sem acento, sem pontuação — pra "Ônix" casar com "onix". */

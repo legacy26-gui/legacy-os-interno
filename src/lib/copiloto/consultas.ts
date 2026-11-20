@@ -18,6 +18,12 @@ import { linhasDaLoja, ritmoDaLoja } from "@/app/(app)/meta-ads/[clientId]/dados
 import { avaliarLoja, comoDias } from "@/lib/meta/estado-da-loja";
 import { saldoEmReais } from "@/lib/meta/saldo";
 import { veiculacaoDe } from "@/lib/meta/veiculacao";
+import {
+  acharCarro,
+  nomeNormalizado,
+  sugerirNomes,
+  type AnuncioConhecido,
+} from "@/lib/whatsapp/entender-pedido";
 
 // As consultas que o Copiloto pode fazer.
 //
@@ -666,7 +672,212 @@ export async function saldoDasLojas(
   };
 }
 
-// ── 7. O que já foi mexido ───────────────────────────────────────────────
+// ── 7. Quanto UM carro gastou, desde o começo ───────────────────────────
+
+/** "03/11/2025" — a data que a Meta contou, sem fuso mexendo no dia. */
+function diaCompleto(d: Date | null): string | null {
+  return d
+    ? d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" })
+    : null;
+}
+
+/**
+ * O gasto TOTAL de um carro, do primeiro dia até hoje.
+ *
+ * ── Por que é uma consulta própria, e não "itens da loja com período tudo" ──
+ *
+ * Pedido do Guilherme: quando o gestor perguntar o gasto de um carro, no grupo
+ * ou no privado, a resposta é o gasto total do tempo máximo. Não "dos últimos 7
+ * dias", que era o padrão quando o modelo não escolhia nada, e não "do mês".
+ *
+ * Deixar isso na mão do modelo seria apostar numa escolha de período que ele
+ * faz diferente a cada vez. Aqui o período não é parâmetro: é sempre a vida
+ * inteira.
+ *
+ * ── Por que soma os anúncios do mesmo carro ──────────────────────────────
+ *
+ * Porque a loja anuncia o mesmo carro mais de uma vez — o "Ka" e o "Ka — Cópia"
+ * da R2 — e o gasto do carro é a soma deles. Mostrar só o primeiro daria um
+ * número menor que o verdadeiro, com cara de resposta completa. É a mesma regra
+ * que faz o robô pausar os dois juntos.
+ *
+ * ── O que entra e o que não entra ────────────────────────────────────────
+ *
+ * Entra o que a Meta ainda guarda: anúncio pausado, anúncio de carro já vendido.
+ * NÃO entra anúncio APAGADO na Meta — ela devolve "o máximo do que ainda existe
+ * na conta". O número sai com essa ressalva dentro dos dados.
+ *
+ * Quando a frase casa com mais de um carro ("virtus" numa loja com o 2021 e o
+ * Highline 2020), devolve os dois, cada um com o seu total, em vez de escolher
+ * um. Numa pergunta de gasto, escolher errado é dar o número de outro carro.
+ */
+export async function gastoDoCarro(
+  user: QuemPergunta,
+  args: { carro?: string; loja?: string },
+): Promise<ResultadoDaConsulta> {
+  const carro = (args.carro ?? "").trim();
+  if (!carro) {
+    return {
+      oQueFoi: "Gasto de um carro",
+      dados: null,
+      aviso: "Não ficou claro de qual carro. Peça pra dizer o modelo e o ano, por exemplo \"mobi 2018\".",
+    };
+  }
+
+  const todas = await lojasDoUsuario(user);
+
+  // No grupo de um cliente a loja é decidida por QUEM chamou (soALoja), nunca
+  // pelo que o modelo escreveu: ele pode pôr aqui o nome de outra loja, e a
+  // trava não pode depender do bom humor dele. Já na carteira inteira, a loja
+  // pedida precisa existir nela.
+  let lojas = todas;
+  if (!user.soALoja && args.loja) {
+    const achada = acharPorNome(todas, args.loja);
+    if (!achada) {
+      return {
+        oQueFoi: `Gasto de "${carro}"`,
+        dados: null,
+        aviso: `Não achei "${args.loja}" na sua carteira. As lojas que você acompanha são: ${todas.map((l) => l.companyName).join(", ")}.`,
+      };
+    }
+    lojas = [achada];
+  }
+  if (lojas.length === 0) {
+    return { oQueFoi: `Gasto de "${carro}"`, dados: null, aviso: "Nenhuma loja na sua carteira tem conta de anúncio." };
+  }
+
+  const donoDaConta = new Map<string, { nome: string; tipo: string }>();
+  for (const l of lojas) {
+    for (const c of l.metaAdAccounts) {
+      donoDaConta.set(c.id, { nome: l.companyName, tipo: c.leadActionType });
+    }
+  }
+
+  const vida = await prisma.metaLifetime.findMany({
+    where: { adAccountId: { in: [...donoDaConta.keys()] } },
+    select: {
+      adAccountId: true, adId: true, adName: true,
+      spendCents: true, impressions: true, reach: true, clicks: true, linkClicks: true, leads: true,
+      desde: true, ate: true, atualizadoEm: true,
+    },
+  });
+
+  // Título e legenda também entram na busca: o modelo às vezes só aparece neles.
+  const criativos = await prisma.metaAdCreative.findMany({
+    where: { adAccountId: { in: [...donoDaConta.keys()] }, adId: { in: vida.map((v) => v.adId) } },
+    select: { adId: true, titulo: true, legenda: true, effectiveStatus: true },
+  });
+  const textosDe = new Map(criativos.map((c) => [c.adId, c]));
+
+  const porLoja = new Map<string, typeof vida>();
+  for (const v of vida) {
+    const nome = donoDaConta.get(v.adAccountId)!.nome;
+    porLoja.set(nome, [...(porLoja.get(nome) ?? []), v]);
+  }
+
+  interface CarroSomado {
+    loja: string;
+    nome: string;
+    anuncios: number;
+    noAr: number;
+    n: Numeros;
+    desde: Date | null;
+    ate: Date | null;
+    atualizadoEm: Date;
+    tipo: string;
+  }
+  const carros: CarroSomado[] = [];
+  const todosOsAnuncios: AnuncioConhecido[] = [];
+
+  for (const [nomeDaLoja, linhas] of porLoja) {
+    const conhecidos: AnuncioConhecido[] = linhas.map((v) => ({
+      adId: v.adId,
+      nome: v.adName,
+      textos: [textosDe.get(v.adId)?.titulo, textosDe.get(v.adId)?.legenda].filter((t): t is string => !!t),
+    }));
+    todosOsAnuncios.push(...conhecidos);
+
+    const achado = acharCarro(carro, conhecidos);
+    if (achado.candidatos.length === 0) continue;
+
+    // Com folga, é UM carro: só ele (e os anúncios gêmeos dele). Sem folga, são
+    // vários carros parecidos e todos entram, cada um com o seu total.
+    const escolhidos = achado.semDuvida ? achado.mesmoCarro : achado.candidatos;
+    const porCarro = new Map<string, CarroSomado>();
+
+    for (const a of escolhidos) {
+      const v = linhas.find((x) => x.adId === a.adId);
+      if (!v) continue;
+      const chave = nomeNormalizado(a.nome);
+      const atual = porCarro.get(chave) ?? {
+        loja: nomeDaLoja,
+        // O nome mais limpo do grupo: o sem "Cópia" e sem "vídeo", se houver.
+        nome: a.nome,
+        anuncios: 0, noAr: 0, n: { ...ZERO },
+        desde: null, ate: null, atualizadoEm: v.atualizadoEm,
+        tipo: donoDaConta.get(v.adAccountId)!.tipo,
+      };
+      atual.anuncios++;
+      if (textosDe.get(v.adId)?.effectiveStatus === "ACTIVE") atual.noAr++;
+      atual.n = somar([atual.n, v]);
+      if (v.desde && (!atual.desde || v.desde < atual.desde)) atual.desde = v.desde;
+      if (v.ate && (!atual.ate || v.ate > atual.ate)) atual.ate = v.ate;
+      if (v.atualizadoEm < atual.atualizadoEm) atual.atualizadoEm = v.atualizadoEm;
+      if (!/c[oó]pia|v[ií]deo/i.test(a.nome) && /c[oó]pia|v[ií]deo/i.test(atual.nome)) atual.nome = a.nome;
+      porCarro.set(chave, atual);
+    }
+    carros.push(...porCarro.values());
+  }
+
+  // ── Não achou ─────────────────────────────────────────────────────────
+  if (carros.length === 0) {
+    const sug = sugerirNomes(carro, todosOsAnuncios)[0];
+    const onde = lojas.length === 1 ? `nos anúncios da ${lojas[0].companyName}` : "nos anúncios das suas lojas";
+    return {
+      oQueFoi: `Gasto de "${carro}" desde o começo`,
+      dados: null,
+      aviso:
+        `Não achei "${carro}" ${onde}.` +
+        (sug ? ` A palavra "${sug.digitado}" não existe — quis dizer "${sug.quis}"?` : "") +
+        ` Anúncio que já foi apagado na Meta também não aparece.`,
+    };
+  }
+
+  carros.sort((a, b) => b.n.spendCents - a.n.spendCents);
+  const MAXIMO = 6;
+  const mostrados = carros.slice(0, MAXIMO);
+
+  return {
+    oQueFoi: `Gasto total de "${carro}" desde o começo (tempo máximo da Meta), somando todos os anúncios de cada carro`,
+    dados: {
+      periodo: "desde o primeiro dia de anúncio até hoje (tempo máximo)",
+      carros: mostrados.map((c) => ({
+        carro: c.nome,
+        loja: c.loja,
+        ...numerosLegiveis(c.n, c.tipo ? rotuloDoTipoDeLead(c.tipo) : "não configurado"),
+        anuncios: c.anuncios,
+        anunciosNoAr: c.noAr,
+        desde: diaCompleto(c.desde),
+        ate: diaCompleto(c.ate),
+        atualizadoEm: diaCompleto(c.atualizadoEm),
+      })),
+      // A soma é feita aqui, e não deixada pro modelo: pedir pra ele somar é
+      // pedir pra ele errar uma conta que o sistema já sabe fazer.
+      ...(mostrados.length > 1
+        ? { somaDosCarrosListados: reais(mostrados.reduce((s, c) => s + c.n.spendCents, 0)) }
+        : {}),
+      ...(carros.length > MAXIMO ? { haMais: `${carros.length - MAXIMO} carros parecidos não listados` } : {}),
+      observacao:
+        "Soma os anúncios do mesmo carro, inclusive os pausados. Anúncio apagado na Meta não entra, porque ela só devolve o que ainda existe na conta.",
+    },
+    aviso:
+      mostrados.length > 1
+        ? "A frase combinou com mais de um carro. Mostre cada um com o seu total e diga que são carros diferentes."
+        : undefined,
+  };
+}
+
+// ── 8. O que já foi mexido ───────────────────────────────────────────────
 
 export async function acoesRecentes(
   user: QuemPergunta,
@@ -736,6 +947,7 @@ export const CONSULTAS = {
   comparar_periodos: compararPeriodos,
   saldo_das_lojas: saldoDasLojas,
   acoes_recentes: acoesRecentes,
+  gasto_do_carro: gastoDoCarro,
 } as const;
 
 export type NomeDaConsulta = keyof typeof CONSULTAS;

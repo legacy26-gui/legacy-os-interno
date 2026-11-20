@@ -440,6 +440,22 @@ function acharAnuncios(
   };
 }
 
+/**
+ * Acha os anúncios de um carro pelo que a pessoa escreveu — SEM conferir se a
+ * frase pede alguma coisa.
+ *
+ * É a mesma busca que o grupo usa pra desligar, aberta pra quem só quer
+ * encontrar o carro: "quanto gastou o Mobi 2018" não tem verbo de desligar e não
+ * deve ter. Reaproveitar a busca, em vez de escrever outra, é o que garante que
+ * "Virtus" quer dizer a mesma coisa quando se pausa e quando se pergunta o gasto.
+ */
+export function acharCarro(
+  texto: string,
+  anuncios: AnuncioConhecido[],
+): Achado {
+  return acharAnuncios(texto, anuncios);
+}
+
 // ─────────────────── Mais de um carro na mesma mensagem ───────────────────
 //
 // ── Por que isto precisou existir ────────────────────────────────────────

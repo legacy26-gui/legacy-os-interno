@@ -40,9 +40,12 @@ const EscolhaDaConsulta = z.object({
     "comparar_periodos",
     "saldo_das_lojas",
     "acoes_recentes",
+    "gasto_do_carro",
     "nenhuma",
   ]),
   loja: z.string().nullable(),
+  /** Só em gasto_do_carro: o carro como a pessoa escreveu ("mobi 2018"). */
+  carro: z.string().nullable(),
   periodo: z.string().nullable(),
   contra: z.string().nullable(),
   nivel: z.enum(["campanha", "conjunto", "anuncio"]).nullable(),
@@ -140,6 +143,11 @@ Esta resposta vai pelo WhatsApp. Escreva para o WhatsApp:
 - O "~" é só pra número aproximado: "dura ~3 dias". Quando não houver número,
   escreva sem ele — "dura menos de 1 dia", "sem previsão". "~menos de 1 dia"
   e "~sem previsão" não querem dizer nada.
+- Quando a resposta for sobre CARROS, também uma linha por carro, neste
+  formato: *<nome do carro>* — R$ <investido> desde <data> · <n> leads.
+  Diga sempre "desde <data>": é o que mostra que é o total do tempo todo.
+  Se vierem dois carros parecidos, são carros DIFERENTES: mostre os dois, cada
+  um com o seu total, e a soma só se ela vier nos dados.
 - Uma frase curta antes da lista dizendo o que ela é, e no máximo uma depois
   dizendo o que fazer. Nada de introdução nem de despedida.
 - Mensagem curta. O WhatsApp esconde o resto atrás de "ler mais", e o que
@@ -190,6 +198,14 @@ As consultas:
 
 - acoes_recentes: o que foi mexido no sistema (pausas, verbas, textos) e por
   quem. Use pra "o que mudou", "quem pausou isso". Parâmetros: loja, quantas.
+
+- gasto_do_carro: quanto UM carro (ou um modelo) gastou desde o primeiro dia,
+  somando todos os anúncios dele, inclusive os pausados. Use SEMPRE que
+  perguntarem o gasto, o investimento ou "quanto gastou/investiu" num carro
+  específico — "quanto gastou no Mobi 2018", "quanto foi investido no Virtus".
+  O período já é o tempo máximo: NÃO preencha periodo. Parâmetros: carro
+  (obrigatório — só o carro, como a pessoa escreveu, sem "quanto gastou": ex.
+  "mobi 2018"), loja (opcional).
 
 - nenhuma: a pergunta não precisa de dado do banco (um "bom dia", uma dúvida
   sobre como o sistema funciona) ou é vaga demais. Preencha porQueNenhuma.
@@ -300,6 +316,7 @@ export async function perguntar(
     escolha.consulta as NomeDaConsulta,
     {
       loja: escolha.loja ?? undefined,
+      carro: escolha.carro ?? undefined,
       periodo: escolha.periodo ?? undefined,
       contra: escolha.contra ?? undefined,
       nivel: escolha.nivel ?? undefined,

@@ -37,6 +37,7 @@ Em `src/lib/copiloto/consultas.ts`. O modelo só pode pedir estas:
 | `comparar_periodos` | "caiu?", "melhorou?", com a variação calculada |
 | `saldo_das_lojas` | "quem vai ficar sem verba" |
 | `acoes_recentes` | "o que mudou", "quem pausou isso" |
+| `gasto_do_carro` | "quanto gastou no Mobi 2018" — sempre o total do tempo máximo |
 
 Duas coisas que o sistema calcula e NÃO deixa pro modelo:
 
@@ -260,3 +261,49 @@ viram execução.
 **Não foi conferido:** uma pausa real na Meta a partir do privado, e a entrega num
 WhatsApp de verdade. Isso só a produção responde, depois de os números dos
 gestores estarem cadastrados em Configurações.
+
+
+## Quanto um carro gastou: sempre o total do tempo máximo
+
+Pedido do Guilherme: quando o gestor perguntar o gasto de um carro, no grupo ou no
+privado, a resposta é o **gasto total do tempo máximo**.
+
+É uma consulta própria (`gasto_do_carro`) e não "itens da loja com período tudo",
+porque o período não pode ser escolha do modelo — ele escolhe diferente a cada
+vez, e o padrão quando não escolhia era os últimos 7 dias. Aqui o período não é
+parâmetro: mesmo que ele mande `periodo=7`, o resultado é o total de sempre
+(testado).
+
+```
+*FIAT MOBI 2018 BRANCO* — R$ 800,00 desde 01/03/2025 · 15 leads
+```
+
+**Soma os anúncios do mesmo carro.** A loja anuncia o mesmo carro mais de uma vez
+(o "Ka" e o "Ka — Cópia" da R2), e o gasto do carro é a soma deles. Mostrar só o
+primeiro daria um número menor que o verdadeiro com cara de resposta completa. É
+a mesma regra que faz o robô pausar os dois juntos, e a mesma busca de carro que
+o grupo usa pra desligar — "Virtus" quer dizer a mesma coisa nas duas.
+
+**Entra** anúncio pausado e de carro já vendido: o gasto aconteceu.
+**Não entra** anúncio apagado na Meta — ela devolve "o máximo do que ainda existe
+na conta". A ressalva vai dentro dos dados.
+
+**Dois carros parecidos** ("virtus" numa loja com o 2021 e o Highline 2020):
+mostra os dois, cada um com o seu total, e a soma vem do sistema. Numa pergunta de
+gasto, escolher um sozinho é dar o número de outro carro. Com o ano ("virtus
+2021") é um só.
+
+**Palavra torta** ("virtual"): responde "a palavra não existe — quis dizer
+virtus?", em vez de "não achei".
+
+**A carteira vale igual.** No privado, só as lojas dela, e uma pergunta sem dizer a
+loja devolve uma linha por loja (R2, Mega…). No grupo do cliente, a loja é a do
+grupo e **não a que o modelo escreveu**: mesmo que ele ponha o nome de outra loja,
+inclusive de outra gestora, o resultado é só o do grupo.
+
+A fonte é `meta_lifetime`, o acumulado por anúncio que a varredura renova a cada
+15 minutos.
+
+**Não foi conferido:** que o total bate com o "máximo" que a Meta mostra no
+Gerenciador para um carro de verdade. Os testes provam a soma e o recorte; a
+conferência de número contra a Meta só a produção responde.

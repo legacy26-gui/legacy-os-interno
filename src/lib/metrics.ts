@@ -311,7 +311,7 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
     // Fluxo de caixa é dinheiro que saiu de verdade: só saída confirmada.
     prisma.expense.findMany({
       where: { empresa, date: { lt: monthEnd }, paid: true },
-      select: { value: true, date: true, category: true, fixedExpenseId: true },
+      select: { value: true, date: true, category: true, fixedExpenseId: true, createdAt: true },
     }),
     prisma.revenue.findMany({
       where: { empresa, status: { in: ["PENDENTE", "ATRASADO"] }, dueDate: { gte: monthStart, lt: monthEnd } },
@@ -321,12 +321,12 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
     // Retirada é dinheiro que SAIU do caixa: no fluxo de caixa ela conta igual.
     prisma.gastoPessoal.findMany({
       where: { empresa, date: { lt: monthEnd } },
-      select: { value: true, date: true },
+      select: { value: true, date: true, createdAt: true },
     }),
   ]);
   const expenses = [
     ...despesas,
-    ...retiradasDoCaixa.map((r) => ({ value: r.value, date: r.date, category: "Retiradas", fixedExpenseId: null })),
+    ...retiradasDoCaixa.map((r) => ({ value: r.value, date: r.date, createdAt: r.createdAt, category: "Retiradas", fixedExpenseId: null })),
   ];
 
   const key = (d: Date) => d.toISOString().slice(0, 7);
@@ -348,13 +348,24 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
   const openingDate = cashSetting?.openingDate ?? null;
   const openingBalance = cashSetting ? Number(cashSetting.openingBalance) : 0;
 
+  // A saída conta pro saldo quando veio DEPOIS da conferência: em data posterior, ou no
+  // mesmo dia mas lançada depois de o saldo ser informado. Sem a segunda parte, quem diz
+  // o saldo às 10h e anota o almoço às 12h teria o almoço fora da conta até o dia seguinte.
+  // (Entrada segue só pela data: a baixa de uma cobrança não guarda a hora em que foi dada.)
+  const conferidoEm = cashSetting?.updatedAt ?? null;
+  function saidaContaDepoisDaConferencia(e: { date: Date; createdAt: Date }): boolean {
+    if (!openingDate) return false;
+    if (e.date > openingDate) return true;
+    return e.date.getTime() === openingDate.getTime() && !!conferidoEm && e.createdAt > conferidoEm;
+  }
+
   // Saldo em caixa numa data-limite qualquer (fim de mês, ou hoje).
   function saldoAte(limite: Date): number | null {
     if (!openingDate) return null;
     if (limite <= openingDate) return null;
     let s = openingBalance;
     for (const r of paid) if (r.dueDate > openingDate && r.dueDate < limite) s += Number(r.value);
-    for (const e of expenses) if (e.date > openingDate && e.date < limite) s -= Number(e.value);
+    for (const e of expenses) if (saidaContaDepoisDaConferencia(e) && e.date < limite) s -= Number(e.value);
     return s;
   }
 
@@ -420,7 +431,7 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
             .filter((r) => r.dueDate > openingDate && r.dueDate < monthEnd)
             .reduce((s, r) => s + Number(r.value), 0),
           saidasDepois: expenses
-            .filter((e) => e.date > openingDate && e.date < monthEnd)
+            .filter((e) => saidaContaDepoisDaConferencia(e) && e.date < monthEnd)
             .reduce((s, e) => s + Number(e.value), 0),
         }
       : null,

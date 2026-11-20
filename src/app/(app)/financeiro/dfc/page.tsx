@@ -15,6 +15,8 @@ import { getCashFlow } from "@/lib/metrics";
 import { formatCurrency, formatDate } from "@/lib/labels";
 import { FinanceTabs } from "../finance-tabs";
 import { CashOpeningForm } from "../cash-opening-form";
+import { projetarFimDoMes } from "@/lib/financeiro-ia/projecao";
+import { ProjecaoDoMes } from "../projecao-do-mes";
 
 function money(v: number | null) {
   return v === null ? "—" : formatCurrency(v === 0 ? 0 : v);
@@ -39,7 +41,11 @@ export default async function DfcPage({
   const nextDate = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() + 1, 1));
   const isCurrentMonth = monthParam(refDate) === monthParam(now);
 
-  const cf = await getCashFlow(empresa, refDate, 6);
+  const [cf, projecao] = await Promise.all([
+    getCashFlow(empresa, refDate, 6),
+    // A projeção é do mês de HOJE: "como o mês fecha" não existe pra mês que já passou.
+    isCurrentMonth ? projetarFimDoMes(empresa, now) : Promise.resolve(null),
+  ]);
   const { atual } = cf;
   // Saldo conferido no meio do mês exibido: a conta do mês parte dele, e só
   // conta o que entrou/saiu depois da data da conferência.
@@ -92,6 +98,8 @@ export default async function DfcPage({
       </div>
 
       <FinanceTabs month={monthParam(refDate)} />
+
+      {projecao && <ProjecaoDoMes p={projecao} />}
 
       {/* A conta do mês, em ordem de leitura */}
       <div className="rounded-2xl border border-border bg-surface overflow-hidden">

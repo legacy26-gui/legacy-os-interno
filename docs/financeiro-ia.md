@@ -26,6 +26,42 @@ lança no financeiro: gasto da empresa vai pro DRE; gasto pessoal vira **retirad
 
 Não precisa marcar o robô com @ nesse grupo. Mensagem sem número (um "bom dia") passa em silêncio.
 
+## Saldo em caixa e projeção do fim do mês
+
+**Dizer o saldo** no grupo (texto ou áudio) atualiza o *Saldo em banco* do Financeiro, igual ao
+formulário da tela:
+
+| Mensagem | O que acontece |
+|---|---|
+| `meu saldo é 12.500` / `saldo 12500` / `tenho 8 mil no banco` | grava o saldo de hoje |
+| `saldo negativo de 500` | grava −R$ 500 |
+| `saldo 5.000 treinamentos` | o caixa do Treinamentos (o padrão é a Agência) |
+| `qual meu saldo?` / `como vou fechar o mês?` / `projeção` | responde saldo + projeção |
+
+- Dizer o saldo de novo mostra a diferença: *"Eu calculava R$ 11.980: faltaram R$ 520"* — é o que
+  ficou sem anotar. Se bater, diz que bateu.
+- Dois valores na frase (`saldo 12 mil e 500`): o robô pergunta e **não grava nada**.
+- A partir do saldo, cada gasto anotado sai dele e cada entrada confirmada soma. **Gasto lançado
+  no mesmo dia, depois de informar o saldo, já desconta** (antes só descontava a partir do dia
+  seguinte); o que foi lançado antes de informar já está dentro do número que você disse.
+- Retiradas pessoais também saem do caixa.
+
+**Projeção do fim do mês** (cartão no topo do DFC e resposta no grupo):
+
+```
+Saldo em caixa hoje
+(+) A receber no mês              ← o mesmo "A receber" da Análise financeira
+(−) Fixos e contas a pagar        ← saídas do mês ainda não confirmadas
+(−) Gastos do dia a dia           ← estimativa: média por dia do mês × dias que faltam
+= O mês fecha com
+```
+
+- Entradas já confirmadas NÃO são somadas de novo: já estão dentro do saldo.
+- O "dia a dia" é a única estimativa (variáveis + retiradas do mês); o resultado **sem** ele vem logo
+  abaixo, pra ver os dois.
+- Cobrança atrasada de meses anteriores fica **fora da conta** e aparece numa linha à parte.
+- Sem saldo informado, não há projeção: o robô pede o saldo.
+
 ## Áudio
 
 Pode falar em vez de digitar, no grupo financeiro: "gastei quarenta e cinco reais no almoço e

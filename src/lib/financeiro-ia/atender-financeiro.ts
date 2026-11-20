@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { diaDaCasa } from "@/lib/dia-da-casa";
+import { getCashFlow } from "@/lib/metrics";
 import { enviarTexto } from "@/lib/whatsapp/zapi";
 import { anotar } from "@/lib/whatsapp/trilha";
 import { acharPessoaPeloNumero } from "@/lib/whatsapp/atender-privado";
@@ -20,6 +21,8 @@ import {
 } from "./interpretar-gasto";
 import { lerComIa } from "./ler-com-ia";
 import { ehPerguntaDeGasto } from "./interpretar-pergunta";
+import { lerSaldoDito, pedeSaldoOuProjecao } from "./interpretar-saldo";
+import { projetarFimDoMes, textoDaProjecao } from "./projecao";
 import { perguntaDeGastoTemAssunto, responderPerguntaDeGasto } from "./responder-gasto";
 
 // O grupo "financeiro (gastos)": o Guilherme anota CADA gasto ali, e o robô lança.
@@ -64,6 +67,8 @@ export type DesfechoFinanceiro =
   | { tipo: "desfez"; apagados: number }
   | { tipo: "resumo" }
   | { tipo: "respondeu-pergunta" }
+  | { tipo: "saldo-atualizado" }
+  | { tipo: "respondeu-saldo" }
   | { tipo: "nao-entendeu" }
   | { tipo: "silencio" };
 
@@ -217,6 +222,29 @@ export async function atenderGrupoFinanceiro(
       return { tipo: "desfez", apagados: pendentes.length };
     }
     return desfazerUltimo(m, grupo.donoId, agora, hoje);
+  }
+
+  // ── 2b. O saldo em caixa dito no grupo ─────────────────────────────────
+  //
+  // "meu saldo é 12.500" vira o saldo em caixa do Financeiro. Daí em diante cada gasto
+  // anotado sai desse saldo e cada entrada confirmada soma (ver getCashFlow).
+  const saldoDito = lerSaldoDito(m.texto);
+  if (saldoDito?.tipo === "ambiguo") {
+    await dizer(m, "Vi mais de um valor aí. Me fala só o saldo, assim: *meu saldo é 12.500*.");
+    return { tipo: "nao-entendeu" };
+  }
+  if (saldoDito?.tipo === "valor") {
+    await anotar(m.messageId, m.grupoId, "financeiro-saldo");
+    await dizer(m, await atualizarSaldo(saldoDito.cents, saldoDito.treinamentos ? "TREINAMENTOS" : "AGENCIA", agora));
+    return { tipo: "saldo-atualizado" };
+  }
+
+  // ── 2c. "qual meu saldo?", "como vou fechar o mês?" ─────────────────────
+  if (pedeSaldoOuProjecao(m.texto)) {
+    await anotar(m.messageId, m.grupoId, "financeiro-projecao");
+    const p = await projetarFimDoMes(/\b(treinamento|treinamentos)\b/i.test(m.texto) ? "TREINAMENTOS" : "AGENCIA", agora);
+    await dizer(m, textoDaProjecao(p));
+    return { tipo: "respondeu-saldo" };
   }
 
   // ── 3a. "quanto gastei de Uber com o Igor esse mês?" ──────────────────
@@ -388,5 +416,44 @@ async function textoDoResumo(donoId: string, agora: Date): Promise<string> {
     );
   }
   linhas.push("", "O detalhe com gráfico está no Legacy OS, em Financeiro.");
+  return linhas.join("\n");
+}
+
+/**
+ * Grava o saldo em caixa, como o formulário da tela faz (`setCashOpeningBalance`): o
+ * valor e o dia de hoje. Responde com o que o sistema calculava antes — a diferença é o
+ * que ficou sem lançar — e com a projeção do fim do mês.
+ *
+ * Aplica na hora, sem pedir confirmação: foi o que o Guilherme pediu. A proteção contra
+ * número ouvido errado é o eco do "Ouvi" no áudio e o fato de repetir o saldo certo
+ * regravar tudo — não há nada a desfazer.
+ */
+async function atualizarSaldo(cents: number, empresa: "AGENCIA" | "TREINAMENTOS", agora: Date): Promise<string> {
+  const hoje = new Date(`${diaDaCasa(agora)}T00:00:00Z`);
+  const antes = (await getCashFlow(empresa, hoje, 1)).saldoEmCaixa;
+  const nome = empresa === "TREINAMENTOS" ? "Treinamentos" : "Agência";
+
+  await prisma.cashSetting.upsert({
+    where: { empresa },
+    update: { openingBalance: new Prisma.Decimal(cents).div(100), openingDate: hoje },
+    create: { id: empresa.toLowerCase(), empresa, openingBalance: new Prisma.Decimal(cents).div(100), openingDate: hoje },
+  });
+  try {
+    revalidatePath("/financeiro", "layout");
+  } catch {
+    // fora do Next (teste)
+  }
+
+  const linhas = [`Saldo em caixa atualizado: *${reais(cents)}* (${nome}).`];
+  if (antes !== null) {
+    const dif = cents - Math.round(antes * 100);
+    if (Math.abs(dif) >= 1) {
+      linhas.push(`Eu calculava ${reais(Math.round(antes * 100))}: ${dif > 0 ? "sobraram" : "faltaram"} ${reais(Math.abs(dif))} em relação ao que foi lançado — vale ver se ficou algum gasto ou entrada sem anotar.`);
+    } else {
+      linhas.push("Bateu certinho com o que eu calculava. 👍");
+    }
+  }
+  linhas.push("A partir de agora cada gasto que você anotar sai desse saldo, e cada entrada confirmada soma.");
+  linhas.push("", textoDaProjecao(await projetarFimDoMes(empresa, agora)));
   return linhas.join("\n");
 }

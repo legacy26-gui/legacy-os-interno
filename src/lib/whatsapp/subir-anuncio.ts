@@ -250,6 +250,27 @@ function soOCarro(texto: string, restanteDaLoja: string | null): string {
 }
 
 /** "2", "2)" ou "2." → 2. */
+/**
+ * O nome do carro pro conjunto e pro título, a partir do que a pessoa escreveu.
+ * Tira preço ("R$37.900,00", "37.900") e "completo", e corta na primeira vírgula/linha — NUNCA no ponto, porque o ponto
+ * de "37.900" não é fim de frase (já saiu "Renault Sandero 2012 R$37" no nome de um conjunto por isso).
+ */
+export function nomeCurtoDoCarro(texto: string): string {
+  const primeiro = texto.split(/[,\n;]/)[0] ?? texto;
+  return primeiro
+    .replace(/R\$\s*[\d.,]+/gi, " ")
+    .replace(/\b\d{1,3}(?:\.\d{3})+\b/g, " ")
+    .replace(/\b(completo|completa|oportunidade|baixou)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 100);
+}
+
+/** A pessoa pediu pra IA escrever ("crie uma legenda usando o carro…") em vez de mandar a legenda pronta? */
+export function ehPedidoDeLegenda(texto: string): boolean {
+  return /^\s*(cri[ae]r?|ger[ae]r?|gera|escrev[ae]r?|faz|fazer|mont[ae]r?|elabor[ae]r?|me\s+(d[aá]|faz|cria))\b[^.!?\n]{0,40}\blegenda\b/i.test(texto);
+}
+
 function numeroEscolhido(texto: string): number | null {
   // "2", "2)", "2." e também "2 conjunto novo" / "12. conjunto novo": o número vem primeiro. "2021 virtus" não é o 2.
   const m = /^\s*(\d{1,2})(?:[).:-]|\s|$)/.exec(texto);
@@ -458,6 +479,13 @@ async function conduzir(pessoa: Pessoa, c: Conversa, texto: string, agora: Date,
       break;
     }
     case "legenda": {
+      // "crie uma legenda usando o carro renault sandero 2012…" é um PEDIDO, não a legenda: usa o que veio como dados do carro
+      // e tenta a IA de novo. (Antes o robô aceitava a frase inteira como legenda do anúncio.)
+      if (ehPedidoDeLegenda(texto)) {
+        const dados = texto.replace(/^[^]*?\b(?:carro|ve[ií]culo)\b\s*/i, "").trim() || texto.trim();
+        await salvar(c, { carro: dados.length >= MIN_DADOS ? dados : c.carro, nome: null, titulo: null, legenda: null, avisosDaLegenda: [] }, agora);
+        break;
+      }
       const legenda = texto.replace(/^\s*legenda\s*[:\-]?\s*/i, "").trim();
       if (legenda.length < 10) return "Me manda a legenda do anúncio (pode escrever *legenda: …*). Pra desistir, escreve *cancela*.";
       await salvar(c, { legenda, avisosDaLegenda: [] }, agora);
@@ -676,7 +704,7 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
       const dados = c.carro.length >= 25 ? c.carro : doEstoque.dados;
       await salvar(c, { carro: dados, nome: c.nome ?? doEstoque.titulo.slice(0, 120), titulo: c.titulo ?? doEstoque.titulo.slice(0, 120) }, agora);
     } else {
-      const curto = c.carro.split(/[,.\n]/)[0].trim().slice(0, 100);
+      const curto = nomeCurtoDoCarro(c.carro);
       await salvar(c, { nome: c.nome ?? curto, titulo: c.titulo ?? curto }, agora);
     }
   }

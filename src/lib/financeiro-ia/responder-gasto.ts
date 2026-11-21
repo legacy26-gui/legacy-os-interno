@@ -72,13 +72,58 @@ function dizerTermos(termos: string[]): string {
 }
 
 export function perguntaDeGastoTemAssunto(texto: string, agora: Date = new Date()): boolean {
-  return lerPergunta(texto, diaDaCasa(agora)).termos.length > 0;
+  const p = lerPergunta(texto, diaDaCasa(agora));
+  return p.ranking || p.termos.length > 0;
+}
+
+/** As categorias que mais pesaram num conjunto de lançamentos, da maior pra menor. */
+function porCategoria(linhas: Linha[]): { categoria: string; cents: number; n: number }[] {
+  const m = new Map<string, { cents: number; n: number }>();
+  for (const l of linhas) {
+    const c = l.categoria?.trim() || "Outros";
+    const x = m.get(c) ?? { cents: 0, n: 0 };
+    x.cents += l.cents;
+    x.n++;
+    m.set(c, x);
+  }
+  return [...m].map(([categoria, x]) => ({ categoria, ...x })).sort((a, b) => b.cents - a.cents);
+}
+
+const porcento = (parte: number, total: number) => (total > 0 ? `${Math.round((parte / total) * 100)}%` : "");
+
+/** "No que eu mais gastei este mês?": o ranking por categoria (empresa e pessoal separados) e os maiores lançamentos. */
+function responderRanking(linhas: Linha[], p: PerguntaDeGasto, assunto: string): string {
+  const quando = p.periodo.rotulo;
+  const sobre = assunto ? ` com *${assunto}*` : "";
+  if (linhas.length === 0) return `Não achei nenhum gasto${sobre} ${quando}.`;
+  const total = linhas.reduce((s, l) => s + l.cents, 0);
+  const bloco = (titulo: string | null, ls: Linha[]) => {
+    const soma = ls.reduce((s, l) => s + l.cents, 0);
+    const cats = porCategoria(ls);
+    const MOSTRA = 6;
+    return [
+      titulo ? `*${titulo}* — ${reais(soma)}` : null,
+      ...cats.slice(0, MOSTRA).map((c, i) => `${i + 1}. ${c.categoria} — *${reais(c.cents)}* (${porcento(c.cents, soma)}, ${plural(c.n, "lançamento", "lançamentos")})`),
+      cats.length > MOSTRA ? `…e mais ${cats.length - MOSTRA} ${cats.length - MOSTRA === 1 ? "categoria" : "categorias"}` : null,
+    ].filter((x): x is string => x !== null);
+  };
+  const daEmpresa = linhas.filter((l) => l.lado === "empresa");
+  const pessoais = linhas.filter((l) => l.lado === "pessoal");
+  const partes = [`Onde mais foi dinheiro${sobre} ${quando} (total *${reais(total)}*):`, ""];
+  if (daEmpresa.length && pessoais.length) partes.push(...bloco("Empresa", daEmpresa), "", ...bloco("Pessoal (retirada)", pessoais));
+  else partes.push(...bloco(pessoais.length ? "Pessoal (retirada)" : null, linhas));
+  const maiores = [...linhas].sort((a, b) => b.cents - a.cents).slice(0, 3);
+  partes.push("", "Maiores lançamentos:", ...maiores.map((l) => `• ${curto(l.dia)} · ${l.descricao} — ${reais(l.cents)}${daEmpresa.length && pessoais.length ? ` (${l.lado})` : ""}`));
+  return partes.join("\n");
 }
 
 export async function responderPerguntaDeGasto(donoId: string, texto: string, agora: Date = new Date()): Promise<string> {
   const hoje = diaDaCasa(agora);
   const p = lerPergunta(texto, hoje);
   const todas = await carregar(donoId, p);
+  if (p.ranking) {
+    return responderRanking(todas.filter((l) => bateComOsTermos(l.descricao, l.categoria, p.termos)), p, dizerTermos(p.rotulos));
+  }
   const achadas = todas.filter((l) => bateComOsTermos(l.descricao, l.categoria, p.termos));
   const assunto = dizerTermos(p.rotulos);
   const quando = p.periodo.rotulo;

@@ -30,6 +30,23 @@ export interface PerguntaDeGasto {
   escopo: "tudo" | "empresa" | "pessoal";
   /** "treinamento" na frase: só o caixa do Treinamentos. */
   treinamentos: boolean;
+  /**
+   * "No que eu mais gastei?", "maiores gastos do mês", "onde foi mais dinheiro?": a pergunta é
+   * QUAL o assunto (o ranking por categoria), não quanto de um assunto. As palavras da pergunta
+   * ("que", "onde", "mais") não viram termo de busca.
+   */
+  ranking: boolean;
+}
+
+/** "No que mais gastei", "maiores gastos", "onde gastei mais", "top gastos", "qual categoria pesou mais". */
+export function ehPerguntaDeRanking(texto: string): boolean {
+  const t = normal(texto);
+  if (/\b(maiores|maior)\s+(gastos?|despesas?|saidas?|contas?)\b/.test(t)) return true;
+  if (/\btop\s*\d*\s*(gastos?|despesas?|categorias?)\b/.test(t)) return true;
+  if (/\b(gastei|gasto|gastamos|gastou|foi|saiu|pesou|paguei)\s+mais\b/.test(t)) return true;
+  if (/\bmais\s+(gastei|gasto|gastamos|gastou|paguei|pesou|saiu|foi)\b/.test(t)) return true;
+  if (/\b(no que|com o que|com que|em que|onde|qual|quais)\b.*\b(mais|maior)\b/.test(t) && /\b(gast|pag|despes|dinheiro|categori|saiu|pesou)/.test(t)) return true;
+  return false;
 }
 
 const MESES = ["janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
@@ -45,6 +62,7 @@ const somar = (isoDia: string, n: number) => {
 /** A frase é uma PERGUNTA sobre gasto (e não um lançamento)? */
 export function ehPerguntaDeGasto(texto: string): boolean {
   const t = normal(texto);
+  if (ehPerguntaDeRanking(texto)) return true;
   if (/\b(quanto|qto|qnto|quantos|quantas)\b/.test(t)) return true;
   // "total de uber", "gastos com mercado em outubro?" — sem valor em dinheiro na frase.
   const semPeriodo = t.replace(/\b\d+\s*dias\b/g, "").replace(/\b(19|20)\d{2}\b/g, "");
@@ -114,6 +132,10 @@ const FORA = new Set([
   "eu", "me", "meu", "minha", "fala", "diz", "mostra", "mostre", "mostrar", "ver", "qual", "quais", "foram", "foi",
   "esse", "essa", "este", "esta", "neste", "nesta", "nesse", "nessa", "mes", "ano", "semana", "dia", "dias", "ultimos", "ultimo", "passado", "passada",
   "ate", "ai", "so", "mais", "menos", "tipo", "coisa", "coisas", "ta", "tudo", "geral", "sempre", "hoje", "hj", "ontem",
+  // Palavras de pergunta: nunca são o assunto ("no QUE eu mais gastei" não é gasto com "que").
+  "que", "oque", "onde", "quem", "como", "quando", "porque", "pq", "qual", "quais", "maior", "maiores", "top", "categoria", "categorias",
+  "despesa", "despesas", "dinheiro", "pesou", "isso", "aqui", "agora", "voce", "vc", "sabe", "saber", "quero", "queria", "gostaria",
+  "pode", "consegue", "lista", "listar", "resumo", "estou", "to", "tou", "ficou", "tem", "teve", "nosso", "nossa", "meus", "minhas",
 ]);
 
 const APELIDOS: Record<string, string> = { comida: "alimentacao", comidas: "alimentacao", gasolina: "combustivel" };
@@ -146,7 +168,7 @@ export function lerPergunta(texto: string, hoje: string): PerguntaDeGasto {
     const original = comoEscreveu.get(p) ?? p;
     rotulos.push(singular(original) === original ? original : original.slice(0, original.length - (p.length - s.length)));
   }
-  return { periodo, termos, rotulos, escopo, treinamentos };
+  return { periodo, termos, rotulos, escopo, treinamentos, ranking: ehPerguntaDeRanking(texto) };
 }
 
 /** O lançamento tem TODOS os termos na descrição ou na categoria? */

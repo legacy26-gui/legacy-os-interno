@@ -3,39 +3,74 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { acharObjetoDaLoja } from "./mudar-status";
 import { buscarNaGraph } from "./cliente-graph";
-import { escreverNaGraph } from "./escrever-na-graph";
+import { escreverNaGraph, escritaLiberada } from "./escrever-na-graph";
 
-// Sobe um anúncio NOVO como rascunho, dentro de um conjunto que já existe.
+// Sobe um anúncio como RASCUNHO, duplicando um anúncio que a loja já tem.
+//
+// ── Como o gestor trabalha (e por que é duplicar) ────────────────────────
+//
+// O gestor escolhe a campanha e o conjunto, aponta UM anúncio que a loja já roda (o "base") e
+// manda as fotos do carro novo. O sistema copia do anúncio-base tudo que não muda de carro pra
+// carro — página que assina, botão, rastreamento, configuração do criativo — e troca só o que
+// é do carro: fotos, legenda, título e (se o gestor quiser) o link. O anúncio nasce PAUSADO; o
+// gestor confere no Gerenciador e publica. Criar um anúncio do zero continua sendo no Gerenciador.
 //
 // ── Regras que não mudam ─────────────────────────────────────────────────
 //
-//  1. O anúncio sempre nasce PAUSADO. Quem publica é o gestor, no Gerenciador, depois de
-//     conferir. Este arquivo não tem nenhum caminho que ative anúncio.
-//  2. O conjunto tem que ser da loja, pelo cadastro local (acharObjetoDaLoja). Mesma trava
-//     de todas as escritas: um id trocado não vira anúncio em conta de outro cliente.
-//  3. Orçamento e localização ficam no CONJUNTO, não no anúncio. Este arquivo nunca os
-//     altera: só LÊ, pra avisar se o conjunto não bate com a loja, e sugere o orçamento.
-//  4. A página do Facebook que assina o anúncio vem de um anúncio que já existe nesse
-//     conjunto. Sem nenhum anúncio ali, não há de onde tirar: o rascunho é recusado.
+//  1. O anúncio sempre nasce PAUSADO. Este arquivo não tem nenhum caminho que ative anúncio.
+//  2. Conjunto e anúncio-base têm que ser da loja, pelo cadastro local (acharObjetoDaLoja). Mesma
+//     trava de todas as escritas: um id trocado não vira anúncio em conta de outro cliente.
+//  3. Orçamento e localização ficam no CONJUNTO, não no anúncio. Este arquivo nunca os altera: só
+//     LÊ, pra avisar se o conjunto não bate com a loja, e sugere o orçamento ("sugere, eu decido").
+//  4. Só duplica anúncio de FOTO ou CARROSSEL de imagem. Vídeo, Advantage+ (várias legendas) e anúncio
+//     que usa um post já existente são recusados com o motivo: copiá-los seria adivinhar.
+//  5. O link só muda se o gestor mudar. Anúncio que leva pro WhatsApp continua levando pro WhatsApp.
 
 const DIAS_DO_MES = 30;
+const MAX_FOTOS = 10;
+const MAX_BYTES_POR_FOTO = 4 * 1024 * 1024;
+
+// ───────────────────────────── Tipos ──────────────────────────────────────
+
+export interface AvisoDoConjunto {
+  tipo: "localizacao" | "orcamento" | "conjunto";
+  texto: string;
+}
+
+/** O que se aprendeu do anúncio-base. */
+export interface BaseLida {
+  adId: string;
+  nome: string;
+  contaMeta: string | null;
+  spec: Record<string, unknown>;
+  urlTags: string | null;
+  graus: unknown;
+  tracking: unknown;
+  formato: "foto" | "carrossel";
+  legenda: string;
+  titulo: string;
+  link: string;
+}
+
+export type ResultadoDaBase = { ok: true; base: BaseLida } | { ok: false; erro: string };
 
 export interface PedidoDeRascunho {
   clientId: string;
+  /** O anúncio que a loja já tem e que será duplicado. */
+  baseAdId: string;
+  /** O conjunto onde o anúncio novo vai ficar. */
   adsetId: string;
   nome: string;
   /** O texto principal (a legenda). */
   legenda: string;
-  /** Endereço para onde o anúncio leva. Se não vier, usa o site de estoque da loja. */
-  link?: string | null;
-  /** Uma imagem = foto única. Duas ou mais = carrossel. A ordem é a ordem do carrossel. */
-  imagens: { nome: string; bytes: Buffer }[];
+  /** O título. `null` = tira o título do anúncio novo. */
+  titulo: string | null;
+  /** Para onde o anúncio leva. Em geral o mesmo do base. */
+  link: string;
+  /** Códigos das fotos já enviadas (subirFotoDoRascunho). Uma = foto única; duas ou mais = carrossel. */
+  hashes: string[];
   pedidoPor: string | null;
-}
-
-export interface AvisoDoConjunto {
-  tipo: "localizacao" | "orcamento";
-  texto: string;
+  quemId: string | null;
 }
 
 export interface ResultadoDoRascunho {
@@ -49,47 +84,21 @@ export interface ResultadoDoRascunho {
   /** Sugestão de orçamento diário pra loja, pra comparar com o do conjunto. Nunca aplicada. */
   orcamentoSugeridoCents: number | null;
   orcamentoDoConjuntoCents: number | null;
-}
-
-interface ConjuntoLido {
-  contaMeta: string;
-  nome: string;
-  dailyBudgetCents: number | null;
-  geo: { cidades: string[]; coordenadas: boolean } | null;
-  pageId: string | null;
+  /** Link do anúncio no Gerenciador, pra o gestor conferir e publicar. */
+  linkDoGerenciador?: string;
 }
 
 const semAcento = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+const reais = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const objeto = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
+const texto = (v: unknown): string => (typeof v === "string" ? v : "");
 
-/** Lê o conjunto na Meta: orçamento, cidades da segmentação e a página que assina os anúncios dele. */
-async function lerConjunto(adsetId: string, contaMeta: string): Promise<ConjuntoLido | null> {
-  const c = await buscarNaGraph<{
-    name?: string;
-    daily_budget?: string;
-    targeting?: { geo_locations?: { cities?: { name?: string }[]; custom_locations?: unknown[] } };
-  }>(adsetId, { fields: "name,daily_budget,targeting{geo_locations}" });
-  if (!c.ok) return null;
-
-  // A página: de um anúncio que já existe no conjunto. Não é cadastrada em lugar nenhum.
-  const ads = await buscarNaGraph<{ data?: { creative?: { object_story_spec?: { page_id?: string } } }[] }>(
-    `${adsetId}/ads`,
-    { fields: "creative{object_story_spec}", limit: "5" },
-  );
-  const pageId = ads.ok
-    ? (ads.dados.data ?? []).map((a) => a.creative?.object_story_spec?.page_id).find((p): p is string => !!p) ?? null
-    : null;
-
-  const geo = c.dados.targeting?.geo_locations;
-  return {
-    contaMeta,
-    nome: c.dados.name ?? adsetId,
-    dailyBudgetCents: c.dados.daily_budget ? Number(c.dados.daily_budget) : null,
-    geo: geo
-      ? { cidades: (geo.cities ?? []).map((x) => x.name ?? "").filter(Boolean), coordenadas: (geo.custom_locations ?? []).length > 0 }
-      : null,
-    pageId,
-  };
+/** O endereço do anúncio no Gerenciador da Meta. */
+export function linkDoGerenciador(contaMeta: string, adId: string): string {
+  return `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${contaMeta.replace(/^act_/, "")}&selected_ad_ids=${encodeURIComponent(adId)}`;
 }
+
+// ───────────────────────── Sugestão e avisos (puros) ─────────────────────
 
 /**
  * O orçamento sugerido pra loja: o investimento mensal previsto dividido por 30 dias.
@@ -100,8 +109,13 @@ export function orcamentoSugerido(gastoMensalPrevistoCents: number | null | unde
   return Math.round(gastoMensalPrevistoCents / DIAS_DO_MES);
 }
 
+interface GeoLido {
+  cidades: string[];
+  coordenadas: boolean;
+}
+
 /** O conjunto está segmentado na cidade da loja? Só conta cidade; sem cidade cadastrada, não há o que comparar. */
-export function avisosDeLocalizacao(geo: ConjuntoLido["geo"], cidadeDaLoja: string | null): AvisoDoConjunto[] {
+export function avisosDeLocalizacao(geo: GeoLido | null, cidadeDaLoja: string | null): AvisoDoConjunto[] {
   if (!cidadeDaLoja) return [];
   if (!geo) {
     return [{ tipo: "localizacao", texto: "Não consegui ler a localização desse conjunto. Confere na Meta antes de publicar." }];
@@ -121,112 +135,297 @@ export function avisosDeLocalizacao(geo: ConjuntoLido["geo"], cidadeDaLoja: stri
       }];
 }
 
-/** Anúncio que o gestor mandou subir: confere a loja, sobe as fotos e cria o anúncio pausado. */
+/** Compara o orçamento do conjunto com o sugerido (só avisa quando a diferença passa de 50%). */
+export function avisoDeOrcamento(doConjuntoCents: number | null, sugeridoCents: number | null): AvisoDoConjunto | null {
+  if (!sugeridoCents || !doConjuntoCents) return null;
+  if (Math.abs(doConjuntoCents - sugeridoCents) / sugeridoCents <= 0.5) return null;
+  return {
+    tipo: "orcamento",
+    texto: `O orçamento desse conjunto é ${reais(doConjuntoCents)} por dia e o investimento previsto da loja sugere ${reais(sugeridoCents)}. Só pra conferir: não mudei nada.`,
+  };
+}
+
+// ───────────────────────── Ler o anúncio-base ────────────────────────────
+
+interface CriativoDaMeta {
+  id?: string;
+  object_story_spec?: Record<string, unknown>;
+  url_tags?: string;
+  degrees_of_freedom_spec?: unknown;
+  asset_feed_spec?: unknown;
+  object_story_id?: string;
+}
+
+/**
+ * Lê na Meta o anúncio que vai servir de molde e confere se dá pra duplicar.
+ *
+ * Também serve pra tela: ao escolher o base, ela mostra a legenda, o título e o link dele (pra o
+ * gestor trocar o que é do carro antigo) ou o motivo de não servir.
+ */
+export async function lerBaseDoAnuncio(clientId: string, baseAdId: string): Promise<ResultadoDaBase> {
+  const achado = await acharObjetoDaLoja(clientId, "anuncio", baseAdId);
+  if (!achado) return { ok: false, erro: "Esse anúncio não é de uma conta desta loja." };
+
+  const r = await buscarNaGraph<{ name?: string; tracking_specs?: unknown; creative?: CriativoDaMeta }>(baseAdId, {
+    fields: "name,tracking_specs,creative{id,object_story_spec,url_tags,degrees_of_freedom_spec,asset_feed_spec,object_story_id}",
+  });
+  if (!r.ok) return { ok: false, erro: `A Meta não me deixou ler o anúncio-base agora: ${r.erro}` };
+
+  const c = r.dados.creative;
+  const spec = objeto(c?.object_story_spec);
+  if (!c || !spec) {
+    return {
+      ok: false,
+      erro: "Esse anúncio usa um post que já existia, e não dá pra copiar. Escolhe como base um anúncio de foto criado direto no Gerenciador.",
+    };
+  }
+  if (c.asset_feed_spec) {
+    return { ok: false, erro: "Esse anúncio é Advantage+ (várias legendas combinadas pela Meta). Escolhe como base um anúncio de foto comum." };
+  }
+  const link = objeto(spec.link_data);
+  if (!link) {
+    return { ok: false, erro: "Esse anúncio é de vídeo (ou outro formato que não é foto). Escolhe como base um anúncio de foto ou carrossel." };
+  }
+
+  const cartoes = Array.isArray(link.child_attachments) ? (link.child_attachments as Record<string, unknown>[]) : [];
+  const conta = await prisma.metaAdCreative.findFirst({
+    where: { adId: baseAdId, adAccount: { clientId } },
+    select: { adAccount: { select: { metaAccountId: true } } },
+  });
+  return {
+    ok: true,
+    base: {
+      adId: baseAdId,
+      nome: r.dados.name ?? achado.nome,
+      contaMeta: conta?.adAccount.metaAccountId ?? null,
+      spec,
+      urlTags: c.url_tags ?? null,
+      graus: c.degrees_of_freedom_spec ?? null,
+      tracking: r.dados.tracking_specs ?? null,
+      formato: cartoes.length > 0 ? "carrossel" : "foto",
+      legenda: texto(link.message),
+      titulo: texto(link.name) || texto(cartoes[0]?.name),
+      link: texto(link.link) || texto(cartoes[0]?.link),
+    },
+  };
+}
+
+/**
+ * O `object_story_spec` do anúncio novo, a partir do do base: copia tudo e troca fotos, legenda,
+ * título e link. Pura (sem rede), pra poder ser testada sozinha.
+ */
+export function montarSpecDoRascunho(
+  specDoBase: Record<string, unknown>,
+  novo: { legenda: string; titulo: string | null; link: string; hashes: string[]; linkDoBase: string },
+): Record<string, unknown> {
+  const spec = JSON.parse(JSON.stringify(specDoBase)) as Record<string, unknown>;
+  const antigo = objeto(spec.link_data) ?? {};
+  const cartoesAntigos = Array.isArray(antigo.child_attachments) ? (antigo.child_attachments as Record<string, unknown>[]) : [];
+  const ld: Record<string, unknown> = { ...antigo };
+
+  // Fora tudo que é da mídia antiga.
+  for (const k of ["image_hash", "picture", "image_crops", "child_attachments", "multi_share_end_card", "multi_share_optimized", "video_id"]) {
+    delete ld[k];
+  }
+
+  ld.message = novo.legenda;
+  ld.link = novo.link;
+  if (novo.titulo === null || novo.titulo === "") delete ld.name;
+  else ld.name = novo.titulo;
+
+  // O botão (ex.: "Saiba mais"). O link do botão só muda se o link do anúncio mudou.
+  const botao = objeto(antigo.call_to_action);
+  const mudouLink = novo.link !== novo.linkDoBase;
+  if (botao && mudouLink) {
+    const valor = objeto(botao.value);
+    if (valor && typeof valor.link === "string") valor.link = novo.link;
+  }
+
+  if (novo.hashes.length === 1) {
+    ld.image_hash = novo.hashes[0];
+  } else {
+    const descricao = texto(antigo.description) || texto(cartoesAntigos[0]?.description);
+    ld.child_attachments = novo.hashes.map((h) => ({
+      link: novo.link,
+      image_hash: h,
+      ...(novo.titulo ? { name: novo.titulo } : {}),
+      ...(descricao ? { description: descricao } : {}),
+      ...(botao ? { call_to_action: botao } : {}),
+    }));
+    ld.multi_share_end_card = false;
+    ld.multi_share_optimized = true;
+  }
+
+  spec.link_data = ld;
+  return spec;
+}
+
+// ───────────────────────────── Subir foto ─────────────────────────────────
+
+/** Confere pelos primeiros bytes que é mesmo JPEG ou PNG (o nome e o tipo do navegador não provam nada). */
+export function tipoDeImagem(bytes: Buffer): "jpeg" | "png" | null {
+  if (bytes.length > 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpeg";
+  if (bytes.length > 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
+  return null;
+}
+
+/** Acha, no cadastro, o conjunto da loja e a conta Meta dele. `null` se não for da loja. */
+async function contaDoConjunto(clientId: string, adsetId: string) {
+  const conjunto = await acharObjetoDaLoja(clientId, "conjunto", adsetId);
+  if (!conjunto) return null;
+  const c = await prisma.metaAdset.findFirst({
+    where: { adsetId, adAccount: { clientId } },
+    select: { name: true, status: true, effectiveStatus: true, dailyBudgetCents: true, adAccount: { select: { metaAccountId: true } } },
+  });
+  return c ? { nome: c.name, status: c.status, effectiveStatus: c.effectiveStatus, dailyBudgetCents: c.dailyBudgetCents, contaMeta: c.adAccount.metaAccountId } : null;
+}
+
+/**
+ * Sobe UMA foto pra conta do conjunto e devolve o código dela na Meta.
+ *
+ * Uma por vez de propósito: cada chamada cabe no limite de corpo da hospedagem, e se a quinta foto
+ * falhar, as quatro primeiras não precisam subir de novo. Foto solta na conta não anuncia nada.
+ */
+export async function subirFotoDoRascunho(p: {
+  clientId: string;
+  adsetId: string;
+  nome: string;
+  bytes: Buffer;
+}): Promise<{ ok: true; hash: string } | { ok: false; erro: string }> {
+  if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
+  if (p.bytes.length === 0) return { ok: false, erro: "A foto veio vazia." };
+  if (p.bytes.length > MAX_BYTES_POR_FOTO) return { ok: false, erro: "A foto passou de 4 MB. Tenta uma menor." };
+  if (!tipoDeImagem(p.bytes)) return { ok: false, erro: "Só aceito foto em JPEG ou PNG." };
+
+  const conta = await contaDoConjunto(p.clientId, p.adsetId);
+  if (!conta) return { ok: false, erro: "Esse conjunto não é de uma conta desta loja." };
+
+  const r = await escreverNaGraph<{ images?: Record<string, { hash?: string }> }>(`${conta.contaMeta}/adimages`, {
+    bytes: p.bytes.toString("base64"),
+    name: p.nome.replace(/[^\w.\- ]+/g, "_").slice(0, 120) || "foto",
+  });
+  if (!r.ok) return { ok: false, erro: `A Meta não aceitou a foto ${p.nome}: ${r.erro}` };
+  const hash = r.dados.images ? Object.values(r.dados.images)[0]?.hash : undefined;
+  if (!hash) return { ok: false, erro: `A Meta não devolveu o código da foto ${p.nome}.` };
+  return { ok: true, hash };
+}
+
+// ─────────────────────────── Criar o rascunho ─────────────────────────────
+
+/** Lê do conjunto o que importa pra avisar: cidades da segmentação e orçamento. Falhar aqui não impede o rascunho. */
+async function lerConjunto(adsetId: string) {
+  const c = await buscarNaGraph<{
+    daily_budget?: string;
+    targeting?: { geo_locations?: { cities?: { name?: string }[]; custom_locations?: unknown[] } };
+  }>(adsetId, { fields: "daily_budget,targeting{geo_locations}" });
+  if (!c.ok) return null;
+  const geo = c.dados.targeting?.geo_locations;
+  return {
+    dailyBudgetCents: c.dados.daily_budget ? Number(c.dados.daily_budget) : null,
+    geo: geo
+      ? { cidades: (geo.cities ?? []).map((x) => x.name ?? "").filter(Boolean), coordenadas: (geo.custom_locations ?? []).length > 0 }
+      : null,
+  };
+}
+
+function linkValido(link: string): boolean {
+  try {
+    const u = new URL(link);
+    return u.protocol === "https:" || u.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+/** Duplica o anúncio-base com as fotos e textos novos, PAUSADO, dentro do conjunto escolhido. */
 export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<ResultadoDoRascunho> {
-  const vazio = { avisos: [], orcamentoSugeridoCents: null, orcamentoDoConjuntoCents: null };
+  const vazio = { avisos: [] as AvisoDoConjunto[], orcamentoSugeridoCents: null, orcamentoDoConjuntoCents: null };
+  const recusa = (erro: string, extra: Partial<ResultadoDoRascunho> = {}): ResultadoDoRascunho => ({ ok: false, erro, ...vazio, ...extra });
 
-  if (p.imagens.length === 0) return { ok: false, erro: "Manda pelo menos uma foto.", ...vazio };
-  if (p.imagens.length > 10) return { ok: false, erro: "O carrossel aceita no máximo 10 fotos.", ...vazio };
-  if (!p.legenda.trim()) return { ok: false, erro: "Falta a legenda.", ...vazio };
+  if (!escritaLiberada()) return recusa("O acesso de escrita na Meta ainda não está configurado no sistema.");
+  if (p.hashes.length === 0) return recusa("Manda pelo menos uma foto.");
+  if (p.hashes.length > MAX_FOTOS) return recusa(`O carrossel aceita no máximo ${MAX_FOTOS} fotos.`);
+  if (!p.hashes.every((h) => /^[A-Za-z0-9_]{6,64}$/.test(h))) return recusa("Código de foto inválido. Sobe as fotos de novo.");
+  const legenda = p.legenda.trim();
+  if (!legenda) return recusa("Falta a legenda.");
+  if (legenda.length > 2200) return recusa("A legenda passou de 2.200 caracteres.");
+  const titulo = p.titulo === null ? null : p.titulo.trim().slice(0, 255);
+  const nome = p.nome.trim();
+  if (!nome) return recusa("Falta o nome do anúncio.");
+  const link = p.link.trim();
+  if (!linkValido(link)) return recusa("O endereço do anúncio não é um link válido (começa com https://).");
 
-  // ── 1. O conjunto é da loja? (trava de cadastro) ────────────────────
-  const conjunto = await acharObjetoDaLoja(p.clientId, "conjunto", p.adsetId);
-  if (!conjunto) return { ok: false, erro: "Esse conjunto não é de uma conta desta loja.", ...vazio };
+  // ── 1. O conjunto e o base são da loja? (trava de cadastro) ─────────
+  const conta = await contaDoConjunto(p.clientId, p.adsetId);
+  if (!conta) return recusa("Esse conjunto não é de uma conta desta loja.");
+
+  const lido = await lerBaseDoAnuncio(p.clientId, p.baseAdId);
+  if (!lido.ok) return recusa(lido.erro);
+  const base = lido.base;
 
   const loja = await prisma.client.findUnique({
     where: { id: p.clientId },
-    select: { companyName: true, city: true, gastoMensalPrevistoCents: true, estoqueDaLoja: { select: { siteUrl: true } } },
+    select: { companyName: true, city: true, gastoMensalPrevistoCents: true },
   });
-  const conta = await prisma.metaAdset.findFirst({
-    where: { adsetId: p.adsetId },
-    select: { adAccount: { select: { metaAccountId: true } } },
-  });
-  if (!loja || !conta) return { ok: false, erro: "Não achei a conta de anúncio desse conjunto.", ...vazio };
-  const contaMeta = conta.adAccount.metaAccountId;
+  if (!loja) return recusa("Não achei a loja.");
 
-  // ── 2. O que o conjunto já tem (leitura, nada muda) ─────────────────
-  const lido = await lerConjunto(p.adsetId, contaMeta);
-  if (!lido) return { ok: false, erro: "A Meta não me deixou ler esse conjunto agora. Tenta de novo daqui a pouco.", ...vazio };
-  if (!lido.pageId) {
-    return {
-      ok: false,
-      erro: "Esse conjunto ainda não tem nenhum anúncio, então não sei qual página do Facebook assina. Cria o primeiro anúncio pelo Gerenciador.",
-      ...vazio,
-    };
+  // ── 2. O que o conjunto tem (leitura, nada muda) ────────────────────
+  const avisos: AvisoDoConjunto[] = [];
+  if (conta.effectiveStatus && conta.effectiveStatus !== "ACTIVE") {
+    avisos.push({ tipo: "conjunto", texto: "Esse conjunto está pausado. O anúncio só roda quando você ligar o conjunto também." });
   }
-
-  const link = p.link?.trim() || loja.estoqueDaLoja?.siteUrl || null;
-  if (!link) return { ok: false, erro: "Falta o endereço para onde o anúncio leva (o site da loja).", ...vazio };
-
-  const avisos = avisosDeLocalizacao(lido.geo, loja.city);
+  const conjunto = await lerConjunto(p.adsetId);
   const sugerido = orcamentoSugerido(loja.gastoMensalPrevistoCents);
-  if (sugerido && lido.dailyBudgetCents && Math.abs(lido.dailyBudgetCents - sugerido) / sugerido > 0.5) {
-    avisos.push({
-      tipo: "orcamento",
-      texto: `O orçamento desse conjunto é ${reais(lido.dailyBudgetCents)} por dia e o investimento previsto da loja sugere ${reais(sugerido)}. Só pra conferir: não mudei nada.`,
-    });
-  }
+  const orcamentoDoConjunto = conjunto?.dailyBudgetCents ?? conta.dailyBudgetCents ?? null;
+  if (conjunto) avisos.push(...avisosDeLocalizacao(conjunto.geo, loja.city));
+  else avisos.push({ tipo: "localizacao", texto: "Não consegui ler a localização desse conjunto agora. Confere na Meta antes de publicar." });
+  const avisoOrcamento = avisoDeOrcamento(orcamentoDoConjunto, sugerido);
+  if (avisoOrcamento) avisos.push(avisoOrcamento);
 
-  // ── 3. As fotos (uma: foto única; mais: carrossel) ──────────────────
-  const hashes: string[] = [];
-  for (const img of p.imagens) {
-    const r = await escreverNaGraph<{ images?: Record<string, { hash?: string }> }>(`${contaMeta}/adimages`, {
-      bytes: img.bytes.toString("base64"),
-      name: img.nome.slice(0, 120),
-    });
-    if (!r.ok) return { ok: false, erro: `A Meta não aceitou a foto ${img.nome}: ${r.erro}`, ...vazio, avisos };
-    const hash = r.dados.images ? Object.values(r.dados.images)[0]?.hash : undefined;
-    if (!hash) return { ok: false, erro: `A Meta não devolveu o código da foto ${img.nome}.`, ...vazio, avisos };
-    hashes.push(hash);
-  }
+  // ── 3. O criativo: o do base, com o que é do carro trocado ──────────
+  const formato: "foto" | "carrossel" = p.hashes.length === 1 ? "foto" : "carrossel";
+  const spec = montarSpecDoRascunho(base.spec, { legenda, titulo, link, hashes: p.hashes, linkDoBase: base.link });
+  const camposDoCriativo: Record<string, string> = {
+    name: `${nome.slice(0, 80)} — rascunho ${new Date().toISOString().slice(0, 10)}`,
+    object_story_spec: JSON.stringify(spec),
+  };
+  if (base.urlTags) camposDoCriativo.url_tags = base.urlTags;
+  if (base.graus) camposDoCriativo.degrees_of_freedom_spec = JSON.stringify(base.graus);
 
-  // ── 4. O criativo (foto única ou carrossel) ─────────────────────────
-  const formato: "foto" | "carrossel" = hashes.length === 1 ? "foto" : "carrossel";
-  const linkData: Record<string, unknown> =
-    formato === "foto"
-      ? { link, message: p.legenda, image_hash: hashes[0] }
-      : {
-          link,
-          message: p.legenda,
-          child_attachments: hashes.map((h) => ({ link, image_hash: h })),
-        };
-  const criativo = await escreverNaGraph<{ id?: string }>(`${contaMeta}/adcreatives`, {
-    name: `${p.nome.slice(0, 80)} — rascunho ${new Date().toISOString().slice(0, 10)}`,
-    object_story_spec: JSON.stringify({ page_id: lido.pageId, link_data: linkData }),
-  });
+  const criativo = await escreverNaGraph<{ id?: string }>(`${conta.contaMeta}/adcreatives`, camposDoCriativo);
   if (!criativo.ok || !criativo.dados.id) {
-    return { ok: false, erro: `A Meta não criou o criativo: ${criativo.ok ? "sem id" : criativo.erro}`, ...vazio, avisos };
+    return recusa(`A Meta não criou o criativo: ${criativo.ok ? "sem id" : criativo.erro}`, { avisos });
   }
 
-  // ── 5. O anúncio, PAUSADO ───────────────────────────────────────────
-  const anuncio = await escreverNaGraph<{ id?: string }>(`${contaMeta}/ads`, {
-    name: p.nome.slice(0, 200),
+  // ── 4. O anúncio, PAUSADO ───────────────────────────────────────────
+  const camposDoAnuncio: Record<string, string> = {
+    name: nome.slice(0, 200),
     adset_id: p.adsetId,
     creative: JSON.stringify({ creative_id: criativo.dados.id }),
     status: "PAUSED",
-  });
+  };
+  if (base.tracking) camposDoAnuncio.tracking_specs = JSON.stringify(base.tracking);
+  const anuncio = await escreverNaGraph<{ id?: string }>(`${conta.contaMeta}/ads`, camposDoAnuncio);
   if (!anuncio.ok || !anuncio.dados.id) {
-    return {
-      ok: false,
-      erro: `O criativo foi criado, mas o anúncio não: ${anuncio.ok ? "sem id" : anuncio.erro}. O criativo ficou solto na conta e não gasta nada.`,
-      ...vazio,
-      avisos,
-    };
+    return recusa(
+      `O criativo foi criado, mas o anúncio não: ${anuncio.ok ? "sem id" : anuncio.erro}. O criativo ficou solto na conta e não gasta nada.`,
+      { avisos },
+    );
   }
 
   await prisma.metaAcao.create({
     data: {
       clientId: p.clientId,
-      quemId: null,
+      quemId: p.quemId,
       nivel: "anuncio",
       objetoId: anuncio.dados.id,
-      nome: p.nome.slice(0, 200),
+      nome: nome.slice(0, 200),
       statusPedido: "PAUSED",
       statusAntes: null,
       ok: true,
       origem: "criacao-rascunho",
       pedidoPor: p.pedidoPor,
-      pedidoTexto: `${formato} · ${hashes.length} foto(s) · conjunto ${conjunto.nome}`.slice(0, 2000),
+      pedidoTexto: `${formato} · ${p.hashes.length} foto(s) · conjunto ${conta.nome} · base ${base.nome} · conta ${conta.contaMeta}`.slice(0, 2000),
     },
   });
 
@@ -237,8 +436,7 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
     formato,
     avisos,
     orcamentoSugeridoCents: sugerido,
-    orcamentoDoConjuntoCents: lido.dailyBudgetCents,
+    orcamentoDoConjuntoCents: orcamentoDoConjunto,
+    linkDoGerenciador: linkDoGerenciador(conta.contaMeta, anuncio.dados.id),
   };
 }
-
-const reais = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });

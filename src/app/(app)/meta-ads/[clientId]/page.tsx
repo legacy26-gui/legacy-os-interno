@@ -5,6 +5,7 @@ import {
   Wallet,
   ChevronRight,
   ArrowLeft,
+  FilePlus2,
 } from "lucide-react";
 import { Voltar } from "@/components/voltar";
 import { Frescor } from "@/components/frescor";
@@ -309,6 +310,13 @@ export default async function LojaNoMetaAdsPage({
               />
             </div>
           </div>
+          <div className="flex flex-col items-start sm:items-end gap-2">
+            <Link
+              href={`/meta-ads/${cliente.id}/subir-anuncio`}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-accent text-white rounded-lg text-sm font-medium"
+            >
+              <FilePlus2 size={14} /> Subir anúncio
+            </Link>
           <AcoesDaLoja
             clientId={cliente.id}
             contas={contas.map((c) => ({
@@ -319,6 +327,7 @@ export default async function LojaNoMetaAdsPage({
             }))}
             podeConfigurar={podeConfigurar}
           />
+          </div>
         </div>
       </div>
 

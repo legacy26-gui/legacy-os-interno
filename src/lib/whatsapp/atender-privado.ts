@@ -20,6 +20,7 @@ import {
   tomarPendente,
 } from "./pausar-no-privado";
 import { executarVendaNoPrivado, lerRespostaDaVenda, montarVendaNoPrivado } from "@/lib/vendas/venda-no-privado";
+import { tratarSubirAnuncio } from "./subir-anuncio";
 
 // A IA atendendo no privado do WhatsApp.
 //
@@ -85,6 +86,8 @@ export type DesfechoPrivado =
   | { tipo: "pediu-confirmacao-de-venda"; userId: string }
   /** O dono confirmou a venda: registrou (se foi lead) e pausou o que estava no ar. */
   | { tipo: "vendeu"; userId: string; registrou: boolean; pausados: number; falhas: number }
+  /** A conversa de subir anúncio pelo WhatsApp respondeu (ver subir-anuncio.ts). */
+  | { tipo: "subir-anuncio"; userId: string }
   /** Disse "não", ou mandou outra coisa: a confirmação foi descartada. */
   | { tipo: "cancelou"; userId: string }
   /** Disse "sim" tarde demais. Nada foi pausado. */
@@ -284,6 +287,16 @@ export async function atenderMensagemPrivada(
       m.messageId,
     );
     return { tipo: "teto", userId: pessoa.id };
+  }
+
+  // ── Subir anúncio pelo WhatsApp ───────────────────────────────────────
+  //
+  // Vem ANTES da confirmação de pausa: se há um anúncio sendo montado, o "sim" é dele. E começar a montar um
+  // anúncio descarta uma pausa que estivesse esperando (ver tratarSubirAnuncio).
+  const sobe = await tratarSubirAnuncio(pessoa, m.texto, agora);
+  if (sobe !== null) {
+    await responder(m.telefone, sobe, m.messageId);
+    return { tipo: "subir-anuncio", userId: pessoa.id };
   }
 
   // ── A confirmação que estava esperando ───────────────────────────────

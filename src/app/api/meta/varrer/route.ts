@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { varrerCasa } from "@/lib/meta/varredura";
 import { prazoDe } from "@/lib/meta/sincronizar-insights";
 import { conferirEAvisar } from "@/lib/whatsapp/vigia-conexao";
+import { limparRascunhosVencidos } from "@/lib/whatsapp/subir-anuncio";
 
 // A porta que mantém os números da Meta sempre frescos.
 //
@@ -117,6 +118,12 @@ export async function GET(req: Request) {
       await conferirEAvisar();
     } catch (e) {
       console.error("[varrer] vigia do WhatsApp falhou:", e instanceof Error ? e.message : e);
+    }
+    // E apaga os anúncios que ficaram pela metade no WhatsApp (conversa vencida, fotos órfãs).
+    try {
+      await limparRascunhosVencidos();
+    } catch (e) {
+      console.error("[varrer] limpeza dos rascunhos do WhatsApp falhou:", e instanceof Error ? e.message : e);
     }
     const r = await varrerCasa(prazoDe(ORCAMENTO_MS));
     console.log("[meta] varredura de 15 em 15:", JSON.stringify(r));

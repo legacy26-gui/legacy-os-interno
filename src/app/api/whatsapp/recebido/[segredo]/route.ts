@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { atenderMensagemDoGrupo } from "@/lib/whatsapp/atender-grupo";
 import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
 import { atenderAudioDoGrupo } from "@/lib/whatsapp/atender-audio";
+import { receberFotoNoPrivado } from "@/lib/whatsapp/foto-recebida";
 import { registrarConexao } from "@/lib/whatsapp/vigia-conexao";
 import { primeiraVez } from "@/lib/whatsapp/so-uma-vez";
 import { anotar } from "@/lib/whatsapp/trilha";
@@ -71,6 +72,10 @@ interface CorpoDaZapi {
   text?: { message?: unknown; mentionedPhones?: unknown };
   /** Mensagem de voz ou áudio. Só é usada no grupo financeiro, e só do dono. */
   audio?: { audioUrl?: unknown; mimeType?: unknown; seconds?: unknown };
+  /** Foto. Só é usada no PRIVADO, e só de quem é da casa: é o começo de "subir anúncio pelo WhatsApp". */
+  image?: { imageUrl?: unknown; caption?: unknown; mimeType?: unknown };
+  /** Quando a mensagem foi enviada (ms). A Z-API escreve assim mesmo, com dois "m". */
+  momment?: unknown;
   /** Alguns formatos da Z-API mandam os marcados aqui em cima. */
   mentionedPhones?: unknown;
   /** O id da mensagem, usado pra não atender a mesma duas vezes. */
@@ -155,7 +160,9 @@ export async function POST(
   const audioUrl = typeof corpo.audio?.audioUrl === "string" ? corpo.audio.audioUrl : null;
   // Áudio só interessa em GRUPO (o financeiro). No privado e fora dele, sem texto = sem nada a fazer.
   const eAudioDeGrupo = !!de && !texto?.trim() && !!audioUrl && corpo.isGroup === true;
-  if (!de || (!texto?.trim() && !eAudioDeGrupo)) {
+  const imagemUrl = typeof corpo.image?.imageUrl === "string" ? corpo.image.imageUrl : null;
+  const eFotoPrivada = !!de && !texto?.trim() && !!imagemUrl && corpo.isGroup !== true;
+  if (!de || (!texto?.trim() && !eAudioDeGrupo && !eFotoPrivada)) {
     return NextResponse.json({ ok: true, ignorado: "sem texto" });
   }
 
@@ -180,6 +187,23 @@ export async function POST(
   // Giovana pergunta "qual loja minha está sem verba?" do celular. Quem
   // responde é o mesmo Copiloto da tela, com a carteira de quem escreveu —
   // e número que não é de ninguém da casa recebe um recado e não aciona a IA.
+  if (eFotoPrivada && imagemUrl) {
+    after(async () => {
+      try {
+        await receberFotoNoPrivado({
+          telefone: de,
+          imageUrl: imagemUrl,
+          legenda: typeof corpo.image?.caption === "string" ? corpo.image.caption : null,
+          messageId: idDaMensagem,
+          momento: typeof corpo.momment === "number" ? corpo.momment : null,
+        });
+      } catch (e) {
+        await anotar(idDaMensagem, de, "foto-estourou", e instanceof Error ? e.message : String(e));
+      }
+    });
+    return NextResponse.json({ ok: true, foto: "recebida" });
+  }
+
   if (corpo.isGroup !== true) {
     // Responde AGORA e atende depois. A Z-API reenvia o que demora, e pensar
     // uma resposta são duas chamadas ao modelo: esperar por elas antes de

@@ -2185,3 +2185,70 @@ model EstoquePreco {
   @@index([carroId, vistoEm])
   @@map("estoque_precos")
 }
+
+/// Um anúncio sendo montado pelo WhatsApp: uma conversa por pessoa (quem manda as fotos pro robô no privado).
+///
+/// Guarda o ponto da conversa (`etapa`) e o que já se decidiu (loja, conjunto, anúncio-base, carro, legenda), pra
+/// o robô continuar de onde parou a cada mensagem. Vence sozinho (`venceEm`) e é apagado quando o anúncio sobe ou
+/// a pessoa cancela. Ver src/lib/whatsapp/subir-anuncio.ts.
+model RascunhoWhatsapp {
+  id     String @id @default(cuid())
+  userId String @unique
+
+  /// "coletando", "loja", "conjunto", "base", "dados", "legenda" ou "confirmando".
+  etapa String
+
+  clientId     String?
+  lojaNome     String?
+  adsetId      String?
+  adsetNome    String?
+  campanhaNome String?
+  baseAdId     String?
+  baseNome     String?
+  /// O que se leu do anúncio-base (formato, legenda, título e link).
+  base         Json?
+
+  /// Os dados do carro, como a pessoa escreveu (ou do estoque do site).
+  carro  String? @db.Text
+  nome   String?
+  titulo String?
+  legenda String? @db.Text
+  /// Avisos da conferência da legenda (preço que não está nos dados etc.).
+  avisosDaLegenda Json?
+
+  /// A lista numerada que o robô acabou de mostrar: [{ id, rotulo }]. A resposta "2" escolhe o item 2.
+  opcoes Json?
+
+  criadoEm     DateTime @default(now())
+  atualizadoEm DateTime @updatedAt
+  venceEm      DateTime
+
+  @@map("rascunhos_whatsapp")
+}
+
+/// As fotos que a pessoa mandou pro robô, guardadas até o anúncio subir (ou vencer).
+/// Ficam no banco porque o conjunto — e portanto a conta da Meta onde a foto sobe — só é escolhido depois.
+model RascunhoFoto {
+  id        String   @id @default(cuid())
+  userId    String
+  /// O id da mensagem na Z-API: a mesma foto reenviada não entra duas vezes.
+  messageId String   @unique
+  mime      String
+  bytes     Bytes
+  criadoEm  DateTime @default(now())
+
+  @@index([userId, criadoEm])
+  @@map("rascunho_fotos")
+}
+
+/// O conjunto e o anúncio-base que se usou da última vez em cada loja. "Muitas vezes vai subir dentro de um
+/// conjunto que já existe": o robô propõe o mesmo de sempre, e a pessoa só confirma ou troca.
+model PadraoDeRascunho {
+  id           String   @id @default(cuid())
+  clientId     String   @unique
+  adsetId      String
+  baseAdId     String
+  atualizadoEm DateTime @updatedAt
+
+  @@map("padrao_de_rascunho")
+}

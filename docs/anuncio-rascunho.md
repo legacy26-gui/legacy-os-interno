@@ -67,3 +67,58 @@ Abaixo, **Rascunhos recentes**: nome, quando, quem, estado de hoje (se a varredu
 Tudo foi testado contra uma Meta de mentira. Na primeira vez real: confirmar que o token de **escrita** tem
 `ads_management` (Configurações já mostra) e conferir no Gerenciador que o anúncio duplicado ficou igual ao base
 (página, botão, pixel). Se algum campo do criativo do base não for aceito pela Meta, o erro dela aparece na tela.
+
+---
+
+# Subir pelo WhatsApp (privado do robô)
+
+A pessoa manda as fotos pro robô **no privado** e o robô monta o mesmo rascunho da tela. Mesmas regras: sempre
+**PAUSADO**, mesmas travas de cadastro, só as lojas da carteira dela, e o robô **só age com um "sim"**.
+
+## A conversa
+
+```
+📷 (manda 3 fotos)              → "Recebi a foto. Manda as outras e me diz a loja e o carro, ex.: virtus 2021 r2"
+virtus 2021 r2                  → em qual conjunto? (lista numerada)  — só na 1ª vez da loja
+2                               → resumo: loja, conjunto, anúncio que vai duplicar, fotos (foto única/carrossel),
+                                  carro (completado pelo estoque do site), título, LEGENDA da IA e avisos
+legenda: …  /  título: …  /  carro: …  /  conjunto  /  base  /  loja     → trocam e mostram o resumo de novo
+sim                             → sobe as fotos, duplica o base PAUSADO e manda o link do Gerenciador
+```
+
+- **Foto com texto junto** (a legenda da foto) vale como a mensagem: `civic 2018` + foto já abre a conversa.
+- **"Mesmo de sempre"**: depois do primeiro anúncio de uma loja, o robô lembra o conjunto e o anúncio-base
+  (`padrao_de_rascunho`) e propõe os mesmos. Pra trocar: `conjunto` ou `base`.
+- Só fala a loja se a pessoa tem mais de uma; gestora com uma loja só nunca é perguntada.
+- O anúncio-base é escolhido sozinho: o 1º do conjunto que dá pra duplicar (foto/carrossel); se nenhum serve, o
+  robô mostra a lista e o motivo.
+- **Ordem do carrossel** = a ordem em que as fotos foram mandadas (horário da Z-API, mesmo que cheguem trocadas).
+- Álbum: o robô responde **uma vez** só (na 1ª foto); as outras entram em silêncio.
+- `cancela` sai a qualquer hora e apaga as fotos. A conversa **vence em 30 min** sem resposta; a varredura de
+  15 em 15 min limpa conversas vencidas e fotos órfãs.
+- Começar com texto também vale: `subir anúncio` → o robô pede as fotos. ("sobe a verba…" não conta.)
+
+## As travas
+
+1. **Antes de baixar a foto:** o número tem que ser de pessoa da casa com acesso a clientes, e o acesso de escrita
+   na Meta tem que existir. Número desconhecido e foto de **grupo** (de cliente) são ignorados sem baixar nada.
+2. **Download seguro:** só https (sem IP nem nome interno), no máximo 4 MB, 20 s, sem seguir redirecionamento, e o
+   conteúdo precisa ser JPEG ou PNG de verdade (confere os bytes).
+3. O mesmo `messageId` reenviado pela Z-API não guarda a foto duas vezes; o "sim" duplicado não sobe duas vezes.
+4. Quem executa é o mesmo núcleo da tela (`criarRascunhoDeAnuncio`); este caminho não tem acesso próprio à Meta.
+5. Os valores da legenda são conferidos em código (preço que não está nos dados vira ⚠️ no resumo).
+6. O registro (`meta_acoes`) fica com o nome de quem pediu, "(WhatsApp)".
+
+## Limites que vale saber
+
+- O WhatsApp **comprime** a foto mandada como "foto" (costuma ficar abaixo de 1 MB). Pra arte do designer com
+  qualidade total, use a tela (Meta Ads → Subir anúncio). Arquivo mandado como "documento" não é lido.
+- Anúncio de vídeo, Advantage+ e post existente não servem de base (a tela e o robô explicam o motivo).
+- Depende da Z-API estar mandando as mensagens recebidas pro mesmo endereço do webhook (já é o caso do texto).
+
+## Código
+
+`src/lib/whatsapp/subir-anuncio.ts` (a conversa), `foto-recebida.ts` (download e travas), webhook
+`src/app/api/whatsapp/recebido/[segredo]/route.ts` (aceita `image` no privado), tabelas `rascunhos_whatsapp`,
+`rascunho_fotos`, `padrao_de_rascunho` (migração `20261123100000_rascunho_whatsapp`).
+Testes: `t-subir-whats.mjs` (conversa inteira, Z-API e Meta falsas) e `t-subir-http.mjs` (o webhook de verdade).

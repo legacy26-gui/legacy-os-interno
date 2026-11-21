@@ -145,3 +145,27 @@ escolhido vira **molde** e a Meta o duplica (`/{conjunto}/copies`, só o conjunt
 **No WhatsApp:** no resumo, `conjunto novo` (ou `mesmo conjunto` pra voltar), `orçamento: 12`.
 
 Testes: `t-rascunho.mjs` (seções 8 e 9), `t-subir-whats.mjs` (seção 7b), `dup-tela.mjs` (navegador).
+
+---
+
+# Duplicação EXATA (nada de Advantage+ a mais)
+
+Regra do Guilherme: duplicar **exatamente igual**, sem ligar nada do Advantage+ que o anúncio original não tinha.
+
+O risco: criativo criado pela API pode ganhar da Meta, **por padrão**, aprimoramentos do Advantage+ (retoque de imagem,
+variações de texto, música, comentário em destaque…) e os **anúncios com vários anunciantes**.
+
+**Criativo** (`criarCriativoIgualAoBase`):
+1. vai com as mesmas escolhas do base (`degrees_of_freedom_spec`) e com "vários anunciantes" igual ao base, ou
+   **desligado** se o base não diz nada;
+2. depois de criado, o sistema **relê na Meta** o que ela gravou e compara com o base;
+3. recurso ligado a mais → cria de novo dizendo **desligado** pra cada um;
+4. ainda ligado (ou não deu pra reler) → **o anúncio não sobe**, e a mensagem diz quais recursos. O criativo solto não gasta nada.
+   O que o base já tinha ligado continua ligado (é cópia).
+
+**Conjunto duplicado** (`conferirCopiaDoConjunto`): relê molde e cópia e compara público/segmentação (inclusive o
+Advantage+ público), otimização, cobrança, estratégia e valor de lance, objeto promovido, destino, atribuição e criativo
+dinâmico. Diferença → escreve na cópia o valor do molde e relê; se continuar diferente, **o anúncio não sobe** e o
+conjunto (pausado, vazio) é apontado pra apagar. Nome e orçamento ficam de fora da comparação (mudam de propósito).
+
+Testes: `t-rascunho.mjs` seções 10 e 11 (Meta falsa que liga recursos sozinha / muda o público da cópia).

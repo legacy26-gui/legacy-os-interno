@@ -46,6 +46,8 @@ export interface BaseLida {
   urlTags: string | null;
   graus: unknown;
   tracking: unknown;
+  /** "Anúncios com vários anunciantes" do criativo base (a Meta liga por padrão se ninguém disser). */
+  multiAnunciantes: unknown;
   formato: "foto" | "carrossel";
   legenda: string;
   titulo: string;
@@ -159,6 +161,7 @@ interface CriativoDaMeta {
   degrees_of_freedom_spec?: unknown;
   asset_feed_spec?: unknown;
   object_story_id?: string;
+  contextual_multi_ads?: unknown;
 }
 
 /**
@@ -172,7 +175,7 @@ export async function lerBaseDoAnuncio(clientId: string, baseAdId: string): Prom
   if (!achado) return { ok: false, erro: "Esse anúncio não é de uma conta desta loja." };
 
   const r = await buscarNaGraph<{ name?: string; tracking_specs?: unknown; creative?: CriativoDaMeta }>(baseAdId, {
-    fields: "name,tracking_specs,creative{id,object_story_spec,url_tags,degrees_of_freedom_spec,asset_feed_spec,object_story_id}",
+    fields: "name,tracking_specs,creative{id,object_story_spec,url_tags,degrees_of_freedom_spec,asset_feed_spec,object_story_id,contextual_multi_ads}",
   });
   if (!r.ok) return { ok: false, erro: `A Meta não me deixou ler o anúncio-base agora: ${r.erro}` };
 
@@ -206,6 +209,7 @@ export async function lerBaseDoAnuncio(clientId: string, baseAdId: string): Prom
       spec,
       urlTags: c.url_tags ?? null,
       graus: c.degrees_of_freedom_spec ?? null,
+      multiAnunciantes: c.contextual_multi_ads ?? null,
       tracking: r.dados.tracking_specs ?? null,
       formato: cartoes.length > 0 ? "carrossel" : "foto",
       legenda: texto(link.message),
@@ -263,6 +267,161 @@ export function montarSpecDoRascunho(
 
   spec.link_data = ld;
   return spec;
+}
+
+// ─────────────────── Duplicação EXATA: nada de Advantage+ a mais ───────────────────
+//
+// Regra do Guilherme: "precisa duplicar exatamente igual, não dá pra ativar nada do Advantage a mais".
+//
+// O risco é real: criativo criado pela API pode ganhar da Meta, por padrão, os "aprimoramentos" do Advantage+
+// (retoque de imagem, variações de texto, música…) e os "anúncios com vários anunciantes" — tudo que o gestor
+// desligou no anúncio original. Então:
+//   1. o criativo novo leva as MESMAS escolhas do base (degrees_of_freedom_spec e contextual_multi_ads);
+//   2. depois de criado, o sistema RELÊ na Meta o que ela gravou e compara com o base;
+//   3. se ela ligou algo a mais, cria de novo dizendo explicitamente "desligado" pra cada um;
+//   4. se ainda assim vier ligado, NÃO sobe o anúncio (o criativo solto não gasta nada) e diz o que foi.
+// No conjunto duplicado vale o mesmo: público (inclusive o Advantage+ público), otimização, lance, objeto promovido
+// e atribuição são relidos e comparados com o molde; diferença que não dá pra corrigir = anúncio não sobe.
+
+const NOME_DO_RECURSO: Record<string, string> = {
+  standard_enhancements: "aprimoramentos padrão do Advantage+",
+  image_touchups: "retoque de imagem",
+  image_enhancement: "melhoria de imagem",
+  image_templates: "modelos/molduras na imagem",
+  image_uncrop: "expandir imagem",
+  image_background_gen: "gerar fundo da imagem",
+  image_brightness_and_contrast: "brilho e contraste",
+  text_optimizations: "variações de texto",
+  text_translation: "tradução do texto",
+  inline_comment: "comentário em destaque",
+  enhance_cta: "realce do botão",
+  adapt_to_placement: "adaptar ao posicionamento",
+  add_text_overlay: "texto sobre a imagem",
+  description_automation: "descrição automática",
+  site_extensions: "links do site",
+  product_extensions: "produtos do catálogo",
+  music: "música",
+  video_auto_crop: "corte automático de vídeo",
+  contextual_multi_ads: "anúncios com vários anunciantes",
+};
+export const nomeDoRecurso = (k: string) => NOME_DO_RECURSO[k] ?? k.replace(/_/g, " ");
+
+function statusDosRecursos(graus: unknown, multi: unknown): Map<string, string> {
+  const m = new Map<string, string>();
+  const spec = objeto(objeto(graus)?.creative_features_spec);
+  for (const [k, v] of Object.entries(spec ?? {})) {
+    const st = objeto(v)?.enroll_status;
+    if (typeof st === "string") m.set(k, st);
+  }
+  const cm = objeto(multi)?.enroll_status;
+  if (typeof cm === "string") m.set("contextual_multi_ads", cm);
+  return m;
+}
+
+/** Os recursos automáticos que estão LIGADOS no criativo novo e não estavam ligados no base. Pura. */
+export function recursosAMais(base: { graus: unknown; multi: unknown }, novo: { graus: unknown; multi: unknown }): string[] {
+  const b = statusDosRecursos(base.graus, base.multi);
+  const n = statusDosRecursos(novo.graus, novo.multi);
+  return [...n].filter(([k, st]) => st === "OPT_IN" && b.get(k) !== "OPT_IN").map(([k]) => k);
+}
+
+/** JSON com chaves e listas em ordem fixa: pra comparar o que a Meta devolve sem cair em diferença de ordem. */
+export function normalizado(v: unknown): string {
+  const n = (x: unknown): unknown =>
+    Array.isArray(x)
+      ? x.map(n).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+      : x && typeof x === "object"
+        ? Object.fromEntries(Object.keys(x as object).sort().map((k) => [k, n((x as Record<string, unknown>)[k])]))
+        : x;
+  return JSON.stringify(n(v ?? null));
+}
+
+/** O que precisa ser igual entre o conjunto molde e a cópia (o nome e o orçamento mudam de propósito). */
+export const CAMPOS_DO_CONJUNTO = [
+  "targeting",
+  "optimization_goal",
+  "billing_event",
+  "bid_strategy",
+  "bid_amount",
+  "promoted_object",
+  "destination_type",
+  "attribution_spec",
+  "is_dynamic_creative",
+] as const;
+
+/** Os campos em que a cópia ficou diferente do molde. Pura. */
+export function diferencasDoConjunto(molde: Record<string, unknown>, copia: Record<string, unknown>): string[] {
+  return CAMPOS_DO_CONJUNTO.filter((k) => normalizado(molde[k]) !== normalizado(copia[k]));
+}
+
+const NOME_DO_CAMPO_DO_CONJUNTO: Record<string, string> = {
+  targeting: "público/segmentação",
+  optimization_goal: "otimização",
+  billing_event: "cobrança",
+  bid_strategy: "estratégia de lance",
+  bid_amount: "valor do lance",
+  promoted_object: "objeto promovido",
+  destination_type: "destino",
+  attribution_spec: "atribuição",
+  is_dynamic_creative: "criativo dinâmico",
+};
+
+async function lerRecursosDoCriativo(id: string): Promise<{ graus: unknown; multi: unknown } | null> {
+  for (let tentativa = 0; tentativa < 2; tentativa++) {
+    const r = await buscarNaGraph<{ degrees_of_freedom_spec?: unknown; contextual_multi_ads?: unknown }>(id, {
+      fields: "degrees_of_freedom_spec,contextual_multi_ads",
+    });
+    if (r.ok) return { graus: r.dados.degrees_of_freedom_spec ?? null, multi: r.dados.contextual_multi_ads ?? null };
+  }
+  return null;
+}
+
+/**
+ * Cria o criativo com as mesmas escolhas do base e confere o que a Meta gravou. Ver o comentário acima.
+ * Devolve o id, ou o motivo de não ter dado (e aí o anúncio não deve ser criado).
+ */
+async function criarCriativoIgualAoBase(
+  contaMeta: string,
+  campos: Record<string, string>,
+  base: BaseLida,
+): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
+  const desligar: string[] = [];
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    const graus = JSON.parse(JSON.stringify(base.graus ?? {})) as Record<string, unknown>;
+    if (desligar.some((k) => k !== "contextual_multi_ads")) {
+      const spec = (objeto(graus.creative_features_spec) ?? {}) as Record<string, unknown>;
+      for (const k of desligar) if (k !== "contextual_multi_ads") spec[k] = { enroll_status: "OPT_OUT" };
+      graus.creative_features_spec = spec;
+    }
+    const enviar = { ...campos };
+    if (Object.keys(graus).length > 0) enviar.degrees_of_freedom_spec = JSON.stringify(graus);
+    // Anúncios com vários anunciantes: o do base; sem nada no base, DESLIGADO (a Meta liga se ninguém disser).
+    const multiDoBase = objeto(base.multiAnunciantes);
+    enviar.contextual_multi_ads = JSON.stringify(
+      multiDoBase && !desligar.includes("contextual_multi_ads") ? multiDoBase : { enroll_status: "OPT_OUT" },
+    );
+
+    const criado = await escreverNaGraph<{ id?: string }>(`${contaMeta}/adcreatives`, enviar);
+    if (!criado.ok || !criado.dados.id) return { ok: false, erro: `A Meta não criou o criativo: ${criado.ok ? "sem id" : criado.erro}` };
+
+    const gravado = await lerRecursosDoCriativo(criado.dados.id);
+    if (!gravado) {
+      return {
+        ok: false,
+        erro: "Criei o criativo, mas não consegui conferir na Meta se ela ligou algum recurso automático (Advantage+). Por segurança não subi o anúncio. Tenta de novo daqui a pouco.",
+      };
+    }
+    const aMais = recursosAMais({ graus: base.graus, multi: base.multiAnunciantes }, gravado);
+    if (aMais.length === 0) return { ok: true, id: criado.dados.id };
+    if (tentativa === 2) {
+      return {
+        ok: false,
+        erro: `A Meta ligou sozinha ${aMais.map(nomeDoRecurso).join(", ")} e não aceitou desligar. Por segurança não subi o anúncio (o criativo solto não gasta nada). Sobe pelo Gerenciador e desliga esses itens lá.`,
+      };
+    }
+    desligar.push(...aMais);
+  }
+  return { ok: false, erro: "Não consegui criar o criativo igual ao base." };
 }
 
 // ───────────────────────────── Subir foto ─────────────────────────────────
@@ -359,6 +518,10 @@ export async function duplicarConjunto(p: {
   }
   const final = ajuste.ok ? orcamento ?? molde.dailyBudgetCents : molde.dailyBudgetCents;
 
+  // 2b. A cópia ficou IGUAL ao molde? (público, Advantage+ público, otimização, lance…) Corrige o que der; o que não
+  // der, o anúncio não sobe.
+  const conferencia = await conferirCopiaDoConjunto(p.adsetId, novo);
+
   // 3. O cadastro local passa a conhecer o conjunto novo (é a trava de "conjunto da loja" que o anúncio usa).
   await prisma.metaAdset.upsert({
     where: { adAccountId_adsetId: { adAccountId: molde.adAccountId, adsetId: novo } },
@@ -375,7 +538,41 @@ export async function duplicarConjunto(p: {
       pedidoTexto: `conjunto duplicado de ${molde.nome}${final ? ` · ${reais(final)}/dia` : ""} · conta ${molde.contaMeta}`.slice(0, 2000),
     },
   });
+  if (!conferencia.ok) {
+    return {
+      ok: false,
+      erro: `${conferencia.erro} O conjunto "${ajuste.ok ? nome : molde.nome}" ficou criado, pausado e vazio: apaga no Gerenciador. Não subi o anúncio.`,
+    };
+  }
   return { ok: true, adsetId: novo, nome: ajuste.ok ? nome : molde.nome, orcamentoCents: final, avisos };
+}
+
+/** Lê molde e cópia na Meta e compara os campos que precisam ser iguais; tenta corrigir uma vez. */
+async function conferirCopiaDoConjunto(moldeId: string, copiaId: string): Promise<{ ok: true } | { ok: false; erro: string }> {
+  const ler = (id: string) => buscarNaGraph<Record<string, unknown>>(id, { fields: CAMPOS_DO_CONJUNTO.join(",") });
+  const m = await ler(moldeId);
+  let c = await ler(copiaId);
+  if (!m.ok || !c.ok) {
+    return { ok: false, erro: "A Meta não me deixou conferir se o conjunto duplicado ficou igual ao molde." };
+  }
+  let dif = diferencasDoConjunto(m.dados, c.dados);
+  if (dif.length === 0) return { ok: true };
+
+  // Corrige escrevendo na cópia o valor do molde, campo por campo.
+  const campos: Record<string, string> = {};
+  for (const k of dif) {
+    const v = m.dados[k];
+    if (v === undefined || v === null) continue;
+    campos[k] = typeof v === "string" ? v : JSON.stringify(v);
+  }
+  if (Object.keys(campos).length > 0) await escreverNaGraph(copiaId, campos);
+  c = await ler(copiaId);
+  dif = c.ok ? diferencasDoConjunto(m.dados, c.dados) : dif;
+  if (dif.length === 0) return { ok: true };
+  return {
+    ok: false,
+    erro: `A Meta duplicou o conjunto mas mudou ${dif.map((k) => NOME_DO_CAMPO_DO_CONJUNTO[k] ?? k).join(", ")} em relação ao molde, e não aceitou voltar.`,
+  };
 }
 
 /**
@@ -494,12 +691,11 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
     object_story_spec: JSON.stringify(spec),
   };
   if (base.urlTags) camposDoCriativo.url_tags = base.urlTags;
-  if (base.graus) camposDoCriativo.degrees_of_freedom_spec = JSON.stringify(base.graus);
 
-  const criativo = await escreverNaGraph<{ id?: string }>(`${conta.contaMeta}/adcreatives`, camposDoCriativo);
-  if (!criativo.ok || !criativo.dados.id) {
-    return recusa(`A Meta não criou o criativo: ${criativo.ok ? "sem id" : criativo.erro}`, { avisos });
-  }
+  // Igual ao base, sem nenhum recurso automático a mais (ver criarCriativoIgualAoBase).
+  const feito = await criarCriativoIgualAoBase(conta.contaMeta, camposDoCriativo, base);
+  if (!feito.ok) return recusa(feito.erro, { avisos });
+  const criativo = { dados: { id: feito.id } };
 
   // ── 4. O anúncio, PAUSADO ───────────────────────────────────────────
   const camposDoAnuncio: Record<string, string> = {

@@ -354,9 +354,66 @@ export const CAMPOS_DO_CONJUNTO = [
   "is_dynamic_creative",
 ] as const;
 
-/** Os campos em que a cópia ficou diferente do molde. Pura. */
+/** Valor "vazio" (ausente, null, [] ou {}): a Meta devolve um ou outro pra a mesma coisa. */
+const vazio = (v: unknown) =>
+  v === undefined || v === null || (Array.isArray(v) && v.length === 0) || (typeof v === "object" && !Array.isArray(v) && Object.keys(v as object).length === 0);
+
+/**
+ * As folhas em que duas estruturas diferem ("targeting.geo_locations.location_types"). Lista é comparada inteira
+ * (sem ligar pra ordem); objeto, campo a campo. Pura.
+ */
+export function caminhosDiferentes(a: unknown, b: unknown, prefixo = ""): string[] {
+  if (vazio(a) && vazio(b)) return [];
+  const ehObj = (v: unknown) => !!v && typeof v === "object" && !Array.isArray(v);
+  // Um lado ausente e o outro objeto: desce mesmo assim, pra apontar a folha ("targeting_automation.advantage_audience").
+  if ((ehObj(a) || vazio(a)) && (ehObj(b) || vazio(b)) && (ehObj(a) || ehObj(b)) && !Array.isArray(a) && !Array.isArray(b)) {
+    const ka = (ehObj(a) ? a : {}) as Record<string, unknown>, kb = (ehObj(b) ? b : {}) as Record<string, unknown>;
+    return [...new Set([...Object.keys(ka), ...Object.keys(kb)])]
+      .sort()
+      .flatMap((k) => caminhosDiferentes(ka[k], kb[k], prefixo ? `${prefixo}.${k}` : k));
+  }
+  return normalizado(a) === normalizado(b) ? [] : [prefixo || "(raiz)"];
+}
+
+/**
+ * O que a Meta PREENCHE SOZINHA num conjunto novo, com o valor padrão, e que não muda quem vê o anúncio — só vale
+ * quando o molde não tem o campo e a cópia tem exatamente o padrão. Advantage+ público LIGADO, posicionamento,
+ * idade, interesses e localização NUNCA entram aqui.
+ */
+function padraoInofensivo(caminho: string, molde: Record<string, unknown>, copia: Record<string, unknown>): boolean {
+  const pegar = (o: unknown, c: string) => c.split(".").reduce<unknown>((x, k) => (x && typeof x === "object" ? (x as Record<string, unknown>)[k] : undefined), o);
+  if (!vazio(pegar(molde, caminho))) return false;
+  const v = pegar(copia, caminho);
+  const t = (pegar(copia, "targeting") ?? {}) as Record<string, unknown>;
+  switch (caminho) {
+    case "targeting.brand_safety_content_filter_levels":
+      return true;
+    case "targeting.targeting_automation.advantage_audience":
+      return Number(v) === 0;
+    case "targeting.targeting_optimization":
+      return v === "none";
+    case "targeting.geo_locations.location_types":
+      return normalizado(v) === normalizado(["home", "recent"]);
+    case "targeting.age_range":
+      return Array.isArray(v) && Number(v[0]) === Number(t.age_min ?? 18) && Number(v[1]) === Number(t.age_max ?? 65);
+    case "targeting.age_min":
+      return Number(v) === 18;
+    case "targeting.age_max":
+      return Number(v) === 65;
+  }
+  if (caminho.startsWith("targeting.targeting_relaxation_types.")) return Number(v) === 0;
+  return false;
+}
+
+/** As diferenças que contam (caminho por caminho), sem o que a Meta preenche sozinha com o padrão. Pura. */
+export function diferencasQueContam(molde: Record<string, unknown>, copia: Record<string, unknown>): string[] {
+  return CAMPOS_DO_CONJUNTO.flatMap((k) => caminhosDiferentes(molde[k], copia[k], k)).filter((c) => !padraoInofensivo(c, molde, copia));
+}
+
+/** Os campos em que a cópia ficou diferente do molde (de verdade: sem os padrões que a Meta preenche). Pura. */
 export function diferencasDoConjunto(molde: Record<string, unknown>, copia: Record<string, unknown>): string[] {
-  return CAMPOS_DO_CONJUNTO.filter((k) => normalizado(molde[k]) !== normalizado(copia[k]));
+  const contam = diferencasQueContam(molde, copia);
+  return CAMPOS_DO_CONJUNTO.filter((k) => contam.some((c) => c === k || c.startsWith(`${k}.`)));
 }
 
 const NOME_DO_CAMPO_DO_CONJUNTO: Record<string, string> = {
@@ -648,9 +705,14 @@ export async function duplicarConjunto(p: {
     },
   });
   if (!conferencia.ok) {
+    // O conjunto que ESTE pedido acabou de criar (pausado, sem anúncio) não fica sobrando: é apagado. Nunca o molde.
+    const apagou = novo !== p.adsetId ? await escreverNaGraph(novo, { status: "DELETED" }) : { ok: false as const, erro: "" };
+    if (apagou.ok) {
+      await prisma.metaAdset.updateMany({ where: { adAccountId: molde.adAccountId, adsetId: novo }, data: { status: "DELETED", effectiveStatus: "DELETED" } });
+    }
     return {
       ok: false,
-      erro: `${conferencia.erro} O conjunto "${ajuste.ok ? nome : molde.nome}" ficou criado, pausado: apaga no Gerenciador. Não subi o anúncio.`,
+      erro: `${conferencia.erro} ${apagou.ok ? "Apaguei o conjunto que eu tinha acabado de criar (o molde não foi mexido)." : `O conjunto "${ajuste.ok ? nome : molde.nome}" ficou criado, pausado: apaga no Gerenciador.`} Não subi o anúncio.`,
     };
   }
 
@@ -786,9 +848,21 @@ async function conferirCopiaDoConjunto(moldeId: string, copiaId: string, ignorar
   c = await ler(copiaId);
   dif = c.ok ? difs(m.dados, c.dados) : dif;
   if (dif.length === 0) return { ok: true };
+  const detalhe = c.ok
+    ? diferencasQueContam(m.dados, c.dados)
+        .filter((x) => !ignorar.some((k) => x === k || x.startsWith(`${k}.`)))
+        .slice(0, 4)
+        .map((x) => {
+          const pegar = (o: unknown) => x.split(".").reduce<unknown>((y, k) => (y && typeof y === "object" ? (y as Record<string, unknown>)[k] : undefined), o);
+          const mostra = (v: unknown) => (v === undefined ? "nada" : JSON.stringify(v).slice(0, 80));
+          return `${x}: molde ${mostra(pegar(m.dados))} × novo ${mostra(pegar(c.dados))}`;
+        })
+    : [];
   return {
     ok: false,
-    erro: `A Meta duplicou o conjunto mas mudou ${dif.map((k) => NOME_DO_CAMPO_DO_CONJUNTO[k] ?? k).join(", ")} em relação ao molde, e não aceitou voltar.`,
+    erro:
+      `A Meta criou o conjunto mas mudou ${dif.map((k) => NOME_DO_CAMPO_DO_CONJUNTO[k] ?? k).join(", ")} em relação ao molde, e não aceitou voltar.` +
+      (detalhe.length ? ` (O que mudou: ${detalhe.join("; ")}.)` : ""),
   };
 }
 

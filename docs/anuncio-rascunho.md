@@ -128,11 +128,11 @@ Testes: `t-subir-whats.mjs` (conversa inteira, Z-API e Meta falsas) e `t-subir-h
 # Um carro por conjunto (duplicar o CONJUNTO)
 
 Lojas como a Vilela usam **um conjunto por carro**. Pra elas o anúncio não entra num conjunto que já existe: o conjunto
-escolhido vira **molde** e a Meta o duplica (`/{conjunto}/copies`, só o conjunto, sem os anúncios de dentro).
+escolhido vira **molde** e a Meta o **duplica inteiro** (`/{conjunto}/copies` com `deep_copy=true`: o conjunto e o anúncio dele). O anúncio copiado recebe o **criativo do carro novo** (mesmas escolhas de Advantage+ do base); nenhum anúncio novo é criado. **Regra:** o molde precisa ter **um anúncio só**. Com dois ou mais, o sistema recusa antes de duplicar e diz pra usar "mesmo conjunto".
 
 - O conjunto novo nasce **PAUSADO**, com o **nome do carro** e o **orçamento diário** informado (padrão: o do molde).
-  Público, localização, otimização e o resto ficam iguais ao molde.
-- O anúncio é criado dentro do conjunto novo, também pausado. Pra publicar: **ligar o conjunto e o anúncio**.
+  Público, localização, otimização e o resto ficam iguais ao molde (a Meta copia).
+- O anúncio que veio na cópia recebe o criativo do carro novo, pausado. Pra publicar: **ligar o conjunto e o anúncio**.
 - Orçamento aceito: R$ 1 a R$ 1.000/dia. Se a campanha controla o orçamento (orçamento na campanha) ou o molde usa
   orçamento total, o sistema **não mexe** no orçamento e avisa.
 - O anúncio-base é conferido **antes** de duplicar (não sobra conjunto vazio por causa de base de vídeo/Advantage+).
@@ -141,10 +141,10 @@ escolhido vira **molde** e a Meta o duplica (`/{conjunto}/copies`, só o conjunt
   o próximo carro já vem assim, na tela e no WhatsApp.
 - O conjunto criado fica no histórico (`meta_acoes`, nível conjunto) e na lista "Rascunhos recentes" com link pro Gerenciador.
 
-**Na tela:** passo 1 → "Criar um conjunto novo, duplicando este (um carro por conjunto)", nome e orçamento diário.
+**Na tela:** passo 1 → "Duplicar este conjunto inteiro e trocar o anúncio pelo do carro novo (um carro por conjunto)", nome e orçamento diário.
 **No WhatsApp:** no resumo, `conjunto novo` (ou `mesmo conjunto` pra voltar), `orçamento: 12`.
 
-Testes: `t-rascunho.mjs` (seções 8 e 9), `t-subir-whats.mjs` (seção 7b), `dup-tela.mjs` (navegador).
+Testes: `t-rascunho.mjs` (seções 8, 9 e 12), `t-subir-whats.mjs` (seção 7b), `dup-tela.mjs` (navegador).
 
 ---
 

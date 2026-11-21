@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ExternalLink, ImagePlus, Loader2, Sparkles, Trash2, TriangleAlert, CheckCircle2 } from "lucide-react";
 import { conferirAnuncioBase, criarRascunho, gerarLegenda, subirFoto, type RespostaDoRascunho } from "@/lib/actions/rascunho";
 
@@ -90,6 +90,7 @@ export function Formulario({
   escritaLiberada,
   carroInicial,
   padrao,
+  baseInicial,
 }: {
   clientId: string;
   sugeridoCents: number | null;
@@ -102,12 +103,14 @@ export function Formulario({
   carroInicial?: string;
   /** O "mesmo de sempre" da loja: o conjunto (ou molde), o anúncio-base, se é um carro por conjunto e o orçamento. */
   padrao?: { adsetId: string; baseAdId: string; duplicarConjunto: boolean; orcamentoCents: number | null } | null;
+  /** O anúncio-base do "mesmo de sempre", já lido na Meta pelo servidor (se ainda serve). */
+  baseInicial?: { id: string; formato: "foto" | "carrossel"; legenda: string; titulo: string; link: string } | null;
 }) {
   const inicial = estoque.find((c) => c.id === carroInicial) ?? null;
   const conjuntoDoPadrao = padrao ? conjuntos.find((c) => c.id === padrao.adsetId) ?? null : null;
   const [campanhaId, setCampanhaId] = useState(conjuntoDoPadrao?.campanhaId ?? "");
   const [conjuntoId, setConjuntoId] = useState(conjuntoDoPadrao?.id ?? "");
-  const [baseId, setBaseId] = useState("");
+  const [baseId, setBaseId] = useState(baseInicial?.id ?? "");
   // "Um carro por conjunto": o conjunto escolhido é o MOLDE e cada anúncio ganha um conjunto novo (duplicado).
   const [modo, setModo] = useState<"existente" | "novo">(conjuntoDoPadrao && padrao?.duplicarConjunto ? "novo" : "existente");
   const [nomeConjunto, setNomeConjunto] = useState("");
@@ -116,14 +119,16 @@ export function Formulario({
   );
   /** Conjunto já criado numa tentativa que falhou depois: a próxima sobe nele, em vez de criar outro. */
   const [conjuntoJaCriado, setConjuntoJaCriado] = useState<{ adsetId: string; nome: string; molde: string } | null>(null);
-  const [base, setBase] = useState<{ carregando: boolean; erro?: string; formato?: "foto" | "carrossel"; legenda?: string; titulo?: string; link?: string }>({ carregando: false });
+  const [base, setBase] = useState<{ carregando: boolean; erro?: string; formato?: "foto" | "carrossel"; legenda?: string; titulo?: string; link?: string }>(
+    baseInicial ? { carregando: false, formato: baseInicial.formato, legenda: baseInicial.legenda, titulo: baseInicial.titulo, link: baseInicial.link } : { carregando: false },
+  );
 
   const [carroId, setCarroId] = useState(inicial?.id ?? "");
   const [dados, setDados] = useState(inicial ? dadosDoCarro(inicial) : "");
   const [nome, setNome] = useState(inicial?.titulo.slice(0, 120) ?? "");
   const [titulo, setTitulo] = useState(inicial?.titulo.slice(0, 120) ?? "");
   const [legenda, setLegenda] = useState("");
-  const [link, setLink] = useState("");
+  const [link, setLink] = useState(baseInicial?.link ?? "");
   const [doBaseAberto, setDoBaseAberto] = useState(false);
 
   const [fotos, setFotos] = useState<Foto[]>([]);
@@ -163,12 +168,6 @@ export function Formulario({
     // O link do base é o destino certo na maioria das vezes (site, WhatsApp). Só preenche se estiver vazio.
     setLink((atual) => atual || r.link || "");
   }
-
-  // Com "mesmo de sempre", o anúncio-base já vem escolhido (e conferido na Meta) ao abrir a tela.
-  useEffect(() => {
-    if (conjuntoDoPadrao && padrao?.baseAdId && anuncios.some((a) => a.id === padrao.baseAdId)) void escolherBase(padrao.baseAdId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function escolherCampanha(id: string) {
     setCampanhaId(id);
@@ -382,7 +381,7 @@ export function Formulario({
           </label>
           <label className="inline-flex items-center gap-2">
             <input type="radio" name="modo" checked={modo === "novo"} onChange={() => setModo("novo")} />
-            Criar um conjunto novo, duplicando este (um carro por conjunto)
+            Duplicar este conjunto inteiro e trocar o anúncio pelo do carro novo (um carro por conjunto)
           </label>
         </fieldset>
         {conjunto && modo === "existente" && (
@@ -395,8 +394,9 @@ export function Formulario({
         {modo === "novo" && (
           <div className="flex flex-col gap-3 rounded-lg border border-border bg-background p-3">
             <p className="text-sm text-foreground-muted">
-              O conjunto escolhido acima é o <strong>molde</strong>: copio público, localização e otimização dele, sem os anúncios. O novo nasce{" "}
-              <strong>pausado</strong>, com o nome do carro.
+              O conjunto escolhido acima é o <strong>molde</strong>: a Meta copia o conjunto inteiro, com o anúncio dele, e eu troco esse
+              anúncio pelo do carro novo (mantendo as configurações do molde). Tudo nasce <strong>pausado</strong>, com o nome do carro.
+              O molde precisa ter <strong>um anúncio só</strong>.
               {conjunto && !conjunto.orcamentoCents ? " Esta campanha define o orçamento na campanha, então o orçamento abaixo não se aplica." : ""}
             </p>
             <div className="grid sm:grid-cols-2 gap-3">

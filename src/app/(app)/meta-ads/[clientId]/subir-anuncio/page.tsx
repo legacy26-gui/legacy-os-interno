@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { exigirClienteDaCarteira } from "@/lib/carteira";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
-import { linkDoGerenciador, orcamentoSugerido } from "@/lib/meta/rascunho-anuncio";
+import { lerBaseDoAnuncio, linkDoGerenciador, orcamentoSugerido } from "@/lib/meta/rascunho-anuncio";
 import { Formulario } from "./formulario";
 
 // Subir anúncio como rascunho: a loja escolhe o conjunto, um anúncio pra duplicar, as fotos e a legenda;
@@ -75,6 +75,13 @@ export default async function SubirAnuncioPage({
     prisma.padraoDeRascunho.findUnique({ where: { clientId }, select: { adsetId: true, baseAdId: true, duplicarConjunto: true, orcamentoCents: true } }),
   ]);
 
+  // O "mesmo de sempre" já vem com o anúncio-base lido na Meta (se ainda serve): a pessoa não escolhe de novo.
+  let baseInicial: { id: string; formato: "foto" | "carrossel"; legenda: string; titulo: string; link: string } | null = null;
+  if (padrao && anuncios.some((a) => a.adId === padrao.baseAdId)) {
+    const b = await lerBaseDoAnuncio(clientId, padrao.baseAdId).catch(() => null);
+    if (b?.ok) baseInicial = { id: padrao.baseAdId, formato: b.base.formato, legenda: b.base.legenda, titulo: b.base.titulo, link: b.base.link };
+  }
+
   // O estado de hoje de cada rascunho (se a varredura já viu o anúncio). Rascunho que o gestor publicou
   // aparece como "No ar" aqui, sem ninguém precisar avisar.
   const estados = await prisma.metaAdCreative.findMany({
@@ -107,6 +114,7 @@ export default async function SubirAnuncioPage({
           escritaLiberada={escritaLiberada()}
           carroInicial={estoque.some((c) => c.id === carroPedido) ? carroPedido : undefined}
           padrao={padrao}
+          baseInicial={baseInicial}
           campanhas={campanhas.map((c) => ({ id: c.campaignId, nome: c.name, status: c.status }))}
           conjuntos={conjuntos.map((c) => ({ id: c.adsetId, campanhaId: c.campaignId, nome: c.name, status: c.status, orcamentoCents: c.dailyBudgetCents }))}
           anuncios={anuncios.map((a) => ({ id: a.adId, nome: a.adName, status: a.status, conjuntoId: a.adsetId, campanhaId: a.campaignId }))}

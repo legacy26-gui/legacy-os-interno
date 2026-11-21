@@ -405,9 +405,35 @@ function padraoInofensivo(caminho: string, molde: Record<string, unknown>, copia
   return false;
 }
 
+/**
+ * Automação do Advantage+ que estava LIGADA no molde e não veio no conjunto novo (ex.: idade e gênero "como
+ * sugestão", `targeting_automation.individual_setting`, que a Meta não aceita mais em conjunto novo). É o sentido
+ * seguro — o novo tem automação A MENOS, nunca a mais — então não barra: vira aviso. Pura.
+ */
+function automacaoQueSaiu(caminho: string, molde: Record<string, unknown>, copia: Record<string, unknown>): boolean {
+  if (!caminho.startsWith("targeting.targeting_automation.")) return false;
+  const pegar = (o: unknown) => caminho.split(".").reduce<unknown>((x, k) => (x && typeof x === "object" ? (x as Record<string, unknown>)[k] : undefined), o);
+  const antes = pegar(molde), depois = pegar(copia);
+  return Number(antes) === 1 && (depois === undefined || depois === null || Number(depois) === 0);
+}
+
+/** As automações do molde que não vieram no conjunto novo (caminhos). Pura. */
+export function automacoesQueSairam(molde: Record<string, unknown>, copia: Record<string, unknown>): string[] {
+  return caminhosDiferentes(molde.targeting, copia.targeting, "targeting").filter((c) => automacaoQueSaiu(c, molde, copia));
+}
+
+const NOME_DA_AUTOMACAO: Record<string, string> = {
+  "targeting.targeting_automation.individual_setting.age": "idade como sugestão",
+  "targeting.targeting_automation.individual_setting.gender": "gênero como sugestão",
+  "targeting.targeting_automation.advantage_audience": "público Advantage+",
+};
+export const nomeDaAutomacao = (c: string) => NOME_DA_AUTOMACAO[c] ?? c.replace(/^targeting\.targeting_automation\./, "").replace(/[._]/g, " ");
+
 /** As diferenças que contam (caminho por caminho), sem o que a Meta preenche sozinha com o padrão. Pura. */
 export function diferencasQueContam(molde: Record<string, unknown>, copia: Record<string, unknown>): string[] {
-  return CAMPOS_DO_CONJUNTO.flatMap((k) => caminhosDiferentes(molde[k], copia[k], k)).filter((c) => !padraoInofensivo(c, molde, copia));
+  return CAMPOS_DO_CONJUNTO.flatMap((k) => caminhosDiferentes(molde[k], copia[k], k)).filter(
+    (c) => !padraoInofensivo(c, molde, copia) && !automacaoQueSaiu(c, molde, copia),
+  );
 }
 
 /** Os campos em que a cópia ficou diferente do molde (de verdade: sem os padrões que a Meta preenche). Pura. */
@@ -687,6 +713,16 @@ export async function duplicarConjunto(p: {
   // 2b. A cópia ficou IGUAL ao molde? (público, Advantage+ público, otimização, lance…) Corrige o que der; o que não
   // der, o anúncio não sobe.
   const conferencia = await conferirCopiaDoConjunto(p.adsetId, novo, ignorarNaConferencia);
+  if (conferencia.ok && conferencia.sairam.length > 0) {
+    const nomes = conferencia.sairam.map(nomeDaAutomacao);
+    avisos.push({
+      tipo: "conjunto",
+      texto:
+        `O molde usava ${nomes.join(" e ")} (Advantage+), e a Meta não aceita mais isso em conjunto novo. ` +
+        `No conjunto novo isso ficou desligado: ${nomes.some((n) => /idade|gênero/.test(n)) ? "a idade e o gênero escolhidos viram limite fixo" : "nada a mais foi ligado"}. ` +
+        `Todo o resto é igual ao molde. Se quiser, ajusta no Gerenciador.`,
+    });
+  }
 
   // 3. O cadastro local passa a conhecer o conjunto novo (é a trava de "conjunto da loja" que o anúncio usa).
   await prisma.metaAdset.upsert({
@@ -826,7 +862,7 @@ async function criarConjuntoComoOMolde(p: {
 }
 
 /** Lê molde e cópia na Meta e compara os campos que precisam ser iguais; tenta corrigir uma vez. */
-async function conferirCopiaDoConjunto(moldeId: string, copiaId: string, ignorar: string[] = []): Promise<{ ok: true } | { ok: false; erro: string }> {
+async function conferirCopiaDoConjunto(moldeId: string, copiaId: string, ignorar: string[] = []): Promise<{ ok: true; sairam: string[] } | { ok: false; erro: string }> {
   const ler = (id: string) => buscarNaGraph<Record<string, unknown>>(id, { fields: CAMPOS_DO_CONJUNTO.join(",") });
   const m = await ler(moldeId);
   let c = await ler(copiaId);
@@ -835,7 +871,7 @@ async function conferirCopiaDoConjunto(moldeId: string, copiaId: string, ignorar
   }
   const difs = (a: Record<string, unknown>, b: Record<string, unknown>) => diferencasDoConjunto(a, b).filter((k) => !ignorar.includes(k));
   let dif = difs(m.dados, c.dados);
-  if (dif.length === 0) return { ok: true };
+  if (dif.length === 0) return { ok: true, sairam: automacoesQueSairam(m.dados, c.dados) };
 
   // Corrige escrevendo na cópia o valor do molde, campo por campo.
   const campos: Record<string, string> = {};
@@ -847,7 +883,7 @@ async function conferirCopiaDoConjunto(moldeId: string, copiaId: string, ignorar
   if (Object.keys(campos).length > 0) await escreverNaGraph(copiaId, campos);
   c = await ler(copiaId);
   dif = c.ok ? difs(m.dados, c.dados) : dif;
-  if (dif.length === 0) return { ok: true };
+  if (dif.length === 0) return { ok: true, sairam: c.ok ? automacoesQueSairam(m.dados, c.dados) : [] };
   const detalhe = c.ok
     ? diferencasQueContam(m.dados, c.dados)
         .filter((x) => !ignorar.some((k) => x === k || x.startsWith(`${k}.`)))

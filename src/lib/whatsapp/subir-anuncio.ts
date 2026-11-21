@@ -322,13 +322,15 @@ async function conjuntosDaLoja(clientId: string): Promise<Opcao[]> {
     }));
 }
 
-async function anunciosDaLoja(clientId: string, adsetId: string | null): Promise<Opcao[]> {
+/** Os anúncios do conjunto escolhido (só dele), ativos primeiro: são os que servem de anúncio-base. */
+async function anunciosDoConjunto(clientId: string, adsetId: string | null): Promise<Opcao[]> {
+  if (!adsetId) return [];
   const contas = (await prisma.metaAdAccount.findMany({ where: { clientId, active: true }, select: { id: true } })).map((c) => c.id);
   const ads = await prisma.metaAdCreative.findMany({
-    where: { adAccountId: { in: contas }, NOT: { status: { in: ["ARCHIVED", "DELETED"] } } },
+    where: { adAccountId: { in: contas }, adsetId, NOT: { status: { in: ["ARCHIVED", "DELETED"] } } },
     select: { adId: true, adName: true, status: true, adsetId: true },
   });
-  const ordem = (a: { status: string | null; adsetId: string | null }) => (a.adsetId === adsetId ? 0 : 2) + (a.status === "ACTIVE" ? 0 : 1);
+  const ordem = (a: { status: string | null }) => (a.status === "ACTIVE" ? 0 : 1);
   return ads
     .sort((a, b) => ordem(a) - ordem(b) || a.adName.localeCompare(b.adName))
     .map((a) => ({ id: a.adId, rotulo: `${a.adName}${a.status === "ACTIVE" ? "" : " (pausado)"}` }));
@@ -664,7 +666,7 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
 
   // ── 4. Anúncio-base: o primeiro do conjunto que dá pra duplicar ──────
   if (!c.baseAdId || !c.base) {
-    const candidatos = await anunciosDaLoja(loja.id, c.adsetId);
+    const candidatos = await anunciosDoConjunto(loja.id, c.adsetId);
     const motivos: string[] = [];
     // Quando a pessoa pediu pra trocar o anúncio-base, mostra a lista em vez de escolher sozinho.
     for (const cand of c.etapa === "base" ? [] : candidatos.slice(0, 4)) {
@@ -677,14 +679,19 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
     }
     if (!c.baseAdId || !c.base) {
       if (candidatos.length === 0) {
-        await salvar(c, { adsetId: null, adsetNome: null, campanhaNome: null }, agora);
-        return `${aviso}A ${negrito(loja.companyName)} não tem anúncio nenhum pra eu duplicar. Cria o primeiro pelo Gerenciador.`;
+        const vazio = c.adsetNome ?? "";
+        const conjuntos = await conjuntosDaLoja(loja.id);
+        await salvar(c, { etapa: "conjunto", opcoes: conjuntos, adsetId: null, adsetNome: null, campanhaNome: null }, agora);
+        return (
+          `${aviso}O conjunto ${negrito(vazio)} não tem anúncio pra eu duplicar (o anúncio-base tem que ser de dentro do conjunto). ` +
+          `Escolhe outro, responde com o número:\n${listaNumerada(conjuntos.slice(0, MAX_NA_LISTA))}`
+        );
       }
       const pediuTroca = c.etapa === "base";
       await salvar(c, { etapa: "base", opcoes: candidatos }, agora);
       return (
         `${aviso}${pediuTroca ? "" : `Não achei sozinho um anúncio bom pra duplicar${motivos[0] ? ` (${motivos[0]})` : ""}. `}` +
-        `Qual anúncio da ${negrito(loja.companyName)} eu uso como molde? Só serve anúncio de foto ou carrossel. Responde com o número:\n` +
+        `Qual anúncio do conjunto ${negrito(c.adsetNome ?? "")} eu uso como molde? Só serve anúncio de foto ou carrossel. Responde com o número:\n` +
         listaNumerada(candidatos.slice(0, MAX_NA_LISTA))
       );
     }

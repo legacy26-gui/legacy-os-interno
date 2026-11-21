@@ -149,12 +149,15 @@ export function Formulario({
   const conjunto = conjuntos.find((c) => c.id === conjuntoId) ?? null;
   const carro = estoque.find((c) => c.id === carroId) ?? null;
 
-  // Os anúncios pra duplicar: os do próprio conjunto primeiro, depois os da campanha, depois o resto da loja.
-  const bases = useMemo(() => {
-    const ordem = (a: AnuncioOpt) => (a.conjuntoId === conjuntoId ? 0 : a.campanhaId === campanhaId ? 1 : 2) * 10 + (a.status === "ACTIVE" ? 0 : 1);
-    return [...anuncios].sort((a, b) => ordem(a) - ordem(b));
-  }, [anuncios, conjuntoId, campanhaId]);
-  const anunciosNoMolde = anuncios.filter((a) => a.conjuntoId === conjuntoId && a.status !== "DELETED" && a.status !== "ARCHIVED").length;
+  // Os anúncios pra duplicar: só os do conjunto escolhido (ativos primeiro).
+  const bases = useMemo(
+    () =>
+      anuncios
+        .filter((a) => !!conjuntoId && a.conjuntoId === conjuntoId && a.status !== "DELETED" && a.status !== "ARCHIVED")
+        .sort((a, b) => (a.status === "ACTIVE" ? 0 : 1) - (b.status === "ACTIVE" ? 0 : 1) || a.nome.localeCompare(b.nome)),
+    [anuncios, conjuntoId],
+  );
+  const anunciosNoMolde = bases.length;
 
   async function escolherBase(id: string) {
     setBaseId(id);
@@ -180,7 +183,9 @@ export function Formulario({
   function escolherConjunto(id: string) {
     setConjuntoId(id);
     setFotos((fs) => fs.map((f) => ({ ...f, hash: undefined, hashDoConjunto: undefined })));
-    const primeiro = [...anuncios].filter((a) => a.conjuntoId === id).sort((a, b) => (a.status === "ACTIVE" ? 0 : 1) - (b.status === "ACTIVE" ? 0 : 1))[0];
+    const primeiro = [...anuncios]
+      .filter((a) => a.conjuntoId === id && a.status !== "DELETED" && a.status !== "ARCHIVED")
+      .sort((a, b) => (a.status === "ACTIVE" ? 0 : 1) - (b.status === "ACTIVE" ? 0 : 1))[0];
     void escolherBase(primeiro?.id ?? "");
   }
 
@@ -436,13 +441,16 @@ export function Formulario({
         <h2 className="font-semibold">2. Qual anúncio duplicar</h2>
         <p className="text-sm text-foreground-muted">Do anúncio escolhido eu copio a página que assina, o botão e o rastreamento. Troco só as fotos, a legenda, o título e (se você quiser) o link. Funciona com anúncio de foto ou carrossel.</p>
         <select className={campo} value={baseId} disabled={!conjuntoId} onChange={(e) => void escolherBase(e.target.value)}>
-          <option value="">{conjuntoId ? "Escolha…" : "Escolha o conjunto antes"}</option>
+          <option value="">{!conjuntoId ? "Escolha o conjunto antes" : bases.length ? "Escolha…" : "Este conjunto não tem anúncio"}</option>
           {bases.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.conjuntoId === conjuntoId ? "● " : ""}{a.nome}{a.status && a.status !== "ACTIVE" ? " (pausado)" : ""}
+              {a.nome}{a.status && a.status !== "ACTIVE" ? " (pausado)" : ""}
             </option>
           ))}
         </select>
+        {conjuntoId && bases.length === 0 && (
+          <p className="text-sm text-foreground-muted">Este conjunto não tem anúncio pra duplicar. Escolhe outro conjunto, ou cria o primeiro anúncio dele pelo Gerenciador.</p>
+        )}
         {base.carregando && <p className="text-sm text-foreground-muted flex items-center gap-2"><Loader2 size={14} className="animate-spin" /> Lendo o anúncio na Meta…</p>}
         {base.erro && <p className="text-sm text-red-500 flex items-start gap-2"><TriangleAlert size={16} className="shrink-0 mt-0.5" /> {base.erro}</p>}
         {base.formato && !base.erro && (

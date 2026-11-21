@@ -64,12 +64,36 @@ export interface AlvoPendente {
   nivel?: "conjunto";
 }
 
-export interface AcaoPendente {
+export interface AcaoDePausa {
   tipo: "pausar-anuncios";
   alvos: AlvoPendente[];
   /** A frase que a pessoa escreveu — vai pro registro da ação. */
   pedido: string;
 }
+
+/**
+ * "Vilela vendeu o Versa": registrar a venda no Controle de Vendas e tirar o carro do ar,
+ * depois de a pessoa conferir loja e carro. Só o dono (ADMIN) usa — ver venda-no-privado.ts.
+ */
+export interface AcaoDeVenda {
+  tipo: "registrar-venda";
+  clientId: string;
+  loja: string;
+  carro: string;
+  /** Todos os anúncios do carro, de qualquer status (a venda vem depois da pausa, às vezes). */
+  ids: string[];
+  /** O valor que a pessoa disse. */
+  valorCents: number | null;
+  /** O preço que o anúncio traz — usado quando ninguém disse o valor. */
+  precoDoAnuncioCents: number | null;
+  /** `null` = ainda não se sabe, e o robô pergunta. */
+  origemLead: boolean | null;
+  /** Aviso a repetir na confirmação (a venda já estava registrada, a loja não usa o controle…). */
+  observacao?: string;
+  pedido: string;
+}
+
+export type AcaoPendente = AcaoDePausa | AcaoDeVenda;
 
 // ───────────────────────── Ler a resposta do "sim" ─────────────────────────
 
@@ -267,7 +291,7 @@ export interface PedidoMontado {
   /** O que sai na mensagem de volta. */
   resposta: string;
   /** Se há algo certo pra pausar, é isto que o "sim" executa. */
-  pendente: AcaoPendente | null;
+  pendente: AcaoDePausa | null;
 }
 
 interface AnuncioDaLoja extends AnuncioConhecido {
@@ -563,10 +587,27 @@ export async function lerPendente(
   if (!c?.acaoPendente || !c.propostaEm) return { acao: null, venceu: false };
 
   const venceu = agora.getTime() - c.propostaEm.getTime() > CONFIRMACAO_VALE_MS;
-  const a = c.acaoPendente as Partial<AcaoPendente> | null;
+  const bruto = c.acaoPendente as Record<string, unknown> | null;
 
   // O que vem do banco é JSON livre: validado, não assumido. Pendência torta
   // vira pendência nenhuma — nunca uma pausa feita em cima de dado estranho.
+  if (bruto?.tipo === "registrar-venda") {
+    const v = bruto as Partial<AcaoDeVenda>;
+    const certa =
+      typeof v.clientId === "string" &&
+      typeof v.loja === "string" &&
+      typeof v.carro === "string" &&
+      typeof v.pedido === "string" &&
+      Array.isArray(v.ids) &&
+      v.ids.length > 0 &&
+      v.ids.every((x) => typeof x === "string") &&
+      (v.valorCents === null || typeof v.valorCents === "number") &&
+      (v.precoDoAnuncioCents === null || typeof v.precoDoAnuncioCents === "number") &&
+      (v.origemLead === null || typeof v.origemLead === "boolean");
+    return certa ? { acao: v as AcaoDeVenda, venceu } : { acao: null, venceu: false };
+  }
+
+  const a = bruto as Partial<AcaoDePausa> | null;
   const valida =
     a?.tipo === "pausar-anuncios" &&
     Array.isArray(a.alvos) &&
@@ -582,7 +623,7 @@ export async function lerPendente(
     );
   if (!valida) return { acao: null, venceu: false };
 
-  return { acao: a as AcaoPendente, venceu };
+  return { acao: a as AcaoDePausa, venceu };
 }
 
 export async function guardarPendente(
@@ -642,7 +683,7 @@ export interface ResultadoDaPausa {
  */
 export async function executarPausa(
   pessoa: PessoaDaCasa & { name: string },
-  acao: AcaoPendente,
+  acao: AcaoDePausa,
 ): Promise<ResultadoDaPausa> {
   const feitos = new Map<string, string[]>();
   const falhas: string[] = [];

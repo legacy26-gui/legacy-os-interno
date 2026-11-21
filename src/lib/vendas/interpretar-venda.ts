@@ -127,16 +127,19 @@ export function precoNoAnuncio(textos: string[]): number | null {
 
 const NAO_VEIO_DO_ANUNCIO = [
   // negação explícita
-  /\b(nao|nem)\s+(foi|veio|era|e)\s+(de\s+|do\s+|da\s+)?(lead|leads|anuncio|anuncios|trafego|instagram|propaganda|campanha)\b/,
+  /\b(nao|nem)\s+(foi|veio|era|e)\s+(de\s+|do\s+|da\s+)?(lead|leads|anuncio|anuncios|trafego|instagram|propaganda|campanha|patrocinado|patrocinada|patrocinados|patrocinio|impulsionado|impulsionada|impulsionamento)\b/,
   /\bfora\s+d[oa]\s+(anuncio|lead|trafego)\b/,
-  /\bsem\s+(lead|anuncio)\b/,
+  /\bsem\s+(lead|anuncio|patrocinado|patrocinio|impulsionamento)\b/,
   // o que já diz que foi outro caminho
-  /\b(balcao|indicacao|indicou|recompra|presencial)\b/,
+  /\b(balcao|indicacao|indicou|recompra|presencial|organico|organica)\b/,
   /\bcliente\s+antigo\b/,
   /\b(passou|veio|foi|entrou)\s+na\s+loja\b/,
 ];
 
-const VEIO_DO_ANUNCIO = /\b(lead|leads|anuncio|anuncios|instagram|insta|facebook|trafego|propaganda|campanha)\b/;
+// "Patrocinado" é como a loja chama o anúncio pago ("foi do patrocinado"): o primeiro uso real
+// no grupo da Vilela Motors não foi entendido por falta desta palavra, e o robô não registrou.
+const VEIO_DO_ANUNCIO =
+  /\b(lead|leads|anuncio|anuncios|instagram|insta|facebook|trafego|propaganda|campanha|patrocinado|patrocinada|patrocinados|patrocinio|impulsionado|impulsionada|impulsionamento)\b/;
 
 /**
  * A venda veio de lead do anúncio?

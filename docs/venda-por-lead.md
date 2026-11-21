@@ -168,3 +168,28 @@ Depois de tirar os anúncios de um carro (no grupo ou no privado, com ou sem a p
 "Ligado" é o que a pessoa deixou ligado (status não pausado/arquivado/excluído); o robô não
 usa o status efetivo, que também fica "pausado" quando falta saldo. Anúncio ainda não
 sincronizado (sem conjunto no cadastro) não conta: sem saber o que há dentro, não pausa.
+
+
+## Pelo privado, só o dono (quando o grupo não entende)
+
+O grupo só funciona se o robô entende a frase. Quando não entende (foi o caso do Vilela: *"foi do
+patrocinado"* não era reconhecido como lead), o dono manda a mesma frase **pro robô no privado**:
+
+> vilela vendeu o versa, foi do patrocinado
+
+O robô **não faz nada na hora**. Responde dizendo **loja, carro, origem, valor** e quais anúncios
+vai pausar, e só age com um **"sim"** (vale 10 minutos, só pra próxima mensagem):
+
+- origem não dita → pergunta *lead* ou *balcão*; valor não dito → usa o preço do anúncio (e diz que
+  foi isso); sem preço no anúncio → pergunta; "foi 70 mil" corrige o valor antes do "sim";
+- **lead**: registra no Controle de Vendas (mesmo `registrar` do grupo) e pausa os anúncios do carro
+  que estão no ar; **balcão / loja fora do controle / venda já registrada**: só pausa;
+- devolve o texto de parabéns **pronto, sem mandar** no grupo da loja (quem manda é o dono);
+- carro em mais de uma loja, loja que não existe, mais de um carro na frase: pergunta, não chuta.
+
+Só **ADMIN**. Gestor continua com "pausa o X da loja Y" (com confirmação); "vendeu" no privado de
+gestor segue sendo só conversa. Código: `src/lib/vendas/venda-no-privado.ts` (+ a pendência
+`registrar-venda` em `pausar-no-privado.ts`). Teste: `t-venda-privado.mjs`.
+
+A origem agora reconhece *patrocinado, impulsionado, impulsionamento* como anúncio, e *orgânico* como
+fora de lead (`interpretar-venda.ts`).

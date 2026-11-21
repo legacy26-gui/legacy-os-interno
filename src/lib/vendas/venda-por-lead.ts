@@ -74,10 +74,26 @@ export interface ResultadoDaVenda {
 const NADA: ResultadoDaVenda = { fim: false, recado: null, passo: null };
 
 // Os ids vão entre vírgulas — ",1,2," — pra procurar ",1," nunca casar dentro de ",11,".
-const marcar = (ids: string[]) => `,${ids.join(",")},`;
+export const marcar = (ids: string[]) => `,${ids.join(",")},`;
 const desmarcar = (texto: string) => texto.split(",").filter(Boolean);
 
-function nomeLimpo(anuncios: AnuncioConhecido[]): string {
+/** O carro (qualquer anúncio dele) já virou venda do robô nos últimos 30 dias? */
+export async function vendaJaRegistrada(clientId: string, ids: string[], agora: Date): Promise<boolean> {
+  const hoje = diaDaCasaComoData(agora);
+  const limite = new Date(hoje.getTime() - DIAS_CONTRA_DUPLICATA * 24 * 60 * 60 * 1000);
+  const achada = await prisma.clientSale.findFirst({
+    where: {
+      clientId,
+      origem: "robo-whatsapp",
+      soldAt: { gte: limite },
+      OR: ids.map((id) => ({ anuncioIds: { contains: `,${id},` } })),
+    },
+    select: { id: true },
+  });
+  return !!achada;
+}
+
+export function nomeLimpo(anuncios: AnuncioConhecido[]): string {
   return (
     anuncios.find((a) => !/c[oó]pia|v[ií]deo/i.test(a.nome))?.nome ??
     anuncios[0]?.nome ??
@@ -89,7 +105,7 @@ function mesmoConjunto(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((x) => b.includes(x));
 }
 
-async function anunciosDaLoja(contas: string[]) {
+export async function anunciosDaLoja(contas: string[]) {
   // Todos os anúncios, qualquer status: a venda pode vir depois da pausa.
   const criativos = await prisma.metaAdCreative.findMany({
     where: { adAccountId: { in: contas } },
@@ -103,7 +119,7 @@ async function anunciosDaLoja(contas: string[]) {
   return conhecidos;
 }
 
-interface Estado {
+export interface Estado {
   loja: LojaParaVenda;
   grupoId: string;
   carro: string;
@@ -115,6 +131,8 @@ interface Estado {
   quem: string | null;
   agora: Date;
   messageId?: string | null;
+  /** De onde veio o aviso, pro recado ao gestor. Padrão: "no grupo". */
+  onde?: string;
 }
 
 /**
@@ -235,17 +253,7 @@ export async function tratarVendaNoGrupo(a: {
   }
 
   // O mesmo carro já registrado: o aviso repetido não vira outra venda.
-  const hoje = diaDaCasaComoData(agora);
-  const limite = new Date(hoje.getTime() - DIAS_CONTRA_DUPLICATA * 24 * 60 * 60 * 1000);
-  const jaRegistrada = await prisma.clientSale.findFirst({
-    where: {
-      clientId: loja.id,
-      origem: "robo-whatsapp",
-      soldAt: { gte: limite },
-      OR: ids.map((id) => ({ anuncioIds: { contains: `,${id},` } })),
-    },
-    select: { id: true },
-  });
+  const jaRegistrada = await vendaJaRegistrada(loja.id, ids, agora);
   if (jaRegistrada) {
     await prisma.vendaAguardandoDados.deleteMany({ where: { grupoId } });
     await anotar(a.messageId, grupoId, "venda-ja-registrada", nome);
@@ -334,7 +342,7 @@ async function concluirOuPerguntar(e: Estado): Promise<{ recado: string; passo: 
 }
 
 /** Grava no Controle de Vendas e devolve o parabéns. */
-async function registrar(
+export async function registrar(
   e: Estado,
   valorCents: number,
   valorDoAnuncio: boolean,
@@ -396,7 +404,7 @@ async function registrar(
       `• Gasto de anúncio do carro: ${dinheiro(gastoCents)}` +
       (leads > 0 ? ` · ${leads} ${leads === 1 ? "lead" : "leads"}` : "") +
       `\n` +
-      `• Quem avisou no grupo: ${e.quem ?? "não identificado"}\n\n` +
+      `• Quem avisou ${e.onde ?? "no grupo"}: ${e.quem ?? "não identificado"}\n\n` +
       `Se estiver errada, apaga em Marcar Venda → Últimas vendas marcadas.`,
   );
 

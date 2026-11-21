@@ -19,6 +19,7 @@ import {
   respostaDeConfirmacao,
   tomarPendente,
 } from "./pausar-no-privado";
+import { executarVendaNoPrivado, lerRespostaDaVenda, montarVendaNoPrivado } from "@/lib/vendas/venda-no-privado";
 
 // A IA atendendo no privado do WhatsApp.
 //
@@ -80,6 +81,10 @@ export type DesfechoPrivado =
   | { tipo: "pedido-sem-alvo"; userId: string }
   /** Disse "sim" e o robô pausou — pelo menos tentou. */
   | { tipo: "pausou"; userId: string; pausados: number; falhas: number }
+  /** O dono avisou uma venda: o robô disse loja e carro e espera o "sim" (ou a origem/valor que falta). */
+  | { tipo: "pediu-confirmacao-de-venda"; userId: string }
+  /** O dono confirmou a venda: registrou (se foi lead) e pausou o que estava no ar. */
+  | { tipo: "vendeu"; userId: string; registrou: boolean; pausados: number; falhas: number }
   /** Disse "não", ou mandou outra coisa: a confirmação foi descartada. */
   | { tipo: "cancelou"; userId: string }
   /** Disse "sim" tarde demais. Nada foi pausado. */
@@ -290,7 +295,45 @@ export async function atenderMensagemPrivada(
   // pessoa escrever cancela a pendência: um "sim" dito meia hora depois, sobre
   // outro assunto, não pode pausar um anúncio que ela já esqueceu ter pedido.
   const pendente = await lerPendente(pessoa.id, agora);
-  if (pendente.acao) {
+
+  // ── Uma venda esperando conferência (só o dono) ───────────────────────
+  if (pendente.acao?.tipo === "registrar-venda") {
+    const acao = pendente.acao;
+    if (pendente.venceu) {
+      await descartarPendente(pessoa.id);
+      if (respostaDeConfirmacao(m.texto) === "sim") {
+        await responder(m.telefone, "Esse pedido venceu (passou de 10 minutos) e eu não fiz nada. Me avisa a venda de novo.", m.messageId);
+        return { tipo: "confirmacao-vencida", userId: pessoa.id };
+      }
+    } else {
+      const lida = await lerRespostaDaVenda(acao, m.texto);
+      if (lida.tipo === "executar") {
+        if (!(await tomarPendente(pessoa.id))) {
+          await responder(m.telefone, "Esse pedido já foi tratado.", m.messageId);
+          return { tipo: "cancelou", userId: pessoa.id };
+        }
+        const feito = await executarVendaNoPrivado(pessoa, acao, agora, m.messageId);
+        await responder(m.telefone, feito.resposta, m.messageId);
+        await guardarMemoria(pessoa.id, [
+          ...historico,
+          { de: "gestor", texto: m.texto.slice(0, 4000) },
+          { de: "copiloto", texto: feito.resposta.slice(0, 4000) },
+        ]);
+        return { tipo: "vendeu", userId: pessoa.id, registrou: feito.registrou, pausados: feito.pausados, falhas: feito.falhas };
+      }
+      if (lida.tipo === "atualizar") {
+        await guardarPendente(pessoa.id, lida.acao, agora);
+        await responder(m.telefone, lida.resposta, m.messageId);
+        return { tipo: "pediu-confirmacao-de-venda", userId: pessoa.id };
+      }
+      await descartarPendente(pessoa.id);
+      if (lida.tipo === "cancelar") {
+        await responder(m.telefone, "Tudo bem, não registrei nem pausei nada.", m.messageId);
+        return { tipo: "cancelou", userId: pessoa.id };
+      }
+      // "outra-coisa": segue como conversa nova, já sem a pendência.
+    }
+  } else if (pendente.acao?.tipo === "pausar-anuncios") {
     const resposta = respostaDeConfirmacao(m.texto);
 
     if (resposta === "sim" && !pendente.venceu) {
@@ -333,6 +376,24 @@ export async function atenderMensagemPrivada(
       return { tipo: "cancelou", userId: pessoa.id };
     }
     // Outra mensagem: segue como conversa nova, já sem a pendência.
+  }
+
+  // ── "Vilela vendeu o Versa" (só o dono) ───────────────────────────────
+  //
+  // Registra a venda e tira o carro do ar, depois de o robô dizer loja e carro e
+  // receber o "sim". Fora do dono, "vendeu" no privado continua sendo só conversa.
+  const venda = await montarVendaNoPrivado(pessoa, m.texto, agora);
+  if (venda) {
+    if (venda.pendente) await guardarPendente(pessoa.id, venda.pendente, agora);
+    await responder(m.telefone, venda.resposta, m.messageId);
+    await guardarMemoria(pessoa.id, [
+      ...historico,
+      { de: "gestor", texto: m.texto.slice(0, 4000) },
+      { de: "copiloto", texto: venda.resposta.slice(0, 4000) },
+    ]);
+    return venda.pendente
+      ? { tipo: "pediu-confirmacao-de-venda", userId: pessoa.id }
+      : { tipo: "pedido-sem-alvo", userId: pessoa.id };
   }
 
   // ── Uma ordem de pausar ──────────────────────────────────────────────

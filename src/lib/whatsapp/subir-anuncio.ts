@@ -251,7 +251,8 @@ function soOCarro(texto: string, restanteDaLoja: string | null): string {
 
 /** "2", "2)" ou "2." → 2. */
 function numeroEscolhido(texto: string): number | null {
-  const m = /^\s*(\d{1,2})\s*[).]?\s*$/.exec(texto);
+  // "2", "2)", "2." e também "2 conjunto novo" / "12. conjunto novo": o número vem primeiro. "2021 virtus" não é o 2.
+  const m = /^\s*(\d{1,2})(?:[).:-]|\s|$)/.exec(texto);
   return m ? Number(m[1]) : null;
 }
 
@@ -419,12 +420,23 @@ async function conduzir(pessoa: Pessoa, c: Conversa, texto: string, agora: Date,
       break;
     }
     case "conjunto": {
-      const { item, filtradas } = escolherDaLista(texto, c.opcoes);
+      // "12. conjunto novo": escolhe o molde E pede o conjunto novo (um carro por conjunto), numa mensagem só.
+      const pediuNovo = /\bconjunto novo\b/.test(achatar(texto));
+      const soEscolha = texto.replace(/conjunto novo/gi, "").trim();
+      const { item, filtradas } = escolherDaLista(soEscolha, c.opcoes);
       if (!item) {
+        if (pediuNovo) {
+          await salvar(c, { duplicarConjunto: true }, agora);
+          return `Certo, conjunto novo. Agora escolhe qual conjunto é o molde (responde com o número):\n${listaNumerada(filtradas.slice(0, MAX_NA_LISTA))}`;
+        }
         return `Não entendi qual conjunto. Responde com o número (ou parte do nome):\n${listaNumerada(filtradas.slice(0, MAX_NA_LISTA))}\n\nPra desistir, escreve *cancela*.`;
       }
       const [camp, nome] = item.rotulo.includes(" › ") ? item.rotulo.split(" › ") : [null, item.rotulo];
-      await salvar(c, { adsetId: item.id, adsetNome: nome.replace(/ \(pausado\)$/, ""), campanhaNome: camp, baseAdId: null, baseNome: null, base: null, opcoes: [] }, agora);
+      await salvar(
+        c,
+        { adsetId: item.id, adsetNome: nome.replace(/ \(pausado\)$/, ""), campanhaNome: camp, baseAdId: null, baseNome: null, base: null, opcoes: [], duplicarConjunto: pediuNovo ? true : c.duplicarConjunto },
+        agora,
+      );
       break;
     }
     case "base": {

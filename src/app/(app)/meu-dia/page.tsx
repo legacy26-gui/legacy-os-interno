@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { veTodaACarteira } from "@/lib/carteira";
 import {
   estadoDaVenda,
   DIAS_VERMELHO,
@@ -41,16 +42,66 @@ import { relatoriosQueFalharam } from "@/lib/whatsapp/robo-dos-relatorios";
 // é a parte que não funciona, porque conta zerada para a campanha no mesmo
 // dia e arte cansada estraga o mês em silêncio.
 
-export default async function MeuDiaPage() {
+// Quem vê a casa inteira (dono e gerência: o Guilherme e a Andrielli) escolhe
+// de quem é o Meu Dia que está olhando, com o placar de cada uma no topo. A
+// gestora de tráfego continua vendo só o dela: `?de=` de outra pessoa é
+// ignorado pra ela.
+
+export default async function MeuDiaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ de?: string }>;
+}) {
   // requireModuleAccess e não getCurrentUser: é ele que confere a empresa
   // aberta. Esta tela lista cliente de loja, então é da agência.
   const user = await requireModuleAccess("clientes");
   const hoje = new Date();
   const hoje0 = diaDaCasaComoData();
+  const { de } = await searchParams;
+
+  // ── De quem é o dia que está na tela ─────────────────────────────────
+  const veTodas = veTodaACarteira(user);
+  const equipe = veTodas
+    ? await prisma.user.findMany({
+        where: {
+          active: true,
+          managedClients: { some: { status: { not: "CANCELADO" } } },
+        },
+        select: {
+          id: true,
+          name: true,
+          _count: {
+            select: {
+              managedClients: { where: { status: { not: "CANCELADO" } } },
+            },
+          },
+        },
+        orderBy: { name: "asc" },
+      })
+    : [];
+  const conferidosHojeNaCasa = veTodas
+    ? await prisma.clienteConferido.findMany({
+        where: { dia: hoje0, client: { status: { not: "CANCELADO" } } },
+        select: { client: { select: { managerId: true } } },
+      })
+    : [];
+  const conferidosPorPessoa = new Map<string, number>();
+  for (const { client } of conferidosHojeNaCasa) {
+    const m = client.managerId;
+    if (m) conferidosPorPessoa.set(m, (conferidosPorPessoa.get(m) ?? 0) + 1);
+  }
+  // Quem está na tela: a pessoa pedida (se quem pede vê todas e ela existe na
+  // equipe), senão a própria carteira; pra quem vê todas e não tem carteira, a
+  // primeira da equipe.
+  const pedida = veTodas && de ? equipe.find((p) => p.id === de) ?? null : null;
+  const temCarteira = !veTodas || equipe.some((p) => p.id === user.id);
+  const dono = pedida ?? (temCarteira ? { id: user.id, name: user.name } : equipe[0] ?? { id: user.id, name: user.name });
+  const donoId = dono.id;
+  const ehOMeu = donoId === user.id;
 
   const [clients, vendas, conferidos, revisoesDeHoje] = await Promise.all([
     prisma.client.findMany({
-      where: { managerId: user.id, status: { not: "CANCELADO" } },
+      where: { managerId: donoId, status: { not: "CANCELADO" } },
       select: {
         id: true,
         companyName: true,
@@ -72,14 +123,14 @@ export default async function MeuDiaPage() {
     prisma.clientSale.groupBy({ by: ["clientId"], _max: { soldAt: true } }),
     // Quem já foi conferido hoje.
     prisma.clienteConferido.findMany({
-      where: { dia: hoje0, client: { managerId: user.id } },
+      where: { dia: hoje0, client: { managerId: donoId } },
       select: { clientId: true, quem: { select: { name: true } } },
     }),
     // O que já foi preenchido HOJE. Sem isto o formulário voltava vazio logo
     // depois de salvar, e quem reabria depois do almoço não sabia se já
     // tinha passado por ali — e remarcava.
     prisma.dailyReview.findMany({
-      where: { createdAt: { gte: hoje0 }, client: { managerId: user.id } },
+      where: { createdAt: { gte: hoje0 }, client: { managerId: donoId } },
       orderBy: { createdAt: "asc" },
       select: {
         clientId: true,
@@ -114,7 +165,7 @@ export default async function MeuDiaPage() {
   const [lojasComConta, jaEnviados] = await Promise.all([
     prisma.client.findMany({
       where: {
-        managerId: user.id,
+        managerId: donoId,
         status: { not: "CANCELADO" },
         metaAdAccounts: { some: { active: true } },
       },
@@ -122,7 +173,7 @@ export default async function MeuDiaPage() {
       orderBy: { companyName: "asc" },
     }),
     prisma.relatorioEnviado.findMany({
-      where: { semana, client: { managerId: user.id } },
+      where: { semana, client: { managerId: donoId } },
       select: { clientId: true },
     }),
   ]);
@@ -226,11 +277,53 @@ export default async function MeuDiaPage() {
           <ClipboardList size={20} className="text-accent" /> Meu Dia
         </h1>
         <p className="text-sm text-foreground-muted mt-0.5">
-          Sua carteira inteira — {user.name.split(" ")[0]}. Marque a caixinha de
-          cada cliente que você falou hoje. A setinha abre as observações da
-          loja e o que ficou combinado.
+          {ehOMeu ? (
+            <>
+              Sua carteira inteira — {user.name.split(" ")[0]}. Marque a caixinha de
+              cada cliente que você falou hoje. A setinha abre as observações da
+              loja e o que ficou combinado.
+            </>
+          ) : (
+            <>
+              Você está vendo o dia da <strong>{dono.name.split(" ")[0]}</strong>: a
+              carteira dela, o que já foi conferido hoje e o que falta.
+            </>
+          )}
         </p>
       </div>
+
+      {/* Dono e gerência: o placar de cada uma, e um clique abre o dia dela. */}
+      {equipe.length > 0 && (
+        <nav className="flex flex-wrap gap-2" aria-label="De quem é o Meu Dia">
+          {equipe.map((p) => {
+            const totalDela = p._count.managedClients;
+            const feitosDela = Math.min(conferidosPorPessoa.get(p.id) ?? 0, totalDela);
+            const fechou = totalDela > 0 && feitosDela === totalDela;
+            const ativa = p.id === donoId;
+            return (
+              <Link
+                key={p.id}
+                href={p.id === user.id ? "/meu-dia" : `/meu-dia?de=${p.id}`}
+                aria-current={ativa ? "page" : undefined}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm transition-colors ${
+                  ativa
+                    ? "border-accent bg-accent/10 text-foreground font-semibold"
+                    : "border-border bg-surface text-foreground-muted hover:text-foreground"
+                }`}
+              >
+                {p.id === user.id ? "Eu" : p.name.split(" ")[0]}
+                <span
+                  className={`tabular-nums text-xs ${
+                    fechou ? "text-emerald-500 font-semibold" : ""
+                  }`}
+                >
+                  {feitosDela}/{totalDela}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+      )}
 
       {/* O que não pode passar batido vem antes da lista. */}
       <BlocoMetaDoDia painel={painelMeta} />
@@ -330,8 +423,9 @@ export default async function MeuDiaPage() {
 
       {total === 0 ? (
         <p className="text-sm text-foreground-muted rounded-xl border border-border bg-surface p-8 text-center">
-          Nenhum cliente atribuído a você ainda. Fale com seu gestor para
-          receber sua carteira.
+          {ehOMeu
+            ? "Nenhum cliente atribuído a você ainda. Fale com seu gestor para receber sua carteira."
+            : `Nenhum cliente atribuído à ${dono.name.split(" ")[0]}.`}
         </p>
       ) : (
         <div className="flex flex-col gap-1.5">

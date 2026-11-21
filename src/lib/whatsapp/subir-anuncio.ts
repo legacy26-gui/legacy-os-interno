@@ -756,7 +756,7 @@ function resumo(c: Conversa, fotos: number, estoqueUsado: string, orcamentoMolde
   ].filter((x): x is string => x !== null);
   const avisos = [
     ...(c.duplicarConjunto && anunciosNoMolde > 1
-      ? [`O conjunto molde tem ${anunciosNoMolde} anúncios. Na cópia eu deixo só o do anúncio-base (trocado por este carro) e apago ${anunciosNoMolde === 2 ? "o outro" : `os outros ${anunciosNoMolde - 1}`}. O conjunto original não é mexido.`]
+      ? [`O conjunto molde tem ${anunciosNoMolde} anúncios. O conjunto novo fica só com o anúncio deste carro (os outros não vão junto). O conjunto original não é mexido.`]
       : []),
     ...c.avisosDaLegenda,
   ].map((a) => `⚠️ ${a}`).join("\n");

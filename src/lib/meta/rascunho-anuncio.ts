@@ -382,6 +382,24 @@ async function lerRecursosDoCriativo(id: string): Promise<{ graus: unknown; mult
 }
 
 /**
+ * Os recursos que a Meta DESCONTINUOU no criativo: mandar o campo faz ela recusar ("O recurso de inclusão do campo
+ * de aprimoramentos padrão no criativo foi descontinuado. Defina recursos individuais."). Anúncio antigo ainda tem
+ * esse campo gravado; o criativo novo vai sem ele, e a conferência abaixo pega o que a Meta ligar a mais.
+ */
+const RECURSOS_DESCONTINUADOS = ["standard_enhancements"];
+
+/** As escolhas do base, sem os recursos descontinuados. Pura. */
+export function grausParaEnviar(graus: unknown, desligar: string[] = []): Record<string, unknown> {
+  const g = JSON.parse(JSON.stringify(objeto(graus) ?? {})) as Record<string, unknown>;
+  const spec = { ...((objeto(g.creative_features_spec) ?? {}) as Record<string, unknown>) };
+  for (const k of RECURSOS_DESCONTINUADOS) delete spec[k];
+  for (const k of desligar) if (k !== "contextual_multi_ads" && !RECURSOS_DESCONTINUADOS.includes(k)) spec[k] = { enroll_status: "OPT_OUT" };
+  if (Object.keys(spec).length > 0) g.creative_features_spec = spec;
+  else delete g.creative_features_spec;
+  return g;
+}
+
+/**
  * Cria o criativo com as mesmas escolhas do base e confere o que a Meta gravou. Ver o comentário acima.
  * Devolve o id, ou o motivo de não ter dado (e aí o anúncio não deve ser criado).
  */
@@ -392,12 +410,7 @@ async function criarCriativoIgualAoBase(
 ): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
   const desligar: string[] = [];
   for (let tentativa = 1; tentativa <= 2; tentativa++) {
-    const graus = JSON.parse(JSON.stringify(base.graus ?? {})) as Record<string, unknown>;
-    if (desligar.some((k) => k !== "contextual_multi_ads")) {
-      const spec = (objeto(graus.creative_features_spec) ?? {}) as Record<string, unknown>;
-      for (const k of desligar) if (k !== "contextual_multi_ads") spec[k] = { enroll_status: "OPT_OUT" };
-      graus.creative_features_spec = spec;
-    }
+    const graus = grausParaEnviar(base.graus, desligar);
     const enviar = { ...campos };
     if (Object.keys(graus).length > 0) enviar.degrees_of_freedom_spec = JSON.stringify(graus);
     // Anúncios com vários anunciantes: o do base; sem nada no base, DESLIGADO (a Meta liga se ninguém disser).
@@ -461,18 +474,20 @@ async function contaDoConjunto(clientId: string, adsetId: string) {
 //
 // Loja que trabalha "um carro por conjunto" (a Vilela): o anúncio novo não entra num conjunto que já existe —
 // o conjunto escolhido serve de MOLDE (público, localização, otimização) e é duplicado pela própria Meta
-// (`/copies`, cópia completa, com os anúncios de dentro). O conjunto novo nasce PAUSADO, ganha o nome do carro e,
-// se o gestor disser, outro orçamento diário. O resto fica igual ao molde (e é conferido).
+// (`/copies`, só o conjunto, sem os anúncios de dentro). O conjunto novo nasce PAUSADO, ganha o nome do carro e,
+// se o gestor disser, outro orçamento diário. O resto fica igual ao molde (e é conferido campo a campo). O anúncio do
+// carro novo é criado nele a partir do anúncio-base, com a mesma conferência de Advantage+ do modo normal.
 //
-// Molde com mais de um anúncio: na CÓPIA fica só a cópia do anúncio-base (que recebe o criativo do carro novo) e as
-// outras cópias são apagadas. Só se apaga anúncio que está dentro da cópia e que não é do molde: o original não é mexido.
+// Não é cópia completa (com os anúncios) porque a Meta recusa copiar anúncio que tem os "aprimoramentos padrão"
+// antigos do Advantage+. E assim o conjunto novo já nasce só com o anúncio do carro novo, tenha o molde quantos
+// anúncios tiver. Se a Meta trouxer algum anúncio junto, ele é apagado na cópia (nunca um id do molde).
 
 /** Orçamento diário aceito pra um conjunto novo (centavos): de R$ 1 a R$ 1.000 por dia, contra erro de digitação. */
 export const ORCAMENTO_MINIMO_CENTS = 100;
 export const ORCAMENTO_MAXIMO_CENTS = 100_000;
 
 export type ResultadoDoConjunto =
-  | { ok: true; adsetId: string; nome: string; orcamentoCents: number | null; avisos: AvisoDoConjunto[]; anuncioCopiadoId: string }
+  | { ok: true; adsetId: string; nome: string; orcamentoCents: number | null; avisos: AvisoDoConjunto[]; anuncioCopiadoId: string | null }
   | { ok: false; erro: string };
 
 export interface AnuncioNaMeta {
@@ -541,9 +556,9 @@ async function apagarSobrasDaCopia(p: {
 
 export async function duplicarConjunto(p: {
   clientId: string;
-  /** O conjunto que serve de molde. Se tiver mais de um anúncio, na CÓPIA só fica o do anúncio-base. */
+  /** O conjunto que serve de molde. Só o conjunto é copiado; os anúncios dele não vão junto. */
   adsetId: string;
-  /** O anúncio-base: tem que estar dentro do molde. A cópia dele é a que vira o anúncio do carro novo. */
+  /** O anúncio-base (de onde o anúncio do carro novo herda página, botão e rastreamento). */
   baseAdId: string;
   nome: string;
   /** Orçamento diário do conjunto novo (centavos). `null` = o mesmo do molde. */
@@ -562,13 +577,6 @@ export async function duplicarConjunto(p: {
   // O anúncio-base tem que estar dentro do molde: a cópia dele é o que vira o anúncio do carro novo.
   const anunciosDoMolde = await anunciosDoConjuntoNaMeta(p.adsetId);
   if (!anunciosDoMolde) return { ok: false, erro: "A Meta não me deixou ler os anúncios desse conjunto. Tenta de novo daqui a pouco." };
-  const baseNoMolde = anunciosDoMolde.find((a) => a.id === p.baseAdId) ?? null;
-  if (!baseNoMolde) {
-    return {
-      ok: false,
-      erro: `O anúncio-base não está dentro desse conjunto. Pra duplicar o conjunto, escolhe como base um dos anúncios dele.`,
-    };
-  }
   const idsDoMolde = new Set(anunciosDoMolde.map((a) => a.id));
   const avisos: AvisoDoConjunto[] = [];
   // Orçamento só dá pra trocar quando o molde tem orçamento DIÁRIO no próprio conjunto.
@@ -583,9 +591,11 @@ export async function duplicarConjunto(p: {
     orcamento = null;
   }
 
-  // 1. A cópia COMPLETA, pausada: conjunto e o anúncio de dentro, do jeito que a Meta copia (configurações inclusas).
+  // 1. A cópia do CONJUNTO, pausada, sem os anúncios de dentro. (A cópia completa a Meta recusa quando o anúncio do
+  // molde tem os "aprimoramentos padrão" antigos do Advantage+: "foi descontinuado. Defina recursos individuais".)
+  // O anúncio do carro novo é criado no conjunto novo a partir do anúncio-base, igual ao modo normal.
   const copia = await escreverNaGraph<{ copied_adset_id?: string }>(`${p.adsetId}/copies`, {
-    deep_copy: "true",
+    deep_copy: "false",
     status_option: "PAUSED",
     rename_options: JSON.stringify({ rename_strategy: "NO_RENAME" }),
   });
@@ -630,37 +640,28 @@ export async function duplicarConjunto(p: {
     };
   }
 
-  // 2c. Os anúncios que vieram na cópia: fica só a cópia do anúncio-base (que vira o do carro novo); o resto é apagado
-  // AQUI, na cópia. O molde não é mexido.
+  // 2c. A cópia é SÓ do conjunto: o anúncio do carro novo é criado nele depois. Se por acaso a Meta trouxe anúncio
+  // junto, ele é apagado aqui, na cópia (nunca um id do molde), pra o conjunto novo ter só o do carro novo.
   const nomeFinal = ajuste.ok ? nome : molde.nome;
   const anunciosDaCopia = await anunciosDoConjuntoNaMeta(novo);
-  if (!anunciosDaCopia || anunciosDaCopia.length === 0) {
-    return {
-      ok: false,
-      erro: `O conjunto foi duplicado, mas ${anunciosDaCopia ? "veio sem anúncio dentro" : "não consegui ler os anúncios dele"}. Não subi o anúncio: apaga o conjunto "${nomeFinal}" no Gerenciador.`,
-    };
+  if (!anunciosDaCopia) {
+    return { ok: false, erro: `O conjunto foi duplicado, mas não consegui ler os anúncios dele. Não subi o anúncio: apaga o conjunto "${nomeFinal}" no Gerenciador.` };
   }
-  const manter = copiaDoBase(anunciosDaCopia, baseNoMolde);
-  if (!manter || idsDoMolde.has(manter.id)) {
-    return {
-      ok: false,
-      erro: `O conjunto foi duplicado com ${anunciosDaCopia.length} anúncios e não consegui saber com certeza qual é a cópia do anúncio-base (nomes iguais). Não subi nem apaguei nada: apaga o conjunto "${nomeFinal}" no Gerenciador.`,
-    };
-  }
-  if (anunciosDaCopia.length > 1) {
-    const { apagados, falhas } = await apagarSobrasDaCopia({
-      clientId: p.clientId, copiaId: novo, manter: manter.id, anunciosDaCopia, idsDoMolde, pedidoPor: p.pedidoPor, quemId: p.quemId,
+  if (anunciosDaCopia.length > 0) {
+    const { falhas } = await apagarSobrasDaCopia({
+      clientId: p.clientId, copiaId: novo, manter: "", anunciosDaCopia, idsDoMolde, pedidoPor: p.pedidoPor, quemId: p.quemId,
     });
+    if (falhas.length) {
+      avisos.push({ tipo: "conjunto", texto: `Vieram anúncios do molde junto na cópia e a Meta não deixou apagar (${falhas.join(", ").slice(0, 200)}): estão pausados no conjunto novo, apaga no Gerenciador.` });
+    }
+  }
+  if (anunciosDoMolde.length > 1) {
     avisos.push({
       tipo: "conjunto",
-      texto:
-        `O conjunto molde tinha ${anunciosDoMolde.length} anúncios: na cópia mantive só o do anúncio-base (trocado pelo carro novo)` +
-        (apagados ? ` e apaguei ${apagados === 1 ? "o outro" : `os outros ${apagados}`}` : "") +
-        `. O conjunto original não foi mexido.` +
-        (falhas.length ? ` A Meta não deixou apagar ${falhas.length === 1 ? "um deles" : `${falhas.length} deles`} (${falhas.join(", ").slice(0, 200)}): ${falhas.length === 1 ? "ficou pausado" : "ficaram pausados"} no conjunto novo, apaga no Gerenciador.` : ""),
+      texto: `O conjunto molde tem ${anunciosDoMolde.length} anúncios: o conjunto novo ficou só com o do carro novo. O conjunto original não foi mexido.`,
     });
   }
-  return { ok: true, adsetId: novo, nome: nomeFinal, orcamentoCents: final, avisos, anuncioCopiadoId: manter.id };
+  return { ok: true, adsetId: novo, nome: nomeFinal, orcamentoCents: final, avisos, anuncioCopiadoId: null };
 }
 
 /** Lê molde e cópia na Meta e compara os campos que precisam ser iguais; tenta corrigir uma vez. */
@@ -909,11 +910,13 @@ export async function subirRascunho(p: PedidoCompleto): Promise<ResultadoComplet
       // Uma tentativa anterior já criou o conjunto (e o anúncio falhou depois): reaproveita o conjunto e o anúncio que veio nele.
       const [daCopia, doMolde] = await Promise.all([anunciosDoConjuntoNaMeta(jaCriadoId), anunciosDoConjuntoNaMeta(p.adsetId)]);
       const idsDoMolde = new Set((doMolde ?? []).map((a) => a.id));
-      const manter = daCopia && doMolde ? copiaDoBase(daCopia, doMolde.find((a) => a.id === p.baseAdId) ?? null) : null;
-      if (!daCopia || !doMolde || !manter || idsDoMolde.has(manter.id) || idsDoMolde.has(jaCriadoId)) {
+      // Conjunto vazio (cópia só do conjunto): o anúncio é criado nele. Com anúncio dentro (cópia completa, de antes):
+      // fica a cópia do base, trocada pelo carro novo.
+      const manter = daCopia && doMolde && daCopia.length > 0 ? copiaDoBase(daCopia, doMolde.find((a) => a.id === p.baseAdId) ?? null) : null;
+      if (!daCopia || !doMolde || idsDoMolde.has(jaCriadoId) || (daCopia.length > 0 && (!manter || idsDoMolde.has(manter.id)))) {
         return { ok: false, erro: `O conjunto "${jaCriado.nome}" da tentativa anterior não está com o anúncio esperado. Apaga ele no Gerenciador e tenta de novo.`, ...semAvisos };
       }
-      if (daCopia.length > 1) {
+      if (manter && daCopia.length > 1) {
         const { falhas } = await apagarSobrasDaCopia({
           clientId: p.clientId, copiaId: jaCriadoId, manter: manter.id, anunciosDaCopia: daCopia, idsDoMolde, pedidoPor: p.pedidoPor, quemId: p.quemId,
         });
@@ -921,7 +924,7 @@ export async function subirRascunho(p: PedidoCompleto): Promise<ResultadoComplet
       }
       adsetId = jaCriadoId;
       adsetCriado = { adsetId, nome: jaCriado.nome };
-      substituirAnuncioId = manter.id;
+      substituirAnuncioId = manter?.id ?? null;
     } else {
       const c = await duplicarConjunto({
         clientId: p.clientId,

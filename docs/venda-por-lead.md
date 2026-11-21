@@ -193,3 +193,11 @@ gestor segue sendo só conversa. Código: `src/lib/vendas/venda-no-privado.ts` (
 
 A origem agora reconhece *patrocinado, impulsionado, impulsionamento* como anúncio, e *orgânico* como
 fora de lead (`interpretar-venda.ts`).
+
+## Nome de anúncio colado inteiro (grupo e privado)
+
+Quando a mensagem traz o **nome inteiro** de um anúncio (copiado do Gerenciador), o robô não adivinha por
+palavras: acha o anúncio pelo nome e age, sem "qual destes?". Vale pra um ou vários nomes, em linhas ou na
+mesma linha. Antes, palavras soltas ("16v", "flex") puxavam carros sem relação (March, Renegade) e os dois
+Peugeot empatavam entre si. Só vale nome com 3+ palavras de verdade; "Gol" solto segue a leitura de sempre.
+Se um nome está dentro de outro, vale o mais comprido. Código: `acharPeloNomeCompleto` em `entender-pedido.ts`.

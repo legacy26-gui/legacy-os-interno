@@ -263,6 +263,84 @@ export function nomeNormalizado(nome: string): string {
     .trim();
 }
 
+
+// ─────────────── O nome do anúncio colado inteiro na mensagem ───────────────
+//
+// ── Por que isto existe ──────────────────────────────────────────────────
+//
+// O Guilherme copia o nome do anúncio direto do Gerenciador e cola pro robô:
+//
+//   Peugeot 2008 1.6 16v Flex griffe
+//   peugeot 2008 griffe 1.6 automático - 2017 - cópia
+//   Desativar esses anúncios da R2
+//
+// Isso é o pedido mais claro que existe: o nome INTEIRO de dois anúncios. Mas a
+// leitura por palavras soltas tratava como busca vaga: "16v" casava com o Nissan
+// March, "flex" com o Renegade, e os dois Peugeot (que são anúncios diferentes, com
+// nomes diferentes) empatavam entre si. Resultado: "Qual destes?" com quatro carros,
+// dois deles sem nada a ver. O robô "não entendia nada".
+//
+// Quando o nome inteiro de um anúncio está na mensagem, não há o que adivinhar.
+//
+// ── Os limites ───────────────────────────────────────────────────────────
+//
+//   - Só vale nome com pelo menos 3 palavras de verdade (sem ligação, cor, "cópia"):
+//     "Gol" ou "Versa foto" aparecendo numa frase não é o anúncio inteiro, é uma
+//     palavra que a pessoa usou, e essa continua na leitura de sempre.
+//   - Palavra inteira: "onix lt 2023" não casa dentro de "onix lt 20231".
+//   - Se um nome está dentro de outro, vale o mais comprido, e o trecho é consumido
+//     (o nome curto não conta de novo dentro do longo).
+//   - O mesmo carro (nome igual sem "cópia"/"vídeo") leva junto todos os anúncios dele.
+
+const MIN_PALAVRAS_DO_NOME = 3;
+
+/** Minúsculas e sem acento, mas COM pontuação e quebras de linha (pra poder cortar o texto). */
+function leve(texto: string): string {
+  return texto.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+}
+
+/** Um nome de anúncio como expressão: as palavras, com qualquer pontuação no meio. */
+function expressaoDoNome(nome: string): RegExp | null {
+  const toks = achatar(nome).split(" ").filter(Boolean);
+  if (toks.filter((t) => t.length >= 2 && !PALAVRAS_SEM_FORCA.has(t)).length < MIN_PALAVRAS_DO_NOME) return null;
+  // "copia" e "video" no fim do nome não são do carro: o texto pode ter ou não.
+  const corpo = toks.map((t) => t.replace(/[^a-z0-9]/g, "")).filter(Boolean).join("[^a-z0-9]+");
+  return new RegExp(`(?<![a-z0-9])${corpo}(?![a-z0-9])`);
+}
+
+export interface AchadoPeloNome {
+  /** Um por carro (nome normalizado). */
+  carros: { trecho: string; anuncios: AnuncioConhecido[] }[];
+  /** A mensagem sem os nomes encontrados, pra o resto seguir na leitura de sempre. */
+  resto: string;
+}
+
+/** Procura, na mensagem, o NOME INTEIRO de anúncios. Ver o comentário acima. */
+export function acharPeloNomeCompleto(texto: string, anuncios: AnuncioConhecido[]): AchadoPeloNome {
+  let resto = leve(texto);
+  const carros = new Map<string, { trecho: string; anuncios: AnuncioConhecido[] }>();
+
+  // Os nomes mais compridos primeiro: ele consome o trecho e o nome curto não conta de novo.
+  const candidatos = anuncios
+    .map((a) => ({ a, re: expressaoDoNome(a.nome), tam: achatar(a.nome).length }))
+    .filter((x): x is { a: AnuncioConhecido; re: RegExp; tam: number } => x.re !== null)
+    .sort((x, y) => y.tam - x.tam);
+
+  for (const { a, re } of candidatos) {
+    const m = re.exec(resto);
+    if (!m) continue;
+    resto = resto.slice(0, m.index) + "\n" + resto.slice(m.index + m[0].length);
+    const chave = nomeNormalizado(a.nome);
+    if (!carros.has(chave)) {
+      carros.set(chave, {
+        trecho: m[0],
+        anuncios: anuncios.filter((x) => nomeNormalizado(x.nome) === chave),
+      });
+    }
+  }
+  return { carros: [...carros.values()], resto };
+}
+
 // ── A leitura ────────────────────────────────────────────────────────────
 
 /** A frase pede pra tirar algo do ar? */
@@ -346,6 +424,12 @@ function acharAnuncios(
   texto: string,
   anuncios: AnuncioConhecido[],
 ): Achado {
+  // O nome inteiro de um anúncio na frase: não há o que adivinhar.
+  const pelNome = acharPeloNomeCompleto(texto, anuncios).carros;
+  if (pelNome.length === 1) {
+    return { candidatos: pelNome[0].anuncios, semDuvida: true, mesmoCarro: pelNome[0].anuncios };
+  }
+
   const daFrase = new Set(
     palavras(texto).filter((p) => !PALAVRAS_SEM_FORCA.has(p)),
   );
@@ -670,14 +754,22 @@ export function entenderPedidoComVarios(
     return { intencao: "nenhuma", alvos: [], sugestoes: [] };
   }
 
-  const pedacos = texto
+  // Nomes de anúncio colados inteiros (um ou vários, em linhas ou na mesma): valem primeiro.
+  const pelNome = acharPeloNomeCompleto(texto, anuncios);
+
+  const pedacos = pelNome.resto
     .split(SEPARADORES)
     .map((p) => p.trim())
     .filter(Boolean);
 
-  const alvos: AlvoDoPedido[] = [];
+  const alvos: AlvoDoPedido[] = pelNome.carros.map((c) => ({
+    trecho: c.trecho,
+    candidatos: c.anuncios,
+    semDuvida: true,
+    mesmoCarro: c.anuncios,
+  }));
   const sugestoes: Sugestao[] = [];
-  const jaVistos = new Set<string>();
+  const jaVistos = new Set<string>(pelNome.carros.map((c) => nomeNormalizado(c.anuncios[0].nome)));
 
   for (const pedaco of pedacos) {
     const r = acharAnuncios(pedaco, anuncios);

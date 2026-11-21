@@ -145,7 +145,6 @@ export default async function InteligenciaComercialPage() {
             ))}
           </ul>
         )}
-        <p className="text-xs text-foreground-muted">Comparação com a tabela FIPE: próximo passo.</p>
       </section>
     </div>
   );

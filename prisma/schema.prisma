@@ -2167,6 +2167,17 @@ model EstoqueCarro {
   sumiuEm       DateTime?
   /// Quando a página do carro foi lida pela última vez (pra renovar em rodízio).
   detalheEm     DateTime?
+  /// A tabela FIPE deste carro (ver src/lib/fipe). "exato": uma versão; "faixa": empate entre versões
+  /// parecidas (fipeCents = menor, fipeMaxCents = maior); "nenhum": não achou — e aí não se afirma nada.
+  fipeTipo        String?
+  fipeCents       Int?
+  fipeMaxCents    Int?
+  /// O nome da(s) versão(ões) na FIPE, pra quem quiser conferir.
+  fipeModelo      String?
+  fipeCodigo      String?
+  /// O mês da tabela ("novembro de 2026").
+  fipeReferencia  String?
+  fipeConferidoEm DateTime?
   precos        EstoquePreco[]
 
   @@unique([clientId, codigo])
@@ -2251,4 +2262,15 @@ model PadraoDeRascunho {
   atualizadoEm DateTime @updatedAt
 
   @@map("padrao_de_rascunho")
+}
+
+/// Respostas da API da FIPE guardadas, pra não gastar a cota diária (a tabela muda uma vez por mês).
+model FipeCache {
+  id        String   @id @default(cuid())
+  /// O caminho consultado ("/brands/59/models").
+  chave     String   @unique
+  dados     Json
+  buscadoEm DateTime @default(now())
+
+  @@map("fipe_cache")
 }

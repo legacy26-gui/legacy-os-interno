@@ -43,6 +43,10 @@ export const REGUA = {
   gastoMinimoParaCplCents: 10_000,
   /** Diferença entre o preço do site e o escrito no anúncio que vale avisar (centavos). */
   diferencaDePrecoCents: 50_000,
+  /** Preço do site acima da FIPE a partir disto vira sugestão (0,10 = 10%). */
+  acimaDaFipe: 0.1,
+  /** Preço abaixo da FIPE a partir disto vira argumento de venda (só com FIPE exata). */
+  abaixoDaFipe: 0.05,
 } as const;
 
 export interface CarroDoEstoque {
@@ -56,6 +60,11 @@ export interface CarroDoEstoque {
   sumiuEm: Date | null;
   /** O histórico de preço do site, mais antigo primeiro. */
   precos: { precoCents: number; vistoEm: Date }[];
+  /** A FIPE (ver src/lib/fipe): "exato", "faixa" (fipeCents..fipeMaxCents) ou "nenhum". */
+  fipeTipo?: string | null;
+  fipeCents?: number | null;
+  fipeMaxCents?: number | null;
+  fipeReferencia?: string | null;
 }
 
 export interface AnuncioDaLoja {
@@ -85,9 +94,11 @@ export type TipoDeSugestao =
   | "gasto-sem-lead"
   | "lead-sem-venda"
   | "cpl-alto"
+  | "acima-da-fipe"
   | "novo-sem-anuncio"
   | "parado-sem-anuncio"
-  | "parado";
+  | "parado"
+  | "abaixo-da-fipe";
 
 export interface Sugestao {
   tipo: TipoDeSugestao;
@@ -111,11 +122,33 @@ export const PRIORIDADE: Record<TipoDeSugestao, number> = {
   "preco-diferente": 2,
   "gasto-sem-lead": 3,
   "lead-sem-venda": 4,
-  "cpl-alto": 5,
-  "novo-sem-anuncio": 6,
-  "parado-sem-anuncio": 7,
-  parado: 8,
+  "acima-da-fipe": 5,
+  "cpl-alto": 6,
+  "novo-sem-anuncio": 7,
+  "parado-sem-anuncio": 8,
+  parado: 9,
+  "abaixo-da-fipe": 10,
 };
+
+/** O preço do site comparado com a FIPE. `null` quando não dá pra comparar com segurança. */
+export function comparacaoComFipe(c: CarroDoEstoque): { pct: number; texto: string } | null {
+  if (c.precoCents === null || !c.fipeCents || (c.fipeTipo !== "exato" && c.fipeTipo !== "faixa")) return null;
+  const faixa = c.fipeTipo === "faixa" && c.fipeMaxCents;
+  // Na faixa, compara com o lado que favorece a loja: acima = acima do MAIOR; abaixo = abaixo do MENOR.
+  const acimaDe = faixa ? (c.fipeMaxCents as number) : c.fipeCents;
+  const abaixoDe = c.fipeCents;
+  const ref = c.fipeReferencia ? ` (${c.fipeReferencia})` : "";
+  const fipeTexto = faixa ? `entre ${reais(c.fipeCents)} e ${reais(c.fipeMaxCents as number)} conforme a versão${ref}` : `${reais(c.fipeCents)}${ref}`;
+  if (c.precoCents > acimaDe) {
+    const pct = (c.precoCents - acimaDe) / acimaDe;
+    return { pct, texto: `${Math.round(pct * 100)}% acima da FIPE (site ${reais(c.precoCents)}, FIPE ${fipeTexto})` };
+  }
+  if (c.precoCents < abaixoDe) {
+    const pct = (c.precoCents - abaixoDe) / abaixoDe;
+    return { pct, texto: `${Math.abs(Math.round(pct * 100))}% abaixo da FIPE (site ${reais(c.precoCents)}, FIPE ${fipeTexto})` };
+  }
+  return { pct: 0, texto: `dentro da FIPE (${fipeTexto})` };
+}
 
 const reais = (cents: number) =>
   (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).replace(/ /g, " ");
@@ -300,6 +333,50 @@ export function gerarSugestoes(d: DadosDaLoja, agora: Date = new Date()): Sugest
         titulo: `${carro.titulo}: parado há ${diasTexto} e sem anúncio`,
         detalhe: `Está no site há ${diasTexto}${reducaoDePreco(c)} e não achei anúncio dele.`,
         acao: "Anunciar pode girar o carro. Se a loja não quer anunciar este, tudo bem: é só uma sugestão.",
+      });
+    }
+  }
+
+  // ── A FIPE ─────────────────────────────────────────────────────────────
+  //
+  // Carro que já tem sugestão ganha a frase da FIPE no detalhe (é contexto: "parado há 60 dias e 16% acima da
+  // FIPE" diz mais que as duas coisas separadas). Carro sem nenhuma sugestão só vira cartão próprio se estiver
+  // bem acima da FIPE, ou abaixo (aí é argumento de venda pro anúncio).
+  const porCarro = new Map<string, Sugestao[]>();
+  for (const s of sugestoes) if (s.carro) porCarro.set(s.carro.id, [...(porCarro.get(s.carro.id) ?? []), s]);
+  for (const c of relevantes) {
+    if (c.sumiuEm) continue;
+    const f = comparacaoComFipe(c);
+    if (!f) continue;
+    const doCarro = porCarro.get(c.id);
+    if (doCarro?.length) {
+      if (f.pct >= REGUA.acimaDaFipe || f.pct <= -REGUA.abaixoDaFipe) for (const s of doCarro) s.detalhe += ` Preço ${f.texto}.`;
+      continue;
+    }
+    const dias = Math.max(0, Math.floor((t - c.primeiraVezEm.getTime()) / DIA));
+    const diasExatos = c.primeiraVezEm.getTime() - ligadoEm > DIA;
+    const carro = { id: c.id, titulo: nomeDoCarro(c), url: c.url, dias, diasExatos };
+    if (f.pct >= REGUA.acimaDaFipe) {
+      sugestoes.push({
+        ...base,
+        tipo: "acima-da-fipe",
+        prioridade: PRIORIDADE["acima-da-fipe"],
+        carro,
+        anuncios: [],
+        titulo: `${carro.titulo}: ${Math.round(f.pct * 100)}% acima da FIPE`,
+        detalhe: `Preço ${f.texto}.`,
+        acao: "Se o carro tem diferencial (km baixo, revisões, único dono), destaca no anúncio. Se não tem e está parado, o preço pode ser o motivo.",
+      });
+    } else if (f.pct <= -REGUA.abaixoDaFipe && c.fipeTipo === "exato") {
+      sugestoes.push({
+        ...base,
+        tipo: "abaixo-da-fipe",
+        prioridade: PRIORIDADE["abaixo-da-fipe"],
+        carro,
+        anuncios: [],
+        titulo: `${carro.titulo}: ${Math.abs(Math.round(f.pct * 100))}% abaixo da FIPE`,
+        detalhe: `Preço ${f.texto}.`,
+        acao: "\"Abaixo da FIPE\" chama atenção: vale pôr na legenda do anúncio.",
       });
     }
   }

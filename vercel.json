@@ -18,6 +18,10 @@
       "schedule": "0 18 * * *"
     },
     {
+      "path": "/api/estoque/fipe",
+      "schedule": "30 12,18 * * *"
+    },
+    {
       "path": "/api/relatorios/mandar",
       "schedule": "*/5 11-12 * * 1"
     }

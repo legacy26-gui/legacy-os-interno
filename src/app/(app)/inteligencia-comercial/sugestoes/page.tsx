@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BadgeDollarSign, CircleDollarSign, ExternalLink, FilePlus2, Megaphone, PackagePlus, Sparkles, Tag, Timer, TrendingDown, Users } from "lucide-react";
+import { Scale, BadgeDollarSign, CircleDollarSign, ExternalLink, FilePlus2, Megaphone, PackagePlus, Sparkles, Tag, Timer, TrendingDown, Users } from "lucide-react";
 import { requireModuleAccess } from "@/lib/dal";
 import { sugestoesDaCarteira } from "@/lib/inteligencia/sugestoes-da-carteira";
 import { REGUA, type Sugestao, type TipoDeSugestao } from "@/lib/inteligencia/sugestoes";
@@ -15,6 +15,8 @@ const ROTULO: Record<TipoDeSugestao, { nome: string; icone: typeof Tag; cor: str
   "gasto-sem-lead": { nome: "Gasto sem lead", icone: TrendingDown, cor: "text-amber-600 dark:text-amber-400" },
   "lead-sem-venda": { nome: "Lead sem venda", icone: Users, cor: "text-amber-600 dark:text-amber-400" },
   "cpl-alto": { nome: "Lead caro", icone: BadgeDollarSign, cor: "text-amber-600 dark:text-amber-400" },
+  "acima-da-fipe": { nome: "Acima da FIPE", icone: Scale, cor: "text-amber-600 dark:text-amber-400" },
+  "abaixo-da-fipe": { nome: "Abaixo da FIPE", icone: Scale, cor: "text-emerald-600 dark:text-emerald-400" },
   "novo-sem-anuncio": { nome: "Carro novo sem anúncio", icone: PackagePlus, cor: "text-accent" },
   "parado-sem-anuncio": { nome: "Parado sem anúncio", icone: Timer, cor: "text-foreground-muted" },
   parado: { nome: "Parado", icone: Timer, cor: "text-foreground-muted" },
@@ -160,7 +162,11 @@ export default async function SugestoesPage({ searchParams }: { searchParams: Pr
             &quot;pelo menos&quot;.
           </li>
           <li>Gasto e leads são os de vida inteira do anúncio na Meta. Carro com venda registrada não recebe sugestão.</li>
-          <li>Comparação com a tabela FIPE ainda não existe: é o próximo passo.</li>
+          <li>
+            FIPE: conferida 2x por dia pela versão do carro no site. Quando duas ou mais versões parecidas empatam, o sistema usa a faixa
+            entre elas (e compara com o lado que favorece a loja). Quando não acha com segurança, não compara. Acima da FIPE: {Math.round(REGUA.acimaDaFipe * 100)}%+;
+            abaixo: {Math.round(REGUA.abaixoDaFipe * 100)}%+.
+          </li>
         </ul>
       </details>
 

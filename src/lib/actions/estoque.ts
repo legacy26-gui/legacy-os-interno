@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { atualizarFipe } from "@/lib/fipe/atualizar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { escopoDaCarteira } from "@/lib/carteira";
@@ -67,7 +68,16 @@ export async function lerEstoqueAgora(clientId: string): Promise<EstoqueState> {
   const partes = [`${r.total} carros no site`];
   if (r.novos) partes.push(`${r.novos} novo${r.novos > 1 ? "s" : ""}`);
   if (r.sairam) partes.push(`${r.sairam} saiu${r.sairam > 1 ? "ram" : ""} da lista`);
-  return { ok: partes.join(" · ") + (r.semMarcarSaidas ? ` — não marquei saídas: ${r.semMarcarSaidas}.` : ".") };
+  // E a FIPE dos carros desta loja que ainda não têm (um pouco por vez: a cota da FIPE é diária).
+  let fipe = "";
+  try {
+    const f = await atualizarFipe({ clientId, consultas: 40, ms: 50_000 });
+    if (f.conferidos > 0) fipe = ` FIPE conferida em ${f.conferidos} carro${f.conferidos > 1 ? "s" : ""}${f.parouPorque ? " (o resto entra na próxima rodada)" : ""}.`;
+  } catch (e) {
+    console.error("[fipe] na leitura manual:", e instanceof Error ? e.message : e);
+  }
+  revalidatePath("/inteligencia-comercial/estoque");
+  return { ok: partes.join(" · ") + (r.semMarcarSaidas ? ` — não marquei saídas: ${r.semMarcarSaidas}.` : ".") + fipe };
 }
 
 /** Desliga a leitura de uma loja (o histórico dos carros fica). */

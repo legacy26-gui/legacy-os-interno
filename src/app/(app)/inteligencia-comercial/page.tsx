@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { ArrowRight, Lightbulb, Package, Trophy, TrendingUp } from "lucide-react";
+import { ArrowRight, Lightbulb, Package, Sparkles, Trophy, TrendingUp } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CARTEIRA, escopoDaCarteira } from "@/lib/carteira";
+import { sugestoesDaCarteira } from "@/lib/inteligencia/sugestoes-da-carteira";
 
 // A porta de entrada da Inteligência Comercial: o retrato do mês em três números, cada um
 // levando pra tela que explica. Só CONTAGENS aqui — valor em reais mora atrás do módulo
@@ -21,7 +22,7 @@ export default async function InteligenciaComercialPage() {
   const fimDoMes = new Date(Date.UTC(agora.getUTCFullYear(), agora.getUTCMonth() + 1, 1));
   const escopo = escopoDaCarteira(user);
 
-  const [vendasPorLoja, lojasComEstoque] = await Promise.all([
+  const [vendasPorLoja, lojasComEstoque, sugestoes] = await Promise.all([
     prisma.clientSale.groupBy({
       by: ["clientId"],
       where: { soldAt: { gte: inicioDoMes, lt: fimDoMes }, client: { controlaVendas: true, ...escopo } },
@@ -34,7 +35,9 @@ export default async function InteligenciaComercialPage() {
         estoqueCarros: { where: { sumiuEm: null }, select: { primeiraVezEm: true } },
       },
     }),
+    sugestoesDaCarteira(user),
   ]);
+  const todas = sugestoes.lojas.flatMap((l) => l.sugestoes).sort((a, b) => a.prioridade - b.prioridade);
 
   const totalDeVendas = vendasPorLoja.reduce((s, v) => s + v._count._all, 0);
   const lider = [...vendasPorLoja].sort((a, b) => b._count._all - a._count._all)[0];
@@ -110,15 +113,39 @@ export default async function InteligenciaComercialPage() {
         ))}
       </div>
 
-      <section className="rounded-2xl border border-dashed border-border bg-surface p-5 flex flex-col gap-2" aria-labelledby="em-breve">
-        <h2 id="em-breve" className="font-semibold">
-          Ainda não existe
-        </h2>
-        <p className="text-sm text-foreground-muted max-w-2xl">
-          As sugestões da IA. O estoque já entra no sistema; falta cruzar com anúncio, lead e venda pra dizer, por exemplo,
-          &quot;esse carro está parado há 75 dias, baixar o preço ou trocar o criativo&quot;, &quot;esse acabou de entrar,
-          anunciar&quot; e &quot;preço acima da tabela FIPE&quot;. Quando chegar, aparece aqui.
-        </p>
+      <section className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3" aria-labelledby="sugestoes">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="sugestoes" className="font-semibold flex items-center gap-2">
+            <Sparkles size={16} /> Sugestões
+          </h2>
+          <Link href="/inteligencia-comercial/sugestoes" className="text-sm font-medium text-accent inline-flex items-center gap-1">
+            Ver todas ({todas.length}) <ArrowRight size={14} />
+          </Link>
+        </div>
+        {sugestoes.lojas.length === 0 ? (
+          <p className="text-sm text-foreground-muted">
+            As sugestões nascem do estoque do site cruzado com os anúncios. Liga o site de uma loja em{" "}
+            <Link href="/inteligencia-comercial/estoque" className="text-accent underline underline-offset-2">
+              Estoque
+            </Link>{" "}
+            pra elas aparecerem.
+          </p>
+        ) : todas.length === 0 ? (
+          <p className="text-sm text-foreground-muted">Nada pra mexer agora nas lojas com estoque ligado. 👍</p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-border">
+            {todas.slice(0, 5).map((s, i) => (
+              <li key={`${s.lojaId}-${s.tipo}-${s.carro?.id ?? i}`} className="py-2.5">
+                <p className="text-sm font-medium break-words">
+                  <span className="text-foreground-muted">{s.loja} · </span>
+                  {s.titulo}
+                </p>
+                <p className="text-sm text-foreground-muted">{s.acao}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="text-xs text-foreground-muted">Comparação com a tabela FIPE: próximo passo.</p>
       </section>
     </div>
   );

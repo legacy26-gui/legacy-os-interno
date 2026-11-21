@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Lightbulb, Package, Trophy, TrendingUp } from "lucide-react";
+import { Lightbulb, Package, Sparkles, Trophy, TrendingUp } from "lucide-react";
 
 // As abas da Inteligência Comercial.
 //
@@ -14,6 +14,7 @@ import { Lightbulb, Package, Trophy, TrendingUp } from "lucide-react";
 
 const ABAS = [
   { href: "/inteligencia-comercial", rotulo: "Visão geral", icone: Lightbulb, exata: true },
+  { href: "/inteligencia-comercial/sugestoes", rotulo: "Sugestões", icone: Sparkles, exata: false },
   { href: "/inteligencia-comercial/estoque", rotulo: "Estoque", icone: Package, exata: false },
   { href: "/ranking-lojas", rotulo: "Ranking de lojas", icone: Trophy, exata: false },
   { href: "/controle-vendas", rotulo: "Controle de vendas", icone: TrendingUp, exata: false },

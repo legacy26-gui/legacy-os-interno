@@ -74,6 +74,12 @@ async function prepararFoto(original: File): Promise<{ arquivo: File; lado: numb
   throw new Error("não deu pra reduzir");
 }
 
+/** A ficha do carro do estoque, em texto, pra legenda da IA. */
+function dadosDoCarro(c: CarroOpt): string {
+  const partes = [c.titulo, c.ano ? `ano ${c.ano}` : null, c.km !== null ? `${c.km.toLocaleString("pt-BR")} km` : null, c.cor ? `cor ${c.cor}` : null, c.precoCents ? `preço ${reais(c.precoCents)}` : null];
+  return partes.filter(Boolean).join(", ");
+}
+
 export function Formulario({
   clientId,
   sugeridoCents,
@@ -82,6 +88,7 @@ export function Formulario({
   anuncios,
   estoque,
   escritaLiberada,
+  carroInicial,
 }: {
   clientId: string;
   sugeridoCents: number | null;
@@ -90,16 +97,19 @@ export function Formulario({
   anuncios: AnuncioOpt[];
   estoque: CarroOpt[];
   escritaLiberada: boolean;
+  /** Carro do estoque que já chega escolhido (vindo de uma sugestão da Inteligência Comercial). */
+  carroInicial?: string;
 }) {
+  const inicial = estoque.find((c) => c.id === carroInicial) ?? null;
   const [campanhaId, setCampanhaId] = useState("");
   const [conjuntoId, setConjuntoId] = useState("");
   const [baseId, setBaseId] = useState("");
   const [base, setBase] = useState<{ carregando: boolean; erro?: string; formato?: "foto" | "carrossel"; legenda?: string; titulo?: string; link?: string }>({ carregando: false });
 
-  const [carroId, setCarroId] = useState("");
-  const [dados, setDados] = useState("");
-  const [nome, setNome] = useState("");
-  const [titulo, setTitulo] = useState("");
+  const [carroId, setCarroId] = useState(inicial?.id ?? "");
+  const [dados, setDados] = useState(inicial ? dadosDoCarro(inicial) : "");
+  const [nome, setNome] = useState(inicial?.titulo.slice(0, 120) ?? "");
+  const [titulo, setTitulo] = useState(inicial?.titulo.slice(0, 120) ?? "");
   const [legenda, setLegenda] = useState("");
   const [link, setLink] = useState("");
   const [doBaseAberto, setDoBaseAberto] = useState(false);
@@ -160,8 +170,7 @@ export function Formulario({
     setCarroId(id);
     const c = estoque.find((x) => x.id === id);
     if (!c) return;
-    const partes = [c.titulo, c.ano ? `ano ${c.ano}` : null, c.km !== null ? `${c.km.toLocaleString("pt-BR")} km` : null, c.cor ? `cor ${c.cor}` : null, c.precoCents ? `preço ${reais(c.precoCents)}` : null];
-    setDados(partes.filter(Boolean).join(", "));
+    setDados(dadosDoCarro(c));
     setNome(c.titulo.slice(0, 120));
     setTitulo(c.titulo.slice(0, 120));
   }

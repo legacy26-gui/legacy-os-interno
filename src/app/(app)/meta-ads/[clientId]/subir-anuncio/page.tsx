@@ -22,9 +22,17 @@ function quando(d: Date) {
   return d.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-export default async function SubirAnuncioPage({ params }: { params: Promise<{ clientId: string }> }) {
+export default async function SubirAnuncioPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ clientId: string }>;
+  searchParams: Promise<{ carro?: string }>;
+}) {
   const user = await requireModuleAccess("clientes");
   const { clientId } = await params;
+  // Vindo de uma sugestão ("carro novo sem anúncio"): o carro já chega escolhido. Só vale carro do estoque DESTA loja.
+  const { carro: carroPedido } = await searchParams;
 
   const cliente = await exigirClienteDaCarteira(user, clientId, {
     id: true,
@@ -96,6 +104,7 @@ export default async function SubirAnuncioPage({ params }: { params: Promise<{ c
           clientId={clientId}
           sugeridoCents={orcamentoSugerido(cliente.gastoMensalPrevistoCents)}
           escritaLiberada={escritaLiberada()}
+          carroInicial={estoque.some((c) => c.id === carroPedido) ? carroPedido : undefined}
           campanhas={campanhas.map((c) => ({ id: c.campaignId, nome: c.name, status: c.status }))}
           conjuntos={conjuntos.map((c) => ({ id: c.adsetId, campanhaId: c.campaignId, nome: c.name, status: c.status, orcamentoCents: c.dailyBudgetCents }))}
           anuncios={anuncios.map((a) => ({ id: a.adId, nome: a.adName, status: a.status, conjuntoId: a.adsetId, campanhaId: a.campaignId }))}

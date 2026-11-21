@@ -154,6 +154,7 @@ export function Formulario({
     const ordem = (a: AnuncioOpt) => (a.conjuntoId === conjuntoId ? 0 : a.campanhaId === campanhaId ? 1 : 2) * 10 + (a.status === "ACTIVE" ? 0 : 1);
     return [...anuncios].sort((a, b) => ordem(a) - ordem(b));
   }, [anuncios, conjuntoId, campanhaId]);
+  const anunciosNoMolde = anuncios.filter((a) => a.conjuntoId === conjuntoId && a.status !== "DELETED" && a.status !== "ARCHIVED").length;
 
   async function escolherBase(id: string) {
     setBaseId(id);
@@ -396,9 +397,15 @@ export function Formulario({
             <p className="text-sm text-foreground-muted">
               O conjunto escolhido acima é o <strong>molde</strong>: a Meta copia o conjunto inteiro, com o anúncio dele, e eu troco esse
               anúncio pelo do carro novo (mantendo as configurações do molde). Tudo nasce <strong>pausado</strong>, com o nome do carro.
-              O molde precisa ter <strong>um anúncio só</strong>.
+              O anúncio-base precisa ser <strong>um dos anúncios deste conjunto</strong>.
               {conjunto && !conjunto.orcamentoCents ? " Esta campanha define o orçamento na campanha, então o orçamento abaixo não se aplica." : ""}
             </p>
+            {anunciosNoMolde > 1 && (
+              <p className="text-sm text-amber-600">
+                ⚠️ Este conjunto tem {anunciosNoMolde} anúncios. Na cópia eu deixo só o do anúncio-base (trocado pelo carro novo) e apago{" "}
+                {anunciosNoMolde === 2 ? "o outro" : `os outros ${anunciosNoMolde - 1}`}. O conjunto original não é mexido.
+              </p>
+            )}
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="flex flex-col gap-1">
                 <span className={rotulo}>Nome do conjunto novo</span>

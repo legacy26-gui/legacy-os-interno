@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { CARTEIRA_NO_META, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import { acharObjetoDaLoja } from "@/lib/meta/mudar-status";
-import { lerBaseDoAnuncio, ORCAMENTO_MAXIMO_CENTS, ORCAMENTO_MINIMO_CENTS, subirFotoDoRascunho, subirRascunho } from "@/lib/meta/rascunho-anuncio";
+import { anunciosDoConjuntoNaMeta, lerBaseDoAnuncio, ORCAMENTO_MAXIMO_CENTS, ORCAMENTO_MINIMO_CENTS, subirFotoDoRascunho, subirRascunho } from "@/lib/meta/rascunho-anuncio";
 import { gerarLegendaDoCarro } from "@/lib/meta/legenda-do-rascunho";
 import { achatar, acharCarro } from "./entender-pedido";
 import { acharLojaNoTexto, descartarPendente, respostaDeConfirmacao } from "./pausar-no-privado";
@@ -721,10 +721,12 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
 
   // ── 7. O resumo ───────────────────────────────────────────────────────
   await salvar(c, { etapa: "confirmando", opcoes: [] }, agora);
-  return aviso + resumo(c, fotos, estoqueUsado, c.duplicarConjunto && c.adsetId ? await orcamentoDoMolde(c.adsetId) : null);
+  const dup = c.duplicarConjunto && c.adsetId;
+  const [orcamentoMolde, doMolde] = dup ? await Promise.all([orcamentoDoMolde(c.adsetId!), anunciosDoConjuntoNaMeta(c.adsetId!)]) : [null, null];
+  return aviso + resumo(c, fotos, estoqueUsado, orcamentoMolde, doMolde?.length ?? 0);
 }
 
-function resumo(c: Conversa, fotos: number, estoqueUsado: string, orcamentoMolde: number | null): string {
+function resumo(c: Conversa, fotos: number, estoqueUsado: string, orcamentoMolde: number | null, anunciosNoMolde: number): string {
   const base = c.base as BaseSalva;
   const linhas = [
     "📋 *Confere antes de subir* (o anúncio vai PAUSADO)",
@@ -745,7 +747,12 @@ function resumo(c: Conversa, fotos: number, estoqueUsado: string, orcamentoMolde
     base.titulo ? `• Título: ${c.titulo}` : null,
     `• Link: ${base.link ? "o mesmo do anúncio base" : "(sem link)"}`,
   ].filter((x): x is string => x !== null);
-  const avisos = c.avisosDaLegenda.map((a) => `⚠️ ${a}`).join("\n");
+  const avisos = [
+    ...(c.duplicarConjunto && anunciosNoMolde > 1
+      ? [`O conjunto molde tem ${anunciosNoMolde} anúncios. Na cópia eu deixo só o do anúncio-base (trocado por este carro) e apago ${anunciosNoMolde === 2 ? "o outro" : `os outros ${anunciosNoMolde - 1}`}. O conjunto original não é mexido.`]
+      : []),
+    ...c.avisosDaLegenda,
+  ].map((a) => `⚠️ ${a}`).join("\n");
   return `${linhas.join("\n")}\n\n*Legenda:*\n${c.legenda}\n${avisos ? `\n${avisos}\n` : ""}\n${AJUDA_DO_RESUMO}`;
 }
 

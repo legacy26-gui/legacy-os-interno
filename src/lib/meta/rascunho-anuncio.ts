@@ -599,15 +599,29 @@ export async function duplicarConjunto(p: {
     status_option: "PAUSED",
     rename_options: JSON.stringify({ rename_strategy: "NO_RENAME" }),
   });
-  if (!copia.ok || !copia.dados.copied_adset_id) {
+  let novo: string;
+  let ajuste: { ok: true } | { ok: false; erro: string };
+  const ignorarNaConferencia: string[] = [];
+  const janelas = copia.ok ? null : janelasCompativeis(copia.erro);
+  if (copia.ok && copia.dados.copied_adset_id) {
+    novo = copia.dados.copied_adset_id;
+    // 2. O nome do carro e o orçamento. Se falhar, o conjunto existe (pausado) com o nome do molde: diz isso.
+    const campos: Record<string, string> = { name: nome };
+    if (orcamento !== null) campos.daily_budget = String(orcamento);
+    ajuste = await escreverNaGraph(novo, campos);
+  } else if (janelas) {
+    // A Meta não copia o molde porque a janela de atribuição dele não vale mais pro objetivo ("use uma destas
+    // janelas compatíveis: 1 dia"). A cópia não deixa trocar campo nenhum, então o conjunto é CRIADO com os campos
+    // lidos do molde, só com a janela trocada pela que a Meta aceita. A conferência abaixo prova que o resto é igual.
+    const criado = await criarConjuntoComoOMolde({ moldeId: p.adsetId, contaMeta: molde.contaMeta, nome, orcamentoCents: orcamento, janelas });
+    if (!criado.ok) return { ok: false, erro: `A Meta não duplicou o conjunto: ${copia.ok ? "" : copia.erro} ${criado.erro}` };
+    novo = criado.id;
+    ajuste = { ok: true };
+    ignorarNaConferencia.push("attribution_spec");
+    avisos.push({ tipo: "conjunto", texto: criado.aviso });
+  } else {
     return { ok: false, erro: `A Meta não duplicou o conjunto: ${copia.ok ? "sem id" : copia.erro}` };
   }
-  const novo = copia.dados.copied_adset_id;
-
-  // 2. O nome do carro e o orçamento. Se falhar, o conjunto existe (pausado) com o nome do molde: diz isso.
-  const campos: Record<string, string> = { name: nome };
-  if (orcamento !== null) campos.daily_budget = String(orcamento);
-  const ajuste = await escreverNaGraph(novo, campos);
   if (!ajuste.ok) {
     avisos.push({ tipo: "conjunto", texto: `O conjunto foi duplicado, mas a Meta não aceitou ${orcamento !== null ? "o nome/orçamento" : "o nome"} (${ajuste.erro}). Ele está pausado com o nome do molde: ajusta no Gerenciador.` });
   }
@@ -615,7 +629,7 @@ export async function duplicarConjunto(p: {
 
   // 2b. A cópia ficou IGUAL ao molde? (público, Advantage+ público, otimização, lance…) Corrige o que der; o que não
   // der, o anúncio não sobe.
-  const conferencia = await conferirCopiaDoConjunto(p.adsetId, novo);
+  const conferencia = await conferirCopiaDoConjunto(p.adsetId, novo, ignorarNaConferencia);
 
   // 3. O cadastro local passa a conhecer o conjunto novo (é a trava de "conjunto da loja" que o anúncio usa).
   await prisma.metaAdset.upsert({
@@ -664,15 +678,101 @@ export async function duplicarConjunto(p: {
   return { ok: true, adsetId: novo, nome: nomeFinal, orcamentoCents: final, avisos, anuncioCopiadoId: null };
 }
 
+// ─────────── Quando a Meta não copia: criar o conjunto com os campos do molde ───────────
+
+/**
+ * As janelas de atribuição que a Meta diz aceitar, lidas do erro ("use uma destas janelas compatíveis: 1 dias",
+ * "use one of these compatible windows: 1, 7 days"). `null` = o erro não é de atribuição. Pura.
+ */
+export function janelasCompativeis(erro: string): number[] | null {
+  if (!/atribui|attribution/i.test(erro)) return null;
+  const m = erro.match(/(?:compat[ií]veis|compatible(?: windows?)?)\s*:?\s*([\d\s,e]+(?:and\s*\d+)?)/i);
+  if (!m) return [];
+  return [...new Set([...m[1].matchAll(/\d+/g)].map((x) => Number(x[0])).filter((n) => n > 0 && n <= 90))].sort((a, b) => a - b);
+}
+
+/**
+ * A atribuição do molde com a janela de CLIQUE trocada pela compatível mais próxima (a maior que não passa da
+ * dele). Visualização e o resto ficam. `null` = não dá pra montar (aí vai sem, e a Meta usa a padrão). Pura.
+ */
+export function atribuicaoCompativel(spec: unknown, janelas: number[]): Record<string, unknown>[] | null {
+  if (!Array.isArray(spec) || janelas.length === 0) return null;
+  return spec.map((e) => {
+    const o = objeto(e) ?? {};
+    if (o.event_type !== "CLICK_THROUGH") return o;
+    const dias = Number(o.window_days) || janelas[0];
+    const cabe = janelas.filter((j) => j <= dias);
+    return { ...o, window_days: cabe.length ? cabe[cabe.length - 1] : janelas[0] };
+  });
+}
+
+const dizerAtribuicao = (spec: unknown): string => {
+  if (!Array.isArray(spec) || spec.length === 0) return "a padrão da Meta";
+  const nome: Record<string, string> = { CLICK_THROUGH: "clique", VIEW_THROUGH: "visualização", ENGAGED_VIDEO_VIEW: "visualização engajada" };
+  return spec
+    .map((e) => objeto(e) ?? {})
+    .map((o) => `${o.window_days} ${Number(o.window_days) === 1 ? "dia" : "dias"} após ${nome[String(o.event_type)] ?? String(o.event_type).toLowerCase()}`)
+    .join(" + ");
+};
+
+/** Os campos do molde que entram no conjunto criado (além do que é conferido: CAMPOS_DO_CONJUNTO). */
+const CAMPOS_EXTRAS_DO_MOLDE = ["campaign_id", "daily_budget", "lifetime_budget", "end_time", "pacing_type", "frequency_control_specs", "dsa_beneficiary", "dsa_payor"];
+
+/**
+ * Cria, PAUSADO, um conjunto com os campos lidos do molde: público (com o Advantage+ público do jeito que está),
+ * otimização, cobrança, lance, objeto promovido, destino. Só a janela de atribuição muda, pra a que a Meta aceita.
+ */
+async function criarConjuntoComoOMolde(p: {
+  moldeId: string;
+  contaMeta: string;
+  nome: string;
+  orcamentoCents: number | null;
+  janelas: number[];
+}): Promise<{ ok: true; id: string; aviso: string } | { ok: false; erro: string }> {
+  const lido = await buscarNaGraph<Record<string, unknown>>(p.moldeId, { fields: [...CAMPOS_DO_CONJUNTO, ...CAMPOS_EXTRAS_DO_MOLDE].join(",") });
+  if (!lido.ok) return { ok: false, erro: "E não consegui ler o molde pra criar um igual." };
+  const m = lido.dados;
+  const base: Record<string, string> = { name: p.nome.slice(0, 200), status: "PAUSED" };
+  for (const k of [...CAMPOS_DO_CONJUNTO, ...CAMPOS_EXTRAS_DO_MOLDE]) {
+    if (k === "attribution_spec" || k === "end_time") continue;
+    const v = m[k];
+    if (v === undefined || v === null || v === "" || (Array.isArray(v) && v.length === 0)) continue;
+    base[k] = typeof v === "string" ? v : typeof v === "number" || typeof v === "boolean" ? String(v) : JSON.stringify(v);
+  }
+  if (m.lifetime_budget && m.end_time) base.end_time = String(m.end_time);
+  if (p.orcamentoCents !== null && base.daily_budget) base.daily_budget = String(p.orcamentoCents);
+
+  const ajustada = atribuicaoCompativel(m.attribution_spec, p.janelas);
+  const tentativas: (Record<string, unknown>[] | null)[] = ajustada ? [ajustada, null] : [null];
+  let ultimoErro = "";
+  for (const atrib of tentativas) {
+    const campos = { ...base };
+    if (atrib) campos.attribution_spec = JSON.stringify(atrib);
+    const r = await escreverNaGraph<{ id?: string }>(`${p.contaMeta}/adsets`, campos);
+    if (r.ok && r.dados.id) {
+      return {
+        ok: true,
+        id: r.dados.id,
+        aviso:
+          `A Meta não aceita mais a janela de atribuição do molde (${dizerAtribuicao(m.attribution_spec)}) pra esse objetivo, e por isso não deixou copiar. ` +
+          `Criei o conjunto com tudo igual ao molde, só com a janela que ela aceita: ${atrib ? dizerAtribuicao(atrib) : "a padrão da Meta"}.`,
+      };
+    }
+    ultimoErro = r.ok ? "sem id" : r.erro;
+  }
+  return { ok: false, erro: `Tentei criar um conjunto igual ao molde com a janela aceita, e ela recusou: ${ultimoErro}` };
+}
+
 /** Lê molde e cópia na Meta e compara os campos que precisam ser iguais; tenta corrigir uma vez. */
-async function conferirCopiaDoConjunto(moldeId: string, copiaId: string): Promise<{ ok: true } | { ok: false; erro: string }> {
+async function conferirCopiaDoConjunto(moldeId: string, copiaId: string, ignorar: string[] = []): Promise<{ ok: true } | { ok: false; erro: string }> {
   const ler = (id: string) => buscarNaGraph<Record<string, unknown>>(id, { fields: CAMPOS_DO_CONJUNTO.join(",") });
   const m = await ler(moldeId);
   let c = await ler(copiaId);
   if (!m.ok || !c.ok) {
     return { ok: false, erro: "A Meta não me deixou conferir se o conjunto duplicado ficou igual ao molde." };
   }
-  let dif = diferencasDoConjunto(m.dados, c.dados);
+  const difs = (a: Record<string, unknown>, b: Record<string, unknown>) => diferencasDoConjunto(a, b).filter((k) => !ignorar.includes(k));
+  let dif = difs(m.dados, c.dados);
   if (dif.length === 0) return { ok: true };
 
   // Corrige escrevendo na cópia o valor do molde, campo por campo.
@@ -684,7 +784,7 @@ async function conferirCopiaDoConjunto(moldeId: string, copiaId: string): Promis
   }
   if (Object.keys(campos).length > 0) await escreverNaGraph(copiaId, campos);
   c = await ler(copiaId);
-  dif = c.ok ? diferencasDoConjunto(m.dados, c.dados) : dif;
+  dif = c.ok ? difs(m.dados, c.dados) : dif;
   if (dif.length === 0) return { ok: true };
   return {
     ok: false,

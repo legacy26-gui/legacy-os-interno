@@ -2230,6 +2230,12 @@ model RascunhoWhatsapp {
   /// A lista numerada que o robô acabou de mostrar: [{ id, rotulo }]. A resposta "2" escolhe o item 2.
   opcoes Json?
 
+  /// Duplicar o conjunto (o escolhido é o molde) em vez de subir dentro dele. Ver PadraoDeRascunho.
+  duplicarConjunto Boolean @default(false)
+  orcamentoCents   Int?
+  /// O conjunto que uma tentativa anterior já criou (e o anúncio falhou depois): a próxima sobe nele.
+  conjuntoCriadoId String?
+
   criadoEm     DateTime @default(now())
   atualizadoEm DateTime @updatedAt
   venceEm      DateTime
@@ -2259,6 +2265,10 @@ model PadraoDeRascunho {
   clientId     String   @unique
   adsetId      String
   baseAdId     String
+  /// A loja trabalha "um carro por conjunto": o conjunto acima é o MOLDE, e cada anúncio ganha um conjunto novo.
+  duplicarConjunto Boolean @default(false)
+  /// O orçamento diário dos conjuntos novos (centavos). Null = o mesmo do molde.
+  orcamentoCents   Int?
   atualizadoEm DateTime @updatedAt
 
   @@map("padrao_de_rascunho")

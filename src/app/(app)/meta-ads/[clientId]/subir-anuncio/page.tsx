@@ -43,7 +43,7 @@ export default async function SubirAnuncioPage({
   const contas = await prisma.metaAdAccount.findMany({ where: { clientId, active: true }, select: { id: true, metaAccountId: true } });
   const ids = contas.map((c) => c.id);
 
-  const [campanhas, conjuntos, anuncios, estoque, recentes] = await Promise.all([
+  const [campanhas, conjuntos, anuncios, estoque, recentes, padrao] = await Promise.all([
     prisma.metaCampaign.findMany({
       where: { adAccountId: { in: ids }, NOT: { status: { in: FORA } } },
       orderBy: { name: "asc" },
@@ -70,8 +70,9 @@ export default async function SubirAnuncioPage({
       where: { clientId, origem: "criacao-rascunho" },
       orderBy: { criadoEm: "desc" },
       take: 12,
-      select: { objetoId: true, nome: true, criadoEm: true, pedidoPor: true, pedidoTexto: true },
+      select: { objetoId: true, nome: true, criadoEm: true, pedidoPor: true, pedidoTexto: true, nivel: true },
     }),
+    prisma.padraoDeRascunho.findUnique({ where: { clientId }, select: { adsetId: true, baseAdId: true, duplicarConjunto: true, orcamentoCents: true } }),
   ]);
 
   // O estado de hoje de cada rascunho (se a varredura já viu o anúncio). Rascunho que o gestor publicou
@@ -105,6 +106,7 @@ export default async function SubirAnuncioPage({
           sugeridoCents={orcamentoSugerido(cliente.gastoMensalPrevistoCents)}
           escritaLiberada={escritaLiberada()}
           carroInicial={estoque.some((c) => c.id === carroPedido) ? carroPedido : undefined}
+          padrao={padrao}
           campanhas={campanhas.map((c) => ({ id: c.campaignId, nome: c.name, status: c.status }))}
           conjuntos={conjuntos.map((c) => ({ id: c.adsetId, campanhaId: c.campaignId, nome: c.name, status: c.status, orcamentoCents: c.dailyBudgetCents }))}
           anuncios={anuncios.map((a) => ({ id: a.adId, nome: a.adName, status: a.status, conjuntoId: a.adsetId, campanhaId: a.campaignId }))}
@@ -124,14 +126,14 @@ export default async function SubirAnuncioPage({
               return (
                 <li key={r.objetoId} className="py-2.5 flex flex-wrap items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">{r.nome}</p>
+                    <p className="text-sm font-medium truncate">{r.nivel === "conjunto" ? `Conjunto novo: ${r.nome}` : r.nome}</p>
                     <p className="text-xs text-foreground-muted">
                       {quando(r.criadoEm)}{r.pedidoPor ? ` · ${r.pedidoPor.split(" ")[0]}` : ""} ·{" "}
-                      {status ? (ROTULO_DO_STATUS[status] ?? status) : "Pausado (criado por aqui)"}
+                      {r.nivel === "conjunto" ? "Pausado (criado por aqui)" : status ? (ROTULO_DO_STATUS[status] ?? status) : "Pausado (criado por aqui)"}
                     </p>
                   </div>
                   {conta && (
-                    <a href={linkDoGerenciador(conta, r.objetoId)} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-sm hover:bg-surface-muted">
+                    <a href={linkDoGerenciador(conta, r.objetoId, r.nivel === "conjunto" ? "conjunto" : "anuncio")} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-border rounded-lg text-sm hover:bg-surface-muted">
                       Gerenciador <ExternalLink size={13} />
                     </a>
                   )}

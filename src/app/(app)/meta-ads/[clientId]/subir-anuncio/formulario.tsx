@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ExternalLink, ImagePlus, Loader2, Sparkles, Trash2, TriangleAlert, CheckCircle2 } from "lucide-react";
 import { conferirAnuncioBase, criarRascunho, gerarLegenda, subirFoto, type RespostaDoRascunho } from "@/lib/actions/rascunho";
 
@@ -89,6 +89,7 @@ export function Formulario({
   estoque,
   escritaLiberada,
   carroInicial,
+  padrao,
 }: {
   clientId: string;
   sugeridoCents: number | null;
@@ -99,11 +100,22 @@ export function Formulario({
   escritaLiberada: boolean;
   /** Carro do estoque que já chega escolhido (vindo de uma sugestão da Inteligência Comercial). */
   carroInicial?: string;
+  /** O "mesmo de sempre" da loja: o conjunto (ou molde), o anúncio-base, se é um carro por conjunto e o orçamento. */
+  padrao?: { adsetId: string; baseAdId: string; duplicarConjunto: boolean; orcamentoCents: number | null } | null;
 }) {
   const inicial = estoque.find((c) => c.id === carroInicial) ?? null;
-  const [campanhaId, setCampanhaId] = useState("");
-  const [conjuntoId, setConjuntoId] = useState("");
+  const conjuntoDoPadrao = padrao ? conjuntos.find((c) => c.id === padrao.adsetId) ?? null : null;
+  const [campanhaId, setCampanhaId] = useState(conjuntoDoPadrao?.campanhaId ?? "");
+  const [conjuntoId, setConjuntoId] = useState(conjuntoDoPadrao?.id ?? "");
   const [baseId, setBaseId] = useState("");
+  // "Um carro por conjunto": o conjunto escolhido é o MOLDE e cada anúncio ganha um conjunto novo (duplicado).
+  const [modo, setModo] = useState<"existente" | "novo">(conjuntoDoPadrao && padrao?.duplicarConjunto ? "novo" : "existente");
+  const [nomeConjunto, setNomeConjunto] = useState("");
+  const [orcamento, setOrcamento] = useState(
+    conjuntoDoPadrao && padrao?.orcamentoCents ? (padrao.orcamentoCents / 100).toLocaleString("pt-BR") : "",
+  );
+  /** Conjunto já criado numa tentativa que falhou depois: a próxima sobe nele, em vez de criar outro. */
+  const [conjuntoJaCriado, setConjuntoJaCriado] = useState<{ adsetId: string; nome: string; molde: string } | null>(null);
   const [base, setBase] = useState<{ carregando: boolean; erro?: string; formato?: "foto" | "carrossel"; legenda?: string; titulo?: string; link?: string }>({ carregando: false });
 
   const [carroId, setCarroId] = useState(inicial?.id ?? "");
@@ -151,6 +163,12 @@ export function Formulario({
     // O link do base é o destino certo na maioria das vezes (site, WhatsApp). Só preenche se estiver vazio.
     setLink((atual) => atual || r.link || "");
   }
+
+  // Com "mesmo de sempre", o anúncio-base já vem escolhido (e conferido na Meta) ao abrir a tela.
+  useEffect(() => {
+    if (conjuntoDoPadrao && padrao?.baseAdId && anuncios.some((a) => a.id === padrao.baseAdId)) void escolherBase(padrao.baseAdId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function escolherCampanha(id: string) {
     setCampanhaId(id);
@@ -230,6 +248,10 @@ export function Formulario({
   if (!legenda.trim()) faltas.push("a legenda");
   if (baseTemTitulo && !titulo.trim()) faltas.push("o título");
   if (!link.trim()) faltas.push("o link");
+  const orcamentoCents = orcamento.trim() ? Math.round(Number(orcamento.replace(/\./g, "").replace(",", ".")) * 100) : null;
+  if (modo === "novo" && orcamentoCents !== null && (!Number.isFinite(orcamentoCents) || orcamentoCents < 100 || orcamentoCents > 100_000)) {
+    faltas.push("um orçamento diário válido (R$ 1 a R$ 1.000)");
+  }
   const podeSubir = escritaLiberada && faltas.length === 0 && !enviando && !base.carregando;
 
   async function subir() {
@@ -262,10 +284,14 @@ export function Formulario({
 
       // 2. O anúncio, duplicando o base, pausado.
       setEnviando("Criando o anúncio pausado…");
+      // Conjunto novo: na primeira tentativa duplica o molde; se ela criou o conjunto e falhou depois, reaproveita.
+      const reaproveita = modo === "novo" && conjuntoJaCriado?.molde === conjuntoId ? conjuntoJaCriado : null;
+      if (modo === "novo" && !reaproveita) setEnviando("Duplicando o conjunto e criando o anúncio pausado…");
       const r = await criarRascunho({
         clientId,
         baseAdId: baseId,
         adsetId: conjuntoId,
+        conjuntoNovo: modo === "novo" ? { nome: (nomeConjunto.trim() || nome.trim()).slice(0, 200), orcamentoCents, jaCriadoId: reaproveita?.adsetId ?? null } : null,
         nome: nome.trim(),
         legenda: legenda.trim(),
         titulo: titulo.trim(),
@@ -274,11 +300,14 @@ export function Formulario({
       });
       setEnviando(null);
       if (!r.ok) {
+        if (r.adsetCriado) setConjuntoJaCriado({ ...r.adsetCriado, molde: conjuntoId });
         setErro(r.erro ?? "Não consegui criar o anúncio.");
         if (r.avisos?.length) setResultado({ ok: false, avisos: r.avisos });
         return;
       }
       setResultado(r);
+      setConjuntoJaCriado(null);
+      setNomeConjunto("");
       // Só limpa o que é do carro: campanha, conjunto e base ficam pro próximo.
       fotos.forEach((f) => URL.revokeObjectURL(f.previa));
       setFotos([]);
@@ -345,12 +374,53 @@ export function Formulario({
             </select>
           </label>
         </div>
-        {conjunto && (
+        <fieldset className="flex flex-col sm:flex-row gap-2 sm:gap-5 text-sm">
+          <legend className="sr-only">Conjunto existente ou novo</legend>
+          <label className="inline-flex items-center gap-2">
+            <input type="radio" name="modo" checked={modo === "existente"} onChange={() => setModo("existente")} />
+            Subir dentro deste conjunto
+          </label>
+          <label className="inline-flex items-center gap-2">
+            <input type="radio" name="modo" checked={modo === "novo"} onChange={() => setModo("novo")} />
+            Criar um conjunto novo, duplicando este (um carro por conjunto)
+          </label>
+        </fieldset>
+        {conjunto && modo === "existente" && (
           <p className="text-sm text-foreground-muted">
             {conjunto.orcamentoCents ? <>Orçamento do conjunto: <strong>{reais(conjunto.orcamentoCents)}</strong> por dia. </> : <>O orçamento é definido na campanha. </>}
             {sugeridoCents ? <>Sugestão pelo investimento da loja: <strong>{reais(sugeridoCents)}</strong> por dia. </> : null}
             Quem decide é você: eu não mudo orçamento nem localização, só aviso se algo destoar.
           </p>
+        )}
+        {modo === "novo" && (
+          <div className="flex flex-col gap-3 rounded-lg border border-border bg-background p-3">
+            <p className="text-sm text-foreground-muted">
+              O conjunto escolhido acima é o <strong>molde</strong>: copio público, localização e otimização dele, sem os anúncios. O novo nasce{" "}
+              <strong>pausado</strong>, com o nome do carro.
+              {conjunto && !conjunto.orcamentoCents ? " Esta campanha define o orçamento na campanha, então o orçamento abaixo não se aplica." : ""}
+            </p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className={rotulo}>Nome do conjunto novo</span>
+                <input className={campo} value={nomeConjunto} maxLength={200} placeholder={nome.trim() || "Igual ao nome do anúncio"} onChange={(e) => setNomeConjunto(e.target.value)} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className={rotulo}>Orçamento diário (R$)</span>
+                <input
+                  className={campo}
+                  inputMode="decimal"
+                  value={orcamento}
+                  disabled={!!conjunto && !conjunto.orcamentoCents}
+                  placeholder={conjunto?.orcamentoCents ? `${(conjunto.orcamentoCents / 100).toLocaleString("pt-BR")} (o do molde)` : "o do molde"}
+                  onChange={(e) => setOrcamento(e.target.value)}
+                />
+              </label>
+            </div>
+            {sugeridoCents ? <p className="text-xs text-foreground-muted">Sugestão pelo investimento da loja: {reais(sugeridoCents)} por dia (pra loja toda).</p> : null}
+            {conjuntoJaCriado && conjuntoJaCriado.molde === conjuntoId && (
+              <p className="text-sm text-amber-600 dark:text-amber-400">O conjunto &quot;{conjuntoJaCriado.nome}&quot; já foi criado na tentativa anterior: vou subir o anúncio nele.</p>
+            )}
+          </div>
         )}
       </section>
 

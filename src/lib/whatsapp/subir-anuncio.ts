@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { CARTEIRA_NO_META, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import { acharObjetoDaLoja } from "@/lib/meta/mudar-status";
-import { criarRascunhoDeAnuncio, lerBaseDoAnuncio, subirFotoDoRascunho } from "@/lib/meta/rascunho-anuncio";
+import { lerBaseDoAnuncio, ORCAMENTO_MAXIMO_CENTS, ORCAMENTO_MINIMO_CENTS, subirFotoDoRascunho, subirRascunho } from "@/lib/meta/rascunho-anuncio";
 import { gerarLegendaDoCarro } from "@/lib/meta/legenda-do-rascunho";
 import { achatar, acharCarro } from "./entender-pedido";
 import { acharLojaNoTexto, descartarPendente, respostaDeConfirmacao } from "./pausar-no-privado";
@@ -69,6 +69,12 @@ interface Conversa {
   legenda: string | null;
   avisosDaLegenda: string[];
   opcoes: Opcao[];
+  /** "Um carro por conjunto": o conjunto escolhido é o molde, e o anúncio ganha um conjunto novo (duplicado). */
+  duplicarConjunto: boolean;
+  /** Orçamento diário do conjunto novo (centavos). Null = o do molde. */
+  orcamentoCents: number | null;
+  /** Conjunto criado numa tentativa anterior que falhou depois: a próxima sobe nele. */
+  conjuntoCriadoId: string | null;
 }
 
 const negrito = (s: string) => `*${s}*`;
@@ -105,6 +111,9 @@ function ler(linha: Awaited<ReturnType<typeof prisma.rascunhoWhatsapp.findUnique
     legenda: linha.legenda,
     avisosDaLegenda: avisos,
     opcoes,
+    duplicarConjunto: linha.duplicarConjunto,
+    orcamentoCents: linha.orcamentoCents,
+    conjuntoCriadoId: linha.conjuntoCriadoId,
   };
 }
 
@@ -492,6 +501,31 @@ async function comandoDeConfirmacao(pessoa: Pessoa, c: Conversa, texto: string, 
     return null;
   }
   // "conjunto" e "base" pedem a LISTA: a etapa fica marcada pra o robô não voltar sozinho ao "mesmo de sempre".
+  // "Um carro por conjunto": o conjunto do resumo vira o molde de um conjunto novo.
+  if (/^(conjunto novo|novo conjunto|duplicar conjunto|duplica o conjunto|duplica conjunto|um carro por conjunto|criar conjunto)$/.test(t)) {
+    await salvar(c, { duplicarConjunto: true }, agora);
+    return null;
+  }
+  if (/^(mesmo conjunto|conjunto existente|dentro do conjunto|no mesmo conjunto|sem conjunto novo)$/.test(t)) {
+    await salvar(c, { duplicarConjunto: false, orcamentoCents: null }, agora);
+    return null;
+  }
+  const novoOrcamento = depois(/^\s*or[cç]amento\s*[:\-]?\s*/i);
+  if (novoOrcamento !== null) {
+    const m = /(\d+(?:[.,]\d{1,2})?)/.exec(novoOrcamento.replace(/\.(?=\d{3}\b)/g, ""));
+    const cents = m ? Math.round(Number(m[1].replace(",", ".")) * 100) : NaN;
+    if (!Number.isFinite(cents) || cents < ORCAMENTO_MINIMO_CENTS || cents > ORCAMENTO_MAXIMO_CENTS) {
+      return "Escreve o orçamento diário em reais, de 1 a 1.000. Ex.: *orçamento: 12*";
+    }
+    if (!c.duplicarConjunto) {
+      return "Orçamento eu só defino em conjunto NOVO (o de um conjunto que já existe eu não mexo). Escreve *conjunto novo* antes, se a loja usa um carro por conjunto.";
+    }
+    if (c.adsetId && !(await orcamentoDoMolde(c.adsetId))) {
+      return "Nessa campanha o orçamento fica na CAMPANHA, não no conjunto: não dá pra definir por conjunto. Se quiser mudar, é no Gerenciador.";
+    }
+    await salvar(c, { orcamentoCents: cents }, agora);
+    return null;
+  }
   if (t === "conjunto") {
     await salvar(c, { etapa: "conjunto", adsetId: null, adsetNome: null, campanhaNome: null, baseAdId: null, baseNome: null, base: null, legenda: null }, agora);
     return null;
@@ -507,8 +541,15 @@ async function comandoDeConfirmacao(pessoa: Pessoa, c: Conversa, texto: string, 
   return "Não entendi. " + AJUDA_DO_RESUMO;
 }
 
+/** O orçamento diário do conjunto (no cadastro). `null` = orçamento na campanha (ou total), não dá pra definir por conjunto. */
+async function orcamentoDoMolde(adsetId: string): Promise<number | null> {
+  const a = await prisma.metaAdset.findFirst({ where: { adsetId }, select: { dailyBudgetCents: true } });
+  return a?.dailyBudgetCents ?? null;
+}
+
 const AJUDA_DO_RESUMO =
-  "Responde *sim* pra subir pausado, ou troca: *legenda: …*, *título: …*, *carro: …*, *conjunto*, *base*, *loja*. Pra desistir, *cancela*.";
+  "Responde *sim* pra subir pausado, ou troca: *legenda: …*, *título: …*, *carro: …*, *conjunto*, *base*, *loja*, " +
+  "*conjunto novo* (um carro por conjunto) / *mesmo conjunto*, *orçamento: 12*. Pra desistir, *cancela*.";
 
 /**
  * Descobre o que ainda falta e pergunta, na ordem: fotos → loja → conjunto → anúncio-base → carro → legenda → resumo.
@@ -553,7 +594,11 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
       const conjunto = achado ? await acharObjetoDaLoja(loja.id, "conjunto", padrao.adsetId) : null;
       if (achado && conjunto) {
         const [camp, nome] = achado.rotulo.includes(" › ") ? achado.rotulo.split(" › ") : [null, achado.rotulo];
-        await salvar(c, { adsetId: padrao.adsetId, adsetNome: nome.replace(/ \(pausado\)$/, ""), campanhaNome: camp }, agora);
+        await salvar(
+          c,
+          { adsetId: padrao.adsetId, adsetNome: nome.replace(/ \(pausado\)$/, ""), campanhaNome: camp, duplicarConjunto: padrao.duplicarConjunto, orcamentoCents: padrao.orcamentoCents },
+          agora,
+        );
         // O anúncio-base de sempre, se ainda serve.
         const b = await lerBaseDoAnuncio(loja.id, padrao.baseAdId);
         if (b.ok) {
@@ -572,7 +617,8 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
     await salvar(c, { etapa: "conjunto", opcoes: conjuntos }, agora);
     return (
       `${aviso}Em qual conjunto da ${negrito(loja.companyName)} eu subo? Responde com o número` +
-      `${conjuntos.length > MAX_NA_LISTA ? " ou parte do nome" : ""}:\n${listaNumerada(mostradas)}`
+      `${conjuntos.length > MAX_NA_LISTA ? " ou parte do nome" : ""}:\n${listaNumerada(mostradas)}` +
+      `\n\nSe a loja usa *um carro por conjunto*, escolhe o conjunto que serve de molde: no resumo é só escrever *conjunto novo*.`
     );
   }
 
@@ -635,15 +681,24 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
 
   // ── 7. O resumo ───────────────────────────────────────────────────────
   await salvar(c, { etapa: "confirmando", opcoes: [] }, agora);
-  return aviso + resumo(c, fotos, estoqueUsado);
+  return aviso + resumo(c, fotos, estoqueUsado, c.duplicarConjunto && c.adsetId ? await orcamentoDoMolde(c.adsetId) : null);
 }
 
-function resumo(c: Conversa, fotos: number, estoqueUsado: string): string {
+function resumo(c: Conversa, fotos: number, estoqueUsado: string, orcamentoMolde: number | null): string {
   const base = c.base as BaseSalva;
   const linhas = [
     "📋 *Confere antes de subir* (o anúncio vai PAUSADO)",
     `• Loja: ${negrito(c.lojaNome ?? "")}`,
-    `• Conjunto: ${negrito(`${c.campanhaNome ? c.campanhaNome + " › " : ""}${c.adsetNome ?? ""}`)}`,
+    c.duplicarConjunto
+      ? `• Conjunto: *NOVO*, ${negrito(c.nome ?? "")}, duplicando ${negrito(`${c.campanhaNome ? c.campanhaNome + " › " : ""}${c.adsetNome ?? ""}`)}` +
+        ` · orçamento ${
+          orcamentoMolde === null
+            ? "definido na campanha"
+            : c.orcamentoCents
+              ? `${reais(c.orcamentoCents)}/dia`
+              : `${reais(orcamentoMolde)}/dia (o do molde)`
+        } (nasce pausado)`
+      : `• Conjunto: ${negrito(`${c.campanhaNome ? c.campanhaNome + " › " : ""}${c.adsetNome ?? ""}`)}`,
     `• Duplicando: ${negrito(c.baseNome ?? "")} (${base.formato})`,
     `• Fotos: ${fotos} → ${fotos === 1 ? "foto única" : "carrossel"}`,
     `• Carro: ${c.carro}${estoqueUsado ? " (do estoque do site)" : ""}`,
@@ -692,10 +747,11 @@ async function executar(pessoa: Pessoa, c: Conversa, agora: Date): Promise<strin
       hashes.push(r.hash);
     }
 
-    const r = await criarRascunhoDeAnuncio({
+    const r = await subirRascunho({
       clientId: c.clientId,
       baseAdId: c.baseAdId,
       adsetId: c.adsetId,
+      conjuntoNovo: c.duplicarConjunto ? { nome: c.nome, orcamentoCents: c.orcamentoCents, jaCriadoId: c.conjuntoCriadoId } : null,
       nome: c.nome,
       legenda: c.legenda,
       titulo: c.base.titulo ? (c.titulo ?? "") : null,
@@ -706,15 +762,11 @@ async function executar(pessoa: Pessoa, c: Conversa, agora: Date): Promise<strin
     });
     if (!r.ok) {
       await desfazer();
+      if (r.adsetCriado) await prisma.rascunhoWhatsapp.updateMany({ where: { userId: pessoa.id }, data: { conjuntoCriadoId: r.adsetCriado.adsetId } });
       await anotar(null, `privado ${pessoa.id}`, "subir-anuncio-recusado", r.erro ?? "");
       return `Não consegui criar o anúncio: ${r.erro}\n\nResponde *sim* pra tentar de novo, ou ajusta (*conjunto*, *base*…), ou *cancela*.`;
     }
 
-    await prisma.padraoDeRascunho.upsert({
-      where: { clientId: c.clientId },
-      create: { clientId: c.clientId, adsetId: c.adsetId, baseAdId: c.baseAdId },
-      update: { adsetId: c.adsetId, baseAdId: c.baseAdId },
-    });
     await apagarTudo(pessoa.id);
     await anotar(null, `privado ${pessoa.id}`, "subir-anuncio-criou", `${r.formato} · ${hashes.length} foto(s)`);
     try {
@@ -725,10 +777,11 @@ async function executar(pessoa: Pessoa, c: Conversa, agora: Date): Promise<strin
 
     const avisos = r.avisos.map((a) => `⚠️ ${a.texto}`).join("\n");
     return (
-      `✅ Subi o anúncio ${negrito(c.nome)} na ${negrito(c.lojaNome ?? "")} — PAUSADO (${r.formato === "carrossel" ? "carrossel" : "foto única"}).\n` +
-      `Ele ainda *não está no ar* e não gasta nada. Confere e publica no Gerenciador:\n${r.linkDoGerenciador}` +
+      `✅ Subi o anúncio ${negrito(c.nome)} na ${negrito(c.lojaNome ?? "")} — PAUSADO (${r.formato === "carrossel" ? "carrossel" : "foto única"})` +
+      (r.adsetCriado ? `, num conjunto NOVO (${negrito(r.adsetCriado.nome)}), também pausado` : "") +
+      `.\nEle ainda *não está no ar* e não gasta nada. Confere e publica no Gerenciador${r.adsetCriado ? " (ligue o conjunto e o anúncio)" : ""}:\n${r.linkDoGerenciador}` +
       (avisos ? `\n\n${avisos}` : "") +
-      `\n\nPróximo carro da ${c.lojaNome}? É só mandar as fotos: eu uso o mesmo conjunto.`
+      `\n\nPróximo carro da ${c.lojaNome}? É só mandar as fotos: ${c.duplicarConjunto ? "eu duplico o mesmo conjunto molde" : "eu uso o mesmo conjunto"}.`
     );
   } catch (e) {
     await desfazer();

@@ -69,6 +69,8 @@ export interface PedidoDeRascunho {
   link: string;
   /** Códigos das fotos já enviadas (subirFotoDoRascunho). Uma = foto única; duas ou mais = carrossel. */
   hashes: string[];
+  /** O conjunto acabou de ser duplicado por aqui (o aviso de "conjunto pausado" muda). */
+  conjuntoNovo?: boolean;
   pedidoPor: string | null;
   quemId: string | null;
 }
@@ -94,8 +96,11 @@ const objeto = (v: unknown): Record<string, unknown> | null => (v && typeof v ==
 const texto = (v: unknown): string => (typeof v === "string" ? v : "");
 
 /** O endereço do anúncio no Gerenciador da Meta. */
-export function linkDoGerenciador(contaMeta: string, adId: string): string {
-  return `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${contaMeta.replace(/^act_/, "")}&selected_ad_ids=${encodeURIComponent(adId)}`;
+export function linkDoGerenciador(contaMeta: string, id: string, nivel: "anuncio" | "conjunto" = "anuncio"): string {
+  const conta = contaMeta.replace(/^act_/, "");
+  return nivel === "conjunto"
+    ? `https://adsmanager.facebook.com/adsmanager/manage/adsets?act=${conta}&selected_adset_ids=${encodeURIComponent(id)}`
+    : `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${conta}&selected_ad_ids=${encodeURIComponent(id)}`;
 }
 
 // ───────────────────────── Sugestão e avisos (puros) ─────────────────────
@@ -275,9 +280,102 @@ async function contaDoConjunto(clientId: string, adsetId: string) {
   if (!conjunto) return null;
   const c = await prisma.metaAdset.findFirst({
     where: { adsetId, adAccount: { clientId } },
-    select: { name: true, status: true, effectiveStatus: true, dailyBudgetCents: true, adAccount: { select: { metaAccountId: true } } },
+    select: {
+      name: true, status: true, effectiveStatus: true, dailyBudgetCents: true, lifetimeBudgetCents: true, campaignId: true,
+      adAccountId: true, adAccount: { select: { metaAccountId: true } },
+    },
   });
-  return c ? { nome: c.name, status: c.status, effectiveStatus: c.effectiveStatus, dailyBudgetCents: c.dailyBudgetCents, contaMeta: c.adAccount.metaAccountId } : null;
+  return c
+    ? {
+        nome: c.name, status: c.status, effectiveStatus: c.effectiveStatus, dailyBudgetCents: c.dailyBudgetCents,
+        lifetimeBudgetCents: c.lifetimeBudgetCents, campaignId: c.campaignId, adAccountId: c.adAccountId, contaMeta: c.adAccount.metaAccountId,
+      }
+    : null;
+}
+
+// ─────────────────────────── Duplicar o conjunto ──────────────────────────
+//
+// Loja que trabalha "um carro por conjunto" (a Vilela): o anúncio novo não entra num conjunto que já existe —
+// o conjunto escolhido serve de MOLDE (público, localização, otimização) e é duplicado pela própria Meta
+// (`/copies`, só o conjunto, sem os anúncios de dentro). O conjunto novo nasce PAUSADO, ganha o nome do carro e,
+// se o gestor disser, outro orçamento diário. O resto fica igual ao molde.
+
+/** Orçamento diário aceito pra um conjunto novo (centavos): de R$ 1 a R$ 1.000 por dia, contra erro de digitação. */
+export const ORCAMENTO_MINIMO_CENTS = 100;
+export const ORCAMENTO_MAXIMO_CENTS = 100_000;
+
+export type ResultadoDoConjunto =
+  | { ok: true; adsetId: string; nome: string; orcamentoCents: number | null; avisos: AvisoDoConjunto[] }
+  | { ok: false; erro: string };
+
+export async function duplicarConjunto(p: {
+  clientId: string;
+  /** O conjunto que serve de molde. */
+  adsetId: string;
+  nome: string;
+  /** Orçamento diário do conjunto novo (centavos). `null` = o mesmo do molde. */
+  orcamentoCents: number | null;
+  pedidoPor: string | null;
+  quemId: string | null;
+}): Promise<ResultadoDoConjunto> {
+  if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
+  const nome = p.nome.trim().slice(0, 200);
+  if (!nome) return { ok: false, erro: "Falta o nome do conjunto novo." };
+  if (p.orcamentoCents !== null && (p.orcamentoCents < ORCAMENTO_MINIMO_CENTS || p.orcamentoCents > ORCAMENTO_MAXIMO_CENTS)) {
+    return { ok: false, erro: "O orçamento diário precisa ficar entre R$ 1 e R$ 1.000." };
+  }
+  const molde = await contaDoConjunto(p.clientId, p.adsetId);
+  if (!molde) return { ok: false, erro: "Esse conjunto não é de uma conta desta loja." };
+  const avisos: AvisoDoConjunto[] = [];
+  // Orçamento só dá pra trocar quando o molde tem orçamento DIÁRIO no próprio conjunto.
+  let orcamento = p.orcamentoCents;
+  if (orcamento !== null && !molde.dailyBudgetCents) {
+    avisos.push({
+      tipo: "orcamento",
+      texto: molde.lifetimeBudgetCents
+        ? "O conjunto molde usa orçamento total (não diário), então mantive o dele. Ajusta no Gerenciador se precisar."
+        : "O orçamento dessa campanha fica na campanha (não no conjunto), então não mudei nada de orçamento.",
+    });
+    orcamento = null;
+  }
+
+  // 1. A cópia, pausada, só o conjunto.
+  const copia = await escreverNaGraph<{ copied_adset_id?: string }>(`${p.adsetId}/copies`, {
+    deep_copy: "false",
+    status_option: "PAUSED",
+    rename_options: JSON.stringify({ rename_strategy: "NO_RENAME" }),
+  });
+  if (!copia.ok || !copia.dados.copied_adset_id) {
+    return { ok: false, erro: `A Meta não duplicou o conjunto: ${copia.ok ? "sem id" : copia.erro}` };
+  }
+  const novo = copia.dados.copied_adset_id;
+
+  // 2. O nome do carro e o orçamento. Se falhar, o conjunto existe (pausado) com o nome do molde: diz isso.
+  const campos: Record<string, string> = { name: nome };
+  if (orcamento !== null) campos.daily_budget = String(orcamento);
+  const ajuste = await escreverNaGraph(novo, campos);
+  if (!ajuste.ok) {
+    avisos.push({ tipo: "conjunto", texto: `O conjunto foi duplicado, mas a Meta não aceitou ${orcamento !== null ? "o nome/orçamento" : "o nome"} (${ajuste.erro}). Ele está pausado com o nome do molde: ajusta no Gerenciador.` });
+  }
+  const final = ajuste.ok ? orcamento ?? molde.dailyBudgetCents : molde.dailyBudgetCents;
+
+  // 3. O cadastro local passa a conhecer o conjunto novo (é a trava de "conjunto da loja" que o anúncio usa).
+  await prisma.metaAdset.upsert({
+    where: { adAccountId_adsetId: { adAccountId: molde.adAccountId, adsetId: novo } },
+    create: {
+      adAccountId: molde.adAccountId, adsetId: novo, campaignId: molde.campaignId, name: ajuste.ok ? nome : molde.nome,
+      status: "PAUSED", effectiveStatus: "PAUSED", dailyBudgetCents: final, lifetimeBudgetCents: molde.lifetimeBudgetCents,
+    },
+    update: { name: ajuste.ok ? nome : molde.nome, status: "PAUSED", effectiveStatus: "PAUSED", dailyBudgetCents: final },
+  });
+  await prisma.metaAcao.create({
+    data: {
+      clientId: p.clientId, quemId: p.quemId, nivel: "conjunto", objetoId: novo, nome: ajuste.ok ? nome : molde.nome,
+      statusPedido: "PAUSED", statusAntes: null, ok: true, origem: "criacao-rascunho", pedidoPor: p.pedidoPor,
+      pedidoTexto: `conjunto duplicado de ${molde.nome}${final ? ` · ${reais(final)}/dia` : ""} · conta ${molde.contaMeta}`.slice(0, 2000),
+    },
+  });
+  return { ok: true, adsetId: novo, nome: ajuste.ok ? nome : molde.nome, orcamentoCents: final, avisos };
 }
 
 /**
@@ -372,7 +470,12 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
   // ── 2. O que o conjunto tem (leitura, nada muda) ────────────────────
   const avisos: AvisoDoConjunto[] = [];
   if (conta.effectiveStatus && conta.effectiveStatus !== "ACTIVE") {
-    avisos.push({ tipo: "conjunto", texto: "Esse conjunto está pausado. O anúncio só roda quando você ligar o conjunto também." });
+    avisos.push({
+      tipo: "conjunto",
+      texto: p.conjuntoNovo
+        ? "O conjunto novo também nasceu pausado: na hora de publicar, ligue o conjunto e o anúncio."
+        : "Esse conjunto está pausado. O anúncio só roda quando você ligar o conjunto também.",
+    });
   }
   const conjunto = await lerConjunto(p.adsetId);
   const sugerido = orcamentoSugerido(loja.gastoMensalPrevistoCents);
@@ -380,7 +483,8 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
   if (conjunto) avisos.push(...avisosDeLocalizacao(conjunto.geo, loja.city));
   else avisos.push({ tipo: "localizacao", texto: "Não consegui ler a localização desse conjunto agora. Confere na Meta antes de publicar." });
   const avisoOrcamento = avisoDeOrcamento(orcamentoDoConjunto, sugerido);
-  if (avisoOrcamento) avisos.push(avisoOrcamento);
+  // Num conjunto novo de "um carro por conjunto", o orçamento é pequeno de propósito: comparar com o da loja inteira confunde.
+  if (avisoOrcamento && !p.conjuntoNovo) avisos.push(avisoOrcamento);
 
   // ── 3. O criativo: o do base, com o que é do carro trocado ──────────
   const formato: "foto" | "carrossel" = p.hashes.length === 1 ? "foto" : "carrossel";
@@ -439,4 +543,66 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
     orcamentoDoConjuntoCents: orcamentoDoConjunto,
     linkDoGerenciador: linkDoGerenciador(conta.contaMeta, anuncio.dados.id),
   };
+}
+
+// ─────────────────── Tudo junto: (conjunto novo +) anúncio + padrão ───────────────────
+
+export interface PedidoCompleto extends Omit<PedidoDeRascunho, "conjuntoNovo"> {
+  /** Duplicar o conjunto `adsetId` (o molde) e subir o anúncio no novo. */
+  conjuntoNovo?: { nome: string; orcamentoCents: number | null; jaCriadoId?: string | null } | null;
+}
+
+export interface ResultadoCompleto extends ResultadoDoRascunho {
+  /** O conjunto criado nesta tentativa, mesmo se o anúncio falhou: a próxima tentativa sobe nele (não cria outro). */
+  adsetCriado?: { adsetId: string; nome: string } | null;
+}
+
+/**
+ * O que a tela e o WhatsApp chamam. Duplica o conjunto (se pedido), cria o anúncio PAUSADO e guarda o "mesmo de
+ * sempre" da loja (conjunto/molde, anúncio-base, se é um carro por conjunto e o orçamento).
+ */
+export async function subirRascunho(p: PedidoCompleto): Promise<ResultadoCompleto> {
+  let adsetId = p.adsetId;
+  const avisos: AvisoDoConjunto[] = [];
+  let adsetCriado: { adsetId: string; nome: string } | null = null;
+
+  // Uma tentativa anterior já criou o conjunto (e o anúncio falhou depois): sobe nele, se ainda é da loja.
+  const jaCriado = p.conjuntoNovo?.jaCriadoId ? await contaDoConjunto(p.clientId, p.conjuntoNovo.jaCriadoId) : null;
+  if (p.conjuntoNovo && jaCriado && p.conjuntoNovo.jaCriadoId) {
+    adsetId = p.conjuntoNovo.jaCriadoId;
+    adsetCriado = { adsetId, nome: jaCriado.nome };
+  } else if (p.conjuntoNovo) {
+    // Antes de criar qualquer coisa na Meta: o anúncio-base serve? (Senão sobraria um conjunto vazio.)
+    const base = await lerBaseDoAnuncio(p.clientId, p.baseAdId);
+    if (!base.ok) return { ok: false, erro: base.erro, avisos: [], orcamentoSugeridoCents: null, orcamentoDoConjuntoCents: null };
+    const c = await duplicarConjunto({
+      clientId: p.clientId,
+      adsetId: p.adsetId,
+      nome: p.conjuntoNovo.nome,
+      orcamentoCents: p.conjuntoNovo.orcamentoCents,
+      pedidoPor: p.pedidoPor,
+      quemId: p.quemId,
+    });
+    if (!c.ok) return { ok: false, erro: c.erro, avisos: [], orcamentoSugeridoCents: null, orcamentoDoConjuntoCents: null };
+    adsetId = c.adsetId;
+    adsetCriado = { adsetId: c.adsetId, nome: c.nome };
+    avisos.push(...c.avisos);
+  }
+
+  const r = await criarRascunhoDeAnuncio({ ...p, adsetId, conjuntoNovo: !!p.conjuntoNovo });
+  if (!r.ok) {
+    return {
+      ...r,
+      avisos: [...avisos, ...r.avisos],
+      erro: adsetCriado ? `${r.erro} O conjunto novo "${adsetCriado.nome}" já foi criado (pausado, vazio): tentando de novo, eu subo nele.` : r.erro,
+      adsetCriado,
+    };
+  }
+
+  await prisma.padraoDeRascunho.upsert({
+    where: { clientId: p.clientId },
+    create: { clientId: p.clientId, adsetId: p.adsetId, baseAdId: p.baseAdId, duplicarConjunto: !!p.conjuntoNovo, orcamentoCents: p.conjuntoNovo?.orcamentoCents ?? null },
+    update: { adsetId: p.adsetId, baseAdId: p.baseAdId, duplicarConjunto: !!p.conjuntoNovo, orcamentoCents: p.conjuntoNovo?.orcamentoCents ?? null },
+  });
+  return { ...r, avisos: [...avisos, ...r.avisos], adsetCriado };
 }

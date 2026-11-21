@@ -5,7 +5,7 @@ import { requireModuleAccess } from "@/lib/dal";
 import { clienteEDaCarteira } from "@/lib/carteira";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import {
-  criarRascunhoDeAnuncio,
+  subirRascunho,
   lerBaseDoAnuncio,
   subirFotoDoRascunho,
   type AvisoDoConjunto,
@@ -36,6 +36,8 @@ export interface RespostaDoRascunho {
   formato?: "foto" | "carrossel";
   avisos?: AvisoDoConjunto[];
   linkDoGerenciador?: string;
+  /** Conjunto criado nesta tentativa (mesmo se o anúncio falhou): a próxima tentativa sobe nele. */
+  adsetCriado?: { adsetId: string; nome: string } | null;
 }
 
 async function podeNaLoja(clientId: string) {
@@ -94,13 +96,16 @@ export async function criarRascunho(entrada: {
   titulo: string;
   link: string;
   hashes: string[];
+  /** Duplicar o conjunto (adsetId é o molde) com este nome e orçamento diário (centavos, ou null = o do molde). */
+  conjuntoNovo?: { nome: string; orcamentoCents: number | null; jaCriadoId?: string | null } | null;
 }): Promise<RespostaDoRascunho> {
   return semQuebrar<RespostaDoRascunho>(async () => {
     const user = await podeNaLoja(entrada.clientId);
     if (!user) return { ok: false, erro: "Esta loja não está na sua carteira." };
     if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
 
-    const r = await criarRascunhoDeAnuncio({
+    const novo = entrada.conjuntoNovo;
+    const r = await subirRascunho({
       clientId: entrada.clientId,
       baseAdId: String(entrada.baseAdId),
       adsetId: String(entrada.adsetId),
@@ -111,8 +116,16 @@ export async function criarRascunho(entrada: {
       hashes: Array.isArray(entrada.hashes) ? entrada.hashes.map(String) : [],
       pedidoPor: user.name,
       quemId: user.id,
+      conjuntoNovo:
+        novo && typeof novo.nome === "string"
+          ? {
+              nome: novo.nome,
+              orcamentoCents: typeof novo.orcamentoCents === "number" && Number.isFinite(novo.orcamentoCents) ? Math.round(novo.orcamentoCents) : null,
+              jaCriadoId: typeof novo.jaCriadoId === "string" ? novo.jaCriadoId : null,
+            }
+          : null,
     });
-    if (!r.ok) return { ok: false, erro: r.erro, avisos: r.avisos };
+    if (!r.ok) return { ok: false, erro: r.erro, avisos: r.avisos, adsetCriado: r.adsetCriado ?? null };
 
     revalidatePath(`/meta-ads/${entrada.clientId}/subir-anuncio`);
     return { ok: true, adId: r.adId, formato: r.formato, avisos: r.avisos, linkDoGerenciador: r.linkDoGerenciador };

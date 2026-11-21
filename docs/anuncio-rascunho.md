@@ -122,3 +122,26 @@ sim                             → sobe as fotos, duplica o base PAUSADO e mand
 `src/app/api/whatsapp/recebido/[segredo]/route.ts` (aceita `image` no privado), tabelas `rascunhos_whatsapp`,
 `rascunho_fotos`, `padrao_de_rascunho` (migração `20261123100000_rascunho_whatsapp`).
 Testes: `t-subir-whats.mjs` (conversa inteira, Z-API e Meta falsas) e `t-subir-http.mjs` (o webhook de verdade).
+
+---
+
+# Um carro por conjunto (duplicar o CONJUNTO)
+
+Lojas como a Vilela usam **um conjunto por carro**. Pra elas o anúncio não entra num conjunto que já existe: o conjunto
+escolhido vira **molde** e a Meta o duplica (`/{conjunto}/copies`, só o conjunto, sem os anúncios de dentro).
+
+- O conjunto novo nasce **PAUSADO**, com o **nome do carro** e o **orçamento diário** informado (padrão: o do molde).
+  Público, localização, otimização e o resto ficam iguais ao molde.
+- O anúncio é criado dentro do conjunto novo, também pausado. Pra publicar: **ligar o conjunto e o anúncio**.
+- Orçamento aceito: R$ 1 a R$ 1.000/dia. Se a campanha controla o orçamento (orçamento na campanha) ou o molde usa
+  orçamento total, o sistema **não mexe** no orçamento e avisa.
+- O anúncio-base é conferido **antes** de duplicar (não sobra conjunto vazio por causa de base de vídeo/Advantage+).
+- Se o conjunto foi criado e o anúncio falhou depois, a próxima tentativa **sobe no mesmo conjunto** (não cria outro).
+- O "mesmo de sempre" da loja (`padrao_de_rascunho`) passa a lembrar **se é um carro por conjunto** e o **orçamento**:
+  o próximo carro já vem assim, na tela e no WhatsApp.
+- O conjunto criado fica no histórico (`meta_acoes`, nível conjunto) e na lista "Rascunhos recentes" com link pro Gerenciador.
+
+**Na tela:** passo 1 → "Criar um conjunto novo, duplicando este (um carro por conjunto)", nome e orçamento diário.
+**No WhatsApp:** no resumo, `conjunto novo` (ou `mesmo conjunto` pra voltar), `orçamento: 12`.
+
+Testes: `t-rascunho.mjs` (seções 8 e 9), `t-subir-whats.mjs` (seção 7b), `dup-tela.mjs` (navegador).

@@ -215,6 +215,21 @@ export async function atenderMensagemDoGrupo(
     },
   });
   if (!loja) {
+    // Grupo que não é de loja nenhuma: não age, nunca. Mas se alguém DA CASA marcou o robô, ficar calado
+    // parece defeito (o robô acabou de entrar no grupo e ninguém ligou o grupo à loja). Aí ele responde
+    // dizendo isso — e só isso. Número de fora continua sem resposta nenhuma.
+    const chamada = await fuiChamado(m);
+    const pessoa = chamada.chamado && m.telefone ? await acharPessoaPeloNumero(m.telefone) : null;
+    if (pessoa) {
+      await anotar(m.messageId, m.grupoId, "grupo-desconhecido-avisou", pessoa.name);
+      await responder(
+        m.grupoId,
+        `Oi, ${pessoa.name.split(" ")[0]}! Este grupo ainda *não está ligado a nenhuma loja* no Legacy OS, então não mexo em nada aqui. ` +
+          "Pra ligar: Legacy OS → Configurações → WhatsApp → na loja certa, escolhe este grupo. Depois é só me chamar de novo.",
+        m.messageId,
+      );
+      return { tipo: "grupo-desconhecido" };
+    }
     await anotar(m.messageId, m.grupoId, "grupo-desconhecido");
     return { tipo: "grupo-desconhecido" };
   }

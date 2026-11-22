@@ -118,6 +118,9 @@ const ROUTE_MODULE: { prefix: string; module: ModuleKey }[] = [
   // O ranking das lojas vive fora de /gestao-contas pra ser uma aba própria no
   // menu, mas quem vê é o mesmo pessoal que lança as vendas.
   { prefix: "/ranking-lojas", module: "gestao-contas" },
+  // Indicadores da equipe: a tela ainda confere veTodaACarteira (só dono e gerência), porque o
+  // gestor de tráfego tem "gestao-contas" mas não pode ver o placar das colegas.
+  { prefix: "/indicadores", module: "gestao-contas" },
   // A Inteligência Comercial (visão geral e estoque lido do site) é da carteira de quem
   // lança as vendas. Ranking e Controle de Vendas, que entram nas abas dela, seguem nos
   // endereços e módulos de sempre.

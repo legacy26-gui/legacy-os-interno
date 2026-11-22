@@ -72,6 +72,9 @@ const NAV_GROUPS: NavGroup[] = [
       // e fica junto do Meta Ads porque é sobre os números dele que se
       // decide o que vai pro grupo do cliente.
       { href: "/relatorios/aprovar", label: "Aprovar Relatórios", icon: CheckCheck, module: "gestao-contas" },
+      // Quem fez o quê, por função. Só dono e gerência (a tela redireciona o resto), e por isso
+      // não entra no menu mínimo do gestor de tráfego.
+      { href: "/indicadores", label: "Indicadores da Equipe", icon: BarChart3, module: "gestao-contas" },
       // Logo abaixo do Meta Ads porque é sobre os números dele que se
       // pergunta, e porque quem abre um costuma querer o outro.
       { href: "/copiloto", label: "Copiloto", icon: Bot, module: "clientes" },

@@ -177,7 +177,26 @@ A pergunta não vence: fica até a resposta, e dúvidas de várias mensagens vir
 - **DRE**: "(−) Retiradas pessoais" e "(=) Ficou na empresa", DEPOIS do lucro (retirada não é custo).
 - **DFC**: retiradas contam como saída de caixa ("Retiradas").
 
-## Próxima fase (passo 2)
+## Passo 2: alertas e ideias (`alertas.ts`, `robo-dos-avisos.ts`)
 
-Alertas e ideias: gasto fora do padrão do mês, categoria que estourou a média, retirada acima do
-lucro, imposto perto do vencimento, resumo semanal no grupo.
+O robô passa a **avisar**, não só anotar. Regras em código, com limites fixos (`LIMITES` em `alertas.ts`) —
+nada de IA decidindo o que é "muito". Gasto fixo (salário, aluguel) fica fora das médias.
+
+| Aviso | Quando | Regra |
+|---|---|---|
+| ⚠️ Gasto fora do padrão | junto do "Lancei" | ≥ 5 lançamentos da categoria nos 90 dias anteriores; valor ≥ 3× a mediana **e** ≥ R$ 50 acima dela |
+| 📈 Categoria passou da média | junto do "Lancei" (só no lançamento que **cruza**) e no resumo | mês atual > média dos 3 meses anteriores (precisa de 2 dos 3 com gasto; média ≥ R$ 100) |
+| 📈 No ritmo de passar | resumo / "alertas" | a partir do dia 10, projeção do mês ≥ 130% da média |
+| 💸 Retirada acima do lucro | resumo / "alertas" | mês passado (fechado) e, a partir do dia 15, o mês atual — só com receita confirmada no mês |
+| 🔴 Mês fechando negativo | resumo / "alertas" | projeção do caixa (`projecao.ts`) < 0 |
+| ⏰ Contas | todo dia de manhã / resumo / "alertas" | empresa, não pagas: vencendo hoje/amanhã e atrasadas (até 60 dias); imposto marcado com 🧾 |
+| 💡 Onde economizar | resumo / "alertas" | a categoria que mais passou da média; gasto miúdo repetido ≥ 6 vezes no mês |
+
+**No grupo:** `alertas`, `onde posso economizar?`, `dicas de economia`, `tem algum alerta?` mostram tudo na hora
+(comando tratado antes da IA).
+
+**Robô da manhã:** `/api/financeiro/avisos`, todo dia às 08:20 de Brasília (`20 11 * * *` UTC). Segunda: o
+**resumo da semana** (gastos da semana empresa/pessoal + tudo acima + contas da semana). Outros dias: só as
+contas vencendo/atrasadas, e só se houver. Cada aviso é reservado em `avisos_financeiros_enviados`
+(grupo + `vencimentos:AAAA-MM-DD` / `semana:AAAA-MM-DD`) antes de sair: nunca repete; se o WhatsApp falhar, a
+reserva é desfeita. Fora das 7h–20h não manda nada. Com `CRON_SECRET`, só o agendador entra.

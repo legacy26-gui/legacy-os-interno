@@ -22,6 +22,10 @@
       "schedule": "30 12,18 * * *"
     },
     {
+      "path": "/api/financeiro/avisos",
+      "schedule": "20 11 * * *"
+    },
+    {
       "path": "/api/relatorios/mandar",
       "schedule": "*/5 11-12 * * 1"
     }

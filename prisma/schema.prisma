@@ -1089,6 +1089,18 @@ model PendenciaFinanceira {
   @@map("pendencias_financeiras")
 }
 
+/// Os avisos que o robô do financeiro já mandou no grupo, pra nunca mandar o mesmo duas vezes
+/// (o agendador pode bater mais de uma vez, e a rota pode ser chamada de fora).
+/// chave: "vencimentos:2026-11-22" (um por dia) · "semana:2026-11-16" (um por semana).
+model AvisoFinanceiroEnviado {
+  grupoId   String
+  chave     String
+  enviadoEm DateTime @default(now())
+
+  @@id([grupoId, chave])
+  @@map("avisos_financeiros_enviados")
+}
+
 // Despesas fixas/recorrentes (salários, aluguel, ferramentas...) — igual à
 // mensalidade do cliente pro MRR, gera automaticamente o lançamento do mês.
 model FixedExpense {

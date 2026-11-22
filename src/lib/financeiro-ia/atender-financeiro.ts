@@ -26,6 +26,7 @@ import { projetarFimDoMes, textoDaProjecao } from "./projecao";
 import { lerAPagar, lerPagamentoDeConta, pedeListaAPagar } from "./interpretar-a-pagar";
 import { classificar, normal } from "./interpretar-gasto";
 import { interpretarComIa, type ContextoDoFinanceiro } from "./interprete";
+import { avisosDoLancamento, pedeAlertas, textoDosAlertas } from "./alertas";
 import { descricaoCurta, validarInterpretacao, type AcaoValida } from "./validar-interpretacao";
 import { perguntaDeGastoTemAssunto, responderPerguntaDeGasto } from "./responder-gasto";
 
@@ -78,6 +79,7 @@ export type DesfechoFinanceiro =
   | { tipo: "ia"; acoes: string[] }
   | { tipo: "respondeu-saldo" }
   | { tipo: "nao-entendeu" }
+  | { tipo: "alertas" }
   | { tipo: "silencio" };
 
 async function dizer(m: MensagemFinanceira, texto: string, _messageId?: string | null) {
@@ -133,6 +135,19 @@ async function guardarPendencia(grupoId: string, itens: GastoLido[]) {
     create: { grupoId, itens: json },
     update: { itens: json },
   });
+}
+
+/**
+ * O que vai junto do "Lancei": gasto fora do padrão e categoria que passou da média (ver alertas.ts).
+ * Nunca derruba a resposta: se a conta falhar, o lançamento já foi feito e o aviso só não sai.
+ */
+async function avisosJunto(donoId: string, lancados: GastoLido[], loteId: string, agora: Date): Promise<string> {
+  try {
+    const linhas = await avisosDoLancamento(donoId, lancados, loteId, agora);
+    return linhas.length ? `\n\n${linhas.join("\n")}` : "";
+  } catch {
+    return "";
+  }
 }
 
 // ── Lançar ───────────────────────────────────────────────────────────────
@@ -216,7 +231,7 @@ export async function atenderGrupoFinanceiro(
       await lancar(grupo.donoId, decididos, loteId, agora);
       await guardarPendencia(m.grupoId, []);
       await anotar(m.messageId, m.grupoId, "financeiro-respondeu", `${decididos.length} lançados`);
-      await dizer(m, `Lancei:\n${decididos.map((g) => linhaDoGasto(g, hoje)).join("\n")}`,
+      await dizer(m, `Lancei:\n${decididos.map((g) => linhaDoGasto(g, hoje)).join("\n")}${await avisosJunto(grupo.donoId, decididos, loteId, agora)}`,
         m.messageId,
       );
       return { tipo: "respondeu-pendencia", lancados: decididos.length };
@@ -234,6 +249,15 @@ export async function atenderGrupoFinanceiro(
       return { tipo: "desfez", apagados: pendentes.length };
     }
     return desfazerUltimo(m, grupo.donoId, agora, hoje);
+  }
+
+  // ── 2. "alertas", "onde economizar" ──────────────────────────────────────
+  //
+  // Antes da IA: é um comando, e a análise é feita em código (ver alertas.ts), não pela IA.
+  if (pedeAlertas(m.texto)) {
+    await anotar(m.messageId, m.grupoId, "financeiro-alertas");
+    await dizer(m, await textoDosAlertas(grupo.donoId, agora));
+    return { tipo: "alertas" };
   }
 
   // ── 2a. A IA lê a mensagem como gente ──────────────────────────────────
@@ -371,7 +395,7 @@ export async function atenderGrupoFinanceiro(
 
   const partes: string[] = [];
   if (certos.length > 0) {
-    partes.push(`Lancei:\n${certos.map((g) => linhaDoGasto(g, hoje)).join("\n")}`);
+    partes.push(`Lancei:\n${certos.map((g) => linhaDoGasto(g, hoje)).join("\n")}${await avisosJunto(grupo.donoId, certos, loteId, agora)}`);
   }
   if (naoEntendi.length > 0) {
     partes.push(
@@ -845,7 +869,7 @@ async function atenderComIa(
   if (decididos.length || duvidas.length) await guardarPendencia(m.grupoId, [...restantes, ...duvidas]);
   const todasAsDuvidas = [...restantes, ...duvidas];
 
-  if (lancados.length) partes.push(`Lancei:\n${lancados.map((g) => linhaDoGasto(g, hoje)).join("\n")}`);
+  if (lancados.length) partes.push(`Lancei:\n${lancados.map((g) => linhaDoGasto(g, hoje)).join("\n")}${await avisosJunto(donoId, lancados, loteId, agora)}`);
   if (contasNovas.length) partes.push(`Anotei *a pagar* (entra na projeção, ainda não saiu do caixa):\n${contasNovas.join("\n")}`);
   partes.push(...baixas, ...consultas);
   if (problemas.length) partes.push(`Fiquei sem fazer: ${problemas.join("; ")}.`);

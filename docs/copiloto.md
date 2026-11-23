@@ -307,3 +307,21 @@ A fonte é `meta_lifetime`, o acumulado por anúncio que a varredura renova a ca
 **Não foi conferido:** que o total bate com o "máximo" que a Meta mostra no
 Gerenciador para um carro de verdade. Os testes provam a soma e o recorte; a
 conferência de número contra a Meta só a produção responde.
+
+## "Quais anúncios ativos?" no grupo da loja (`src/lib/whatsapp/anuncios-ativos.ts`)
+
+No grupo da loja, marcando o robô: `quais anúncios ativos?`, `carros ativos`, `quais carros estão rodando?`,
+`o que está no ar?`, `lista dos carros ativos`. O robô responde com a lista organizada. **Só lê** (não pausa nem
+muda nada), por isso responde também na loja que não autorizou o robô a desligar anúncio.
+
+- **O que entra:** anúncios no ar de verdade (`effectiveStatus` ACTIVE: anúncio, conjunto e campanha ligados), de
+  **todos** os conjuntos e campanhas da loja. Pausado, em análise e recusado ficam de fora.
+- **Organização:** um carro por linha, em ordem alfabética. Anúncios do mesmo carro ("C3 foto" e "C3 foto vídeo — Cópia")
+  viram uma linha só, com os números somados.
+- **Em cada carro:** quantos anúncios no ar (e os formatos), investido desde a data mais antiga, leads e custo por lead.
+  Carro sem número da Meta ainda diz isso, em vez de mostrar R$ 0.
+- **Rodapé:** total investido e quando a Meta foi lida. O gasto e os leads são o acumulado do carro (o mesmo número
+  que o robô grava ao registrar uma venda), não o de hoje, e não é em tempo real.
+- **Muitos carros:** divide em várias mensagens (até ~3.000 caracteres cada), sem cortar um carro no meio, com a
+  numeração contínua e o total na última.
+- Frase que manda mexer ("pausa os anúncios ativos do gol", "vendeu o virtus") **não** vira lista: segue o fluxo de sempre.

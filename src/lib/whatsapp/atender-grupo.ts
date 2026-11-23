@@ -14,6 +14,7 @@ import { acharPessoaPeloNumero } from "./atender-privado";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { anotar } from "./trilha";
+import { listaDosAnunciosAtivos, pedeListaDeAnuncios } from "./anuncios-ativos";
 import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
 import { atenderGrupoFinanceiro, type DesfechoFinanceiro } from "@/lib/financeiro-ia/atender-financeiro";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
@@ -91,6 +92,8 @@ export type Desfecho =
   | { tipo: "sem-mencao"; clientId: string }
   /** A loja não autorizou o robô a desligar sozinho. */
   | { tipo: "loja-nao-autoriza"; clientId: string }
+  /** Pediram "quais anúncios ativos": o robô mandou a lista dos carros no ar (só leitura). */
+  | { tipo: "lista-de-anuncios"; clientId: string; carros: number }
   /** A frase não pedia nada. O caso de quase toda mensagem. */
   | { tipo: "sem-pedido"; clientId: string }
   /** Perguntaram sobre a loja no grupo dela, e a IA respondeu ali. */
@@ -254,6 +257,17 @@ export async function atenderMensagemDoGrupo(
     // O caso que antes caía em silêncio. Fica registrado pra ser possível
     // ver, depois, que a marcação por lid é o que está acontecendo.
     await anotar(m.messageId, m.grupoId, "marcado-por-lid", loja.companyName);
+  }
+
+  // ── 2b. "Quais anúncios ativos?" ───────────────────────────────────────
+  //
+  // Só LEITURA: lista os carros que estão no ar, de todos os conjuntos. Por não mexer em nada, responde mesmo na
+  // loja que ainda não autorizou o robô a desligar anúncio (a trava 3 abaixo é sobre agir, não sobre ler).
+  if (pedeListaDeAnuncios(semAMarcacao(m.texto))) {
+    const lista = await listaDosAnunciosAtivos({ nome: loja.companyName, contas: loja.metaAdAccounts.map((c) => c.id) });
+    await anotar(m.messageId, m.grupoId, "lista-de-anuncios", `${loja.companyName} · ${lista.carros} carros · ${lista.anuncios} anúncios`);
+    for (const texto of lista.mensagens) await responder(m.grupoId, texto, m.messageId);
+    return { tipo: "lista-de-anuncios", clientId: loja.id, carros: lista.carros };
   }
 
   // ── 3. Esta loja deixou o robô agir? ──────────────────────────────────

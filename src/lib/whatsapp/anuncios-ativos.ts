@@ -1,7 +1,6 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
-import { reais } from "@/lib/meta/insights";
 
 // "Quais anúncios ativos?" no grupo da loja: a lista dos carros que estão no ar, organizada.
 //
@@ -13,11 +12,12 @@ import { reais } from "@/lib/meta/insights";
 // ── Como fica organizado ────────────────────────────────────────────────
 //
 // Um carro por linha, em ordem alfabética. O mesmo carro costuma ter mais de um anúncio ("C3 foto" e
-// "C3 foto vídeo — Cópia"): eles viram uma linha só, com os números somados. Cada linha diz quantos anúncios
-// o carro tem no ar, quanto foi investido nele, quantos leads trouxe e quanto custou cada um.
+// "C3 foto vídeo — Cópia"): eles viram uma linha só, com os leads somados. Cada linha diz quantos anúncios o
+// carro tem no ar e quantos leads trouxe.
 //
-// O gasto e os leads são o ACUMULADO do carro (o mesmo número que o robô usa ao registrar uma venda), e a lista
-// diz até quando a Meta foi lida, porque não é tempo real.
+// Só LEADS, sem gasto nem custo por lead: o gasto já vai em outras mensagens do robô, e esta lista é pra bater o
+// olho nos carros que estão rodando. Os leads são o ACUMULADO do carro (o mesmo número que o robô usa ao registrar
+// uma venda), e a lista diz até quando a Meta foi lida, porque não é tempo real.
 //
 // ── O que NÃO faz ───────────────────────────────────────────────────────
 //
@@ -42,6 +42,8 @@ export function pedeListaDeAnuncios(texto: string): boolean {
     new RegExp(`\\bquais? ${itens} (estao|tao|tem) ${noAr}\\b`).test(t)
   );
 }
+
+const ORDEM_DOS_FORMATOS = ["foto", "vídeo", "carrossel"];
 
 const PALAVRAS_DE_FORMATO = /\b(foto|fotos|v[ií]deo|v[ií]deos|carrossel|reels?|stories|story)\b/gi;
 
@@ -99,6 +101,8 @@ export function agruparPorCarro(anuncios: AnuncioNoAr[]): CarroNoAr[] {
       ({ nome, anuncios: 0, formatos: [], spendCents: 0, leads: 0, desde: null, temNumeros: false } satisfies CarroNoAr);
     c.anuncios += 1;
     for (const f of formatosNoNome(a.nome)) if (!c.formatos.includes(f)) c.formatos.push(f);
+    // Sempre na mesma ordem, não na que o banco devolveu.
+    c.formatos.sort((x, y) => ORDEM_DOS_FORMATOS.indexOf(x) - ORDEM_DOS_FORMATOS.indexOf(y));
     c.spendCents += a.spendCents;
     c.leads += a.leads;
     if (a.desde && (!c.desde || a.desde < c.desde)) c.desde = a.desde;
@@ -108,17 +112,14 @@ export function agruparPorCarro(anuncios: AnuncioNoAr[]): CarroNoAr[] {
   return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base", numeric: true }));
 }
 
-const dataCurta = (d: Date) => `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 const quando = (d: Date) =>
   `${d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" })} às ${d.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}`;
 
 function linhaDoCarro(c: CarroNoAr, n: number): string {
   const formatos = c.formatos.length ? ` (${c.formatos.join(", ")})` : "";
   const topo = `${n}. *${c.nome}* — ${c.anuncios} ${c.anuncios === 1 ? "anúncio" : "anúncios"}${formatos}`;
-  if (!c.temNumeros) return `${topo}\n    ainda sem número da Meta`;
-  const cpl = c.leads > 0 ? ` · ${reais(Math.round(c.spendCents / c.leads))} por lead` : "";
-  const desde = c.desde ? ` desde ${dataCurta(c.desde)}` : "";
-  return `${topo}\n    ${reais(c.spendCents)} investidos${desde} · ${c.leads} ${c.leads === 1 ? "lead" : "leads"}${cpl}`;
+  if (!c.temNumeros) return `${topo} · ainda sem número da Meta`;
+  return `${topo} · ${c.leads} ${c.leads === 1 ? "lead" : "leads"}`;
 }
 
 /** Quebra a lista em mensagens que cabem no WhatsApp, sem cortar um carro no meio. Pura. */
@@ -134,21 +135,20 @@ export function montarMensagens(opcoes: {
   if (carros.length === 0) return [`Não tem nenhum anúncio ativo agora na *${loja}*.`];
 
   const topo = `📋 *Anúncios no ar — ${loja}*\n${carros.length} ${carros.length === 1 ? "carro" : "carros"} · ${anunciosNoAr} ${anunciosNoAr === 1 ? "anúncio ativo" : "anúncios ativos"}`;
-  const totalGasto = carros.reduce((s, c) => s + c.spendCents, 0);
   const totalLeads = carros.reduce((s, c) => s + c.leads, 0);
   const rodape =
-    `*Total investido nesses carros:* ${reais(totalGasto)} · ${totalLeads} ${totalLeads === 1 ? "lead" : "leads"}` +
-    (opcoes.atualizadoEm ? `\n_Números da Meta lidos em ${quando(opcoes.atualizadoEm)}. Gasto e leads são o acumulado de cada carro._` : "");
+    `*Total:* ${totalLeads} ${totalLeads === 1 ? "lead" : "leads"} nesses carros` +
+    (opcoes.atualizadoEm ? `\n_Leads acumulados de cada carro, lidos da Meta em ${quando(opcoes.atualizadoEm)}._` : "");
 
   const blocos = carros.map((c, i) => linhaDoCarro(c, i + 1));
   const mensagens: string[] = [];
-  let atual = topo;
+  let atual = `${topo}\n`;
   for (const b of blocos) {
-    if ((atual + "\n\n" + b).length > limite) {
-      mensagens.push(atual);
-      atual = `📋 *${loja}* (continuação)`;
+    if ((atual + "\n" + b).length > limite) {
+      mensagens.push(atual.trimEnd());
+      atual = `📋 *${loja}* (continuação)\n`;
     }
-    atual += `\n\n${b}`;
+    atual += `\n${b}`;
   }
   // O total vai na última mensagem; se não couber, numa só dele.
   if ((atual + "\n\n" + rodape).length <= limite) mensagens.push(`${atual}\n\n${rodape}`);

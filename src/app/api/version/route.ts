@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 
 // Qual versão está rodando neste endereço.
 //
@@ -23,8 +24,30 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
+/**
+ * O banco responde? Uma consulta de nada (`SELECT 1`) com prazo de 4 segundos. Só devolve se funcionou e, se não,
+ * o CÓDIGO do erro do Prisma (P1001 = não alcança o banco, P1002 = demorou, P1000 = senha recusada, P1017 = conexão
+ * fechada) — nunca a mensagem, que pode trazer endereço do banco. Serve pra distinguir "o sistema caiu" de "o banco
+ * não responde" quando o login dá erro.
+ */
+async function bancoResponde(): Promise<{ ok: boolean; ms: number; codigo?: string }> {
+  const inicio = Date.now();
+  try {
+    await Promise.race([
+      prisma.$queryRaw`SELECT 1`,
+      new Promise((_, rej) => setTimeout(() => rej(Object.assign(new Error("prazo"), { code: "TIMEOUT-4s" })), 4000)),
+    ]);
+    return { ok: true, ms: Date.now() - inicio };
+  } catch (e) {
+    const codigo = (e as { code?: string })?.code ?? (e as Error)?.name ?? "erro";
+    return { ok: false, ms: Date.now() - inicio, codigo: String(codigo).slice(0, 40) };
+  }
+}
+
 export async function GET() {
+  const banco = await bancoResponde();
   return NextResponse.json({
+    banco,
     commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local",
     branch: process.env.VERCEL_GIT_COMMIT_REF ?? "local",
     message: process.env.VERCEL_GIT_COMMIT_MESSAGE?.split("\n")[0] ?? null,

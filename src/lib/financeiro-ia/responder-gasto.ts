@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { diaDaCasa } from "@/lib/dia-da-casa";
-import { bateComOsTermos, lerPergunta, type PerguntaDeGasto } from "./interpretar-pergunta";
+import { bateComOsTermos, lerPergunta, pedeListaDeGastos, type PerguntaDeGasto } from "./interpretar-pergunta";
 import { reais } from "./interpretar-gasto";
 
 // A resposta a "quanto gastei de Uber com o Igor esse mês?".
@@ -73,7 +73,66 @@ function dizerTermos(termos: string[]): string {
 
 export function perguntaDeGastoTemAssunto(texto: string, agora: Date = new Date()): boolean {
   const p = lerPergunta(texto, diaDaCasa(agora));
-  return p.ranking || p.termos.length > 0;
+  return p.ranking || p.termos.length > 0 || pedeListaDeGastos(texto);
+}
+
+const LIMITE_DA_LISTA = 200;
+const TAMANHO_DA_MENSAGEM = 3000;
+
+/**
+ * "Quais foram meus gastos pessoais?" / "me manda um por um meus gastos": a lista dos lançamentos, um por linha,
+ * do mais recente pro mais antigo, separada em Empresa e Pessoal quando vêm os dois. Devolve as mensagens prontas
+ * (a lista grande é dividida pra caber no WhatsApp). O pessoal é sempre SÓ do dono (`donoId`).
+ */
+export async function responderListaDeGastos(donoId: string, texto: string, agora: Date = new Date()): Promise<string[]> {
+  const p = lerPergunta(texto, diaDaCasa(agora));
+  const todas = await carregar(donoId, p);
+  const achadas = todas.filter((l) => bateComOsTermos(l.descricao, l.categoria, p.termos));
+  const quando = p.periodo.rotulo;
+  const assunto = dizerTermos(p.rotulos);
+  const de = p.escopo === "pessoal" ? "Seus gastos pessoais" : p.escopo === "empresa" ? "Gastos da empresa" : "Seus gastos";
+  const titulo = `🧾 *${de}${assunto ? ` com ${assunto}` : ""} ${quando}*`;
+  if (achadas.length === 0) return [`Não achei nenhum gasto${assunto ? ` com *${assunto}*` : p.escopo === "pessoal" ? " pessoal" : p.escopo === "empresa" ? " da empresa" : ""} ${quando}.`];
+
+  const soma = (ls: Linha[]) => ls.reduce((s, l) => s + l.cents, 0);
+  const daEmpresa = achadas.filter((l) => l.lado === "empresa");
+  const pessoais = achadas.filter((l) => l.lado === "pessoal");
+  const linha = (l: Linha) => `${curto(l.dia)} · ${l.descricao} — *${reais(l.cents)}* · ${l.categoria}`;
+
+  const cabecalho =
+    daEmpresa.length && pessoais.length
+      ? `${titulo}\n${plural(achadas.length, "lançamento", "lançamentos")} · *${reais(soma(achadas))}* (empresa ${reais(soma(daEmpresa))} · pessoal ${reais(soma(pessoais))})`
+      : `${titulo}\n${plural(achadas.length, "lançamento", "lançamentos")} · *${reais(soma(achadas))}*`;
+
+  // Os blocos, cada um com o seu subtítulo quando há os dois lados. Teto de linhas: o resto está na tela.
+  const linhas: string[] = [];
+  let mostradas = 0;
+  const bloco = (nome: string | null, ls: Linha[]) => {
+    if (!ls.length) return;
+    if (nome) linhas.push("", `*${nome}* — ${reais(soma(ls))} (${ls.length})`);
+    else linhas.push("");
+    for (const l of ls) {
+      if (mostradas >= LIMITE_DA_LISTA) return;
+      linhas.push(linha(l));
+      mostradas++;
+    }
+  };
+  const doisLados = daEmpresa.length > 0 && pessoais.length > 0;
+  bloco(doisLados ? "Empresa" : null, daEmpresa);
+  bloco(doisLados ? "Pessoal (retirada)" : null, pessoais);
+  if (achadas.length > mostradas) linhas.push("", `…e mais ${achadas.length - mostradas}. A lista completa está em Financeiro → Gastos.`);
+
+  const mensagens: string[] = [];
+  let atual = cabecalho;
+  for (const l of linhas) {
+    if ((atual + "\n" + l).length > TAMANHO_DA_MENSAGEM) {
+      mensagens.push(atual.trimEnd());
+      atual = `${titulo} (continuação)`;
+    }
+    atual += `\n${l}`;
+  }
+  mensagens.push(atual.trimEnd());
+  return mensagens;
 }
 
 /** As categorias que mais pesaram num conjunto de lançamentos, da maior pra menor. */
@@ -125,7 +184,8 @@ export async function responderPerguntaDeGasto(donoId: string, texto: string, ag
     return responderRanking(todas.filter((l) => bateComOsTermos(l.descricao, l.categoria, p.termos)), p, dizerTermos(p.rotulos));
   }
   const achadas = todas.filter((l) => bateComOsTermos(l.descricao, l.categoria, p.termos));
-  const assunto = dizerTermos(p.rotulos);
+  // Sem assunto na frase ("meus gastos pessoais"): o título diz de quem são, em vez de ficar vazio.
+  const assunto = dizerTermos(p.rotulos) || (p.escopo === "pessoal" ? "Gastos pessoais" : p.escopo === "empresa" ? "Gastos da empresa" : "Gastos");
   const quando = p.periodo.rotulo;
 
   if (achadas.length === 0) {

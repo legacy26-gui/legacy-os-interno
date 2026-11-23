@@ -20,7 +20,7 @@ import {
   type GastoLido,
 } from "./interpretar-gasto";
 import { lerComIa } from "./ler-com-ia";
-import { ehPerguntaDeGasto } from "./interpretar-pergunta";
+import { ehPerguntaDeGasto, pedeListaDeGastos } from "./interpretar-pergunta";
 import { lerSaldoDito, pedeSaldoOuProjecao } from "./interpretar-saldo";
 import { projetarFimDoMes, textoDaProjecao } from "./projecao";
 import { lerAPagar, lerPagamentoDeConta, pedeListaAPagar } from "./interpretar-a-pagar";
@@ -28,7 +28,7 @@ import { classificar, normal } from "./interpretar-gasto";
 import { interpretarComIa, type ContextoDoFinanceiro } from "./interprete";
 import { avisosDoLancamento, pedeAlertas, textoDosAlertas } from "./alertas";
 import { descricaoCurta, validarInterpretacao, type AcaoValida } from "./validar-interpretacao";
-import { perguntaDeGastoTemAssunto, responderPerguntaDeGasto } from "./responder-gasto";
+import { perguntaDeGastoTemAssunto, responderListaDeGastos, responderPerguntaDeGasto } from "./responder-gasto";
 
 // O grupo "financeiro (gastos)": o Guilherme anota CADA gasto ali, e o robô lança.
 //
@@ -258,6 +258,16 @@ export async function atenderGrupoFinanceiro(
     await anotar(m.messageId, m.grupoId, "financeiro-alertas");
     await dizer(m, await textoDosAlertas(grupo.donoId, agora));
     return { tipo: "alertas" };
+  }
+
+  // ── 2. "quais foram meus gastos?", "me manda um por um" ──────────────────
+  //
+  // O pedido é a LISTA dos lançamentos. Reconhecido em código, antes da IA: pergunta que depende de a IA
+  // adivinhar o que fazer é pergunta que, quando ela não entende, fica sem resposta (era o que acontecia).
+  if (pedeListaDeGastos(m.texto)) {
+    await anotar(m.messageId, m.grupoId, "financeiro-lista-de-gastos");
+    for (const texto of await responderListaDeGastos(grupo.donoId, m.texto, agora)) await dizer(m, texto);
+    return { tipo: "respondeu-pergunta" };
   }
 
   // ── 2a. A IA lê a mensagem como gente ──────────────────────────────────
@@ -882,6 +892,12 @@ async function atenderComIa(
   }
   if (lancados.length || contasNovas.length) partes.push("Errou? Manda *desfaz*.");
 
+  if (partes.length === 0 && ehPerguntaDeGasto(m.texto)) {
+    // Era uma pergunta sobre gasto e a IA não achou o que fazer: calar aqui parece defeito. Responde com o resumo.
+    await anotar(m.messageId, m.grupoId, "financeiro-pergunta-sem-acao");
+    await dizer(m, await textoDoResumo(donoId, agora));
+    return { tipo: "resumo" };
+  }
   if (partes.length === 0) {
     // A IA viu conversa. Texto passa calado; áudio diz que ouviu.
     if (m.ouvido) await dizer(m, "Não achei gasto nisso — se era um, fala o valor (\"almoço 45\").");

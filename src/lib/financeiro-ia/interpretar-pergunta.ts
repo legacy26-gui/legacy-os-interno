@@ -59,15 +59,31 @@ const somar = (isoDia: string, n: number) => {
   return d.toISOString().slice(0, 10);
 };
 
+/**
+ * "Quais foram meus gastos pessoais?", "me manda um por um meus gastos", "lista os gastos de hoje",
+ * "o que eu gastei ontem?": o pedido é a LISTA dos lançamentos, um por um — não a soma nem o ranking.
+ * Não vale pra "quanto gastei…" (soma) nem "no que mais gastei" (ranking). Pura.
+ */
+export function pedeListaDeGastos(texto: string): boolean {
+  const t = normal(texto).replace(/[?!]/g, " ").replace(/\s+/g, " ").trim();
+  if (!t || /\b(quanto|qto|qnto|quantos|quantas)\b/.test(t) || ehPerguntaDeRanking(texto)) return false;
+  const gastos = /\b(gastos?|despesas?|lancamentos?|saidas?|compras?)\b/.test(t);
+  const verboDeLista = /\b(quais|qual|lista|listar|liste|mostra|mostrar|mostre|manda|mande|ver|ve|quero ver|me fala|me diz|detalha|detalhe|detalhar|exibe|exiba)\b/.test(t);
+  const umPorUm = /\b(um por um|um a um|item por item|detalhad[oa]s?|por extenso)\b/.test(t);
+  const oQueGastei = /\bo que (eu |a gente |nos )?(gastei|gastamos|paguei|pagamos)\b/.test(t);
+  return oQueGastei || (gastos && (verboDeLista || umPorUm));
+}
+
 /** A frase é uma PERGUNTA sobre gasto (e não um lançamento)? */
 export function ehPerguntaDeGasto(texto: string): boolean {
   const t = normal(texto);
-  if (ehPerguntaDeRanking(texto)) return true;
+  if (ehPerguntaDeRanking(texto) || pedeListaDeGastos(texto)) return true;
   if (/\b(quanto|qto|qnto|quantos|quantas)\b/.test(t)) return true;
   // "total de uber", "gastos com mercado em outubro?" — sem valor em dinheiro na frase.
   const semPeriodo = t.replace(/\b\d+\s*dias\b/g, "").replace(/\b(19|20)\d{2}\b/g, "");
   if (/^(total|soma|somar|gastos?|me (mostra|mostre|fala|diz)|mostra|mostre)\b/.test(t) && !/\d/.test(semPeriodo)) return true;
-  if (t.endsWith("?") && /\b(gast|paguei|custou|saiu)/.test(t)) return true;
+  // O "?" olha o texto ORIGINAL: `normal()` tira a pontuação, e antes disso esta regra nunca valia.
+  if (texto.trim().endsWith("?") && /\b(gast|paguei|custou|saiu)/.test(t)) return true;
   return false;
 }
 
@@ -136,6 +152,9 @@ const FORA = new Set([
   "que", "oque", "onde", "quem", "como", "quando", "porque", "pq", "qual", "quais", "maior", "maiores", "top", "categoria", "categorias",
   "despesa", "despesas", "dinheiro", "pesou", "isso", "aqui", "agora", "voce", "vc", "sabe", "saber", "quero", "queria", "gostaria",
   "pode", "consegue", "lista", "listar", "resumo", "estou", "to", "tou", "ficou", "tem", "teve", "nosso", "nossa", "meus", "minhas",
+  // Palavras de PEDIR uma lista ("me manda um por um…", "mostra detalhado"): fazem o pedido, não são o assunto.
+  "manda", "mande", "liste", "detalha", "detalhe", "detalhar", "detalhado", "detalhados", "detalhada", "detalhadas", "exibe", "exiba", "extenso", "item", "itens",
+  "como", "estao", "andam", "anda",
 ]);
 
 const APELIDOS: Record<string, string> = { comida: "alimentacao", comidas: "alimentacao", gasolina: "combustivel" };

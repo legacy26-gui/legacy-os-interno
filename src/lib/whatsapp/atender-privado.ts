@@ -7,8 +7,8 @@ import { lidDoRobo } from "./identidade-do-robo";
 import { anotar } from "./trilha";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { canAccessModule } from "@/lib/permissions";
-import { ehPerguntaDeGasto } from "@/lib/financeiro-ia/interpretar-pergunta";
-import { perguntaDeGastoTemAssunto, responderPerguntaDeGasto } from "@/lib/financeiro-ia/responder-gasto";
+import { ehPerguntaDeGasto, pedeListaDeGastos } from "@/lib/financeiro-ia/interpretar-pergunta";
+import { perguntaDeGastoTemAssunto, responderListaDeGastos, responderPerguntaDeGasto } from "@/lib/financeiro-ia/responder-gasto";
 import type { Turno } from "@/lib/copiloto/cerebro";
 import {
   descartarPendente,
@@ -259,7 +259,11 @@ export async function atenderMensagemPrivada(
   // consulta filtra por quem escreveu.
   if (canAccessModule(pessoa.role, "financeiro", pessoa.email) && ehPerguntaDeGasto(m.texto) && perguntaDeGastoTemAssunto(m.texto, agora)) {
     await anotar(m.messageId, `privado ${ponta}`, "privado-pergunta-de-gasto");
-    await responder(m.telefone, await responderPerguntaDeGasto(pessoa.id, m.texto, agora), m.messageId);
+    if (pedeListaDeGastos(m.texto)) {
+      for (const texto of await responderListaDeGastos(pessoa.id, m.texto, agora)) await responder(m.telefone, texto, m.messageId);
+    } else {
+      await responder(m.telefone, await responderPerguntaDeGasto(pessoa.id, m.texto, agora), m.messageId);
+    }
     return { tipo: "respondeu-gasto", userId: pessoa.id };
   }
 

@@ -177,6 +177,18 @@ A pergunta não vence: fica até a resposta, e dúvidas de várias mensagens vir
 - **DRE**: "(−) Retiradas pessoais" e "(=) Ficou na empresa", DEPOIS do lucro (retirada não é custo).
 - **DFC**: retiradas contam como saída de caixa ("Retiradas").
 
+## Lista dos gastos, um por um
+
+`quais foram meus gastos pessoais?`, `me manda um por um meus gastos`, `lista os gastos de hoje`, `o que eu gastei ontem?`,
+`gastos da empresa do mês passado`: o robô manda a **lista dos lançamentos**, um por linha (data · descrição — valor ·
+categoria), do mais recente pro mais antigo. Sem dizer "pessoal" ou "empresa", vêm os dois, em blocos separados com o
+total de cada um. O período é o do mês, ou o que a frase disser (hoje, ontem, semana, mês passado…). Lista grande é
+dividida em mensagens (até 200 lançamentos; o resto está em Financeiro → Gastos). O pessoal é sempre SÓ o do dono.
+
+Reconhecido **em código**, antes da IA (`pedeListaDeGastos`): antes dependia de a IA adivinhar, e quando ela não
+entendia o robô ficava calado. Pergunta sobre gasto que a IA não souber tratar agora cai no resumo, e não no silêncio.
+(Também foi corrigida a regra "frase terminada em ? com a palavra gasto é pergunta", que nunca valia.)
+
 ## Passo 2: alertas e ideias (`alertas.ts`, `robo-dos-avisos.ts`)
 
 O robô passa a **avisar**, não só anotar. Regras em código, com limites fixos (`LIMITES` em `alertas.ts`) —

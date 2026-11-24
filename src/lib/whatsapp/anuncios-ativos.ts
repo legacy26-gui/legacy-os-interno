@@ -106,12 +106,24 @@ export interface CarroNoAr {
   temNumeros: boolean;
 }
 
-/** Junta os anúncios do mesmo carro e põe os carros em ordem alfabética. Pura. */
+/** O nome do anúncio como está na Meta, sem o "- Cópia"/"— Cópia 2" do fim e sem "(pausado)". Pura. */
+export function nomeComoNoAnuncio(nomeDoAnuncio: string): string {
+  const limpo = nomeDoAnuncio
+    .replace(/\(pausado\)/gi, " ")
+    .replace(/\s*[-–—]?\s*c[oó]pia(\s*\d+)?\s*$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return limpo || nomeDoAnuncio.trim();
+}
+
+/** Junta os anúncios de mesmo nome e põe em ordem alfabética. Pura. */
 export function agruparPorCarro(anuncios: AnuncioNoAr[]): CarroNoAr[] {
   const mapa = new Map<string, CarroNoAr>();
   for (const a of anuncios) {
-    const nome = nomeDoCarro(a.nome);
-    const chave = SEM_ACENTO(nome).replace(/[^a-z0-9]+/g, " ").trim();
+    // O nome EXATAMENTE como está no anúncio (decisão do Guilherme): só sai o "- Cópia" que a Meta põe ao duplicar e o
+    // "(pausado)". Antes a lista "limpava" o nome tirando foto/vídeo, e "Saveiro [Foto]" virava "Saveiro [ ]".
+    const nome = nomeComoNoAnuncio(a.nome);
+    const chave = SEM_ACENTO(nome).replace(/\s+/g, " ").trim();
     const c =
       mapa.get(chave) ??
       ({ nome, anuncios: 0, formatos: [], spendCents: 0, leads: 0, desde: null, temNumeros: false } satisfies CarroNoAr);

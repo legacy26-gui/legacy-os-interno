@@ -198,3 +198,12 @@ libera o carro pra tentar de novo (e diz se uma campanha/conjunto já chegou a s
 
 Pelo WhatsApp continua existindo `anunciar o Compass da Vilela` (usa o "mesmo de sempre", mostra o que vai fazer e só faz no
 "sim"). **Não há mais aviso automático de carro novo** — a pessoa vê o estoque na ficha da loja.
+
+## Nome de cada peça e o balão de Estoque no Meta Ads
+
+No "Anunciar agora" (ficha da loja e balão **Estoque** do Meta Ads) dá pra escolher o **nome de cada peça**: campanha nova, conjunto novo
+e o **anúncio** (campo "Nome do anúncio (nomenclatura)"; vazio = o título do carro, como antes). Cada escolha é "existente ou novo":
+novo = duplica o molde (campanha/conjunto/anúncio-base), sempre **PAUSADO**. O robô nunca liga nada.
+
+⚠️ Campanha nova, edição de público e subir anúncio foram testados só contra uma Meta falsa. Na primeira vez de verdade, faça com uma
+loja de teste e confira no Gerenciador (tudo deve aparecer pausado).

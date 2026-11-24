@@ -47,6 +47,7 @@ export function AnunciarAgora({ carroId, carro, grande = false }: { carroId: str
   const [baseId, setBaseId] = useState("");
   const [fotos, setFotos] = useState<string[]>([]);
   const [legenda, setLegenda] = useState("");
+  const [anuncioNome, setAnuncioNome] = useState("");
 
   function abrir() {
     setAberto(true);
@@ -73,6 +74,7 @@ export function AnunciarAgora({ carroId, carro, grande = false }: { carroId: str
       setBaseId(padrao && dosAnuncios.some((a) => a.id === padrao.baseAdId) ? padrao.baseAdId : dosAnuncios[0]?.id ?? "");
       setFotos(p.fotos ?? []);
       setLegenda(p.legenda ?? "");
+      setAnuncioNome(p.carro?.titulo ?? "");
     });
   }
 
@@ -136,6 +138,7 @@ export function AnunciarAgora({ carroId, carro, grande = false }: { carroId: str
       baseAdId: baseId,
       fotos,
       legenda,
+      anuncioNome,
     };
     enviar(async () => setResultado(await anunciarAgora(carroId, escolha)));
   }
@@ -243,7 +246,7 @@ export function AnunciarAgora({ carroId, carro, grande = false }: { carroId: str
                   <p className="text-sm font-medium">Campanha</p>
                   <div className="flex gap-2">
                     <Seg ativo={campanhaModo === "existente"} onClick={() => trocarModoDaCampanha("existente")} desligado={(plano.campanhas ?? []).length === 0}>Existente</Seg>
-                    <Seg ativo={campanhaModo === "nova"} onClick={() => trocarModoDaCampanha("nova")}>Nova</Seg>
+                    <Seg ativo={campanhaModo === "nova"} onClick={() => trocarModoDaCampanha("nova")}>Nova (duplica uma campanha molde)</Seg>
                   </div>
                   {campanhaModo === "existente" ? (
                     <select value={campanhaId} onChange={(e) => trocarCampanha(e.target.value)} className={campo}>
@@ -264,7 +267,7 @@ export function AnunciarAgora({ carroId, carro, grande = false }: { carroId: str
                   <p className="text-sm font-medium">Conjunto</p>
                   <div className="flex gap-2">
                     <Seg ativo={conjuntoModo === "existente"} onClick={() => setConjuntoModo("existente")} desligado={campanhaModo === "nova"}>Existente</Seg>
-                    <Seg ativo={conjuntoModo === "novo"} onClick={() => setConjuntoModo("novo")}>Novo (um por carro)</Seg>
+                    <Seg ativo={conjuntoModo === "novo"} onClick={() => setConjuntoModo("novo")}>Novo (duplica o conjunto molde)</Seg>
                   </div>
                   {conjuntoModo === "existente" ? (
                     <select value={conjuntoId} onChange={(e) => trocarConjunto(e.target.value)} className={campo}>
@@ -302,7 +305,7 @@ export function AnunciarAgora({ carroId, carro, grande = false }: { carroId: str
                 )}
 
                 <div className="flex flex-col gap-1.5">
-                  <p className="text-sm font-medium">Anúncio-base (de onde herda página, botão e rastreamento)</p>
+                  <p className="text-sm font-medium">Anúncio — novo, duplicado do anúncio-base (herda página, botão e rastreamento)</p>
                   <select value={baseId} onChange={(e) => setBaseId(e.target.value)} className={campo}>
                     {baseDisponiveis.length === 0 && <option value="">Esse conjunto não tem anúncio pra servir de base</option>}
                     {baseDisponiveis.map((a) => (
@@ -312,6 +315,10 @@ export function AnunciarAgora({ carroId, carro, grande = false }: { carroId: str
                     ))}
                   </select>
                   <p className="text-xs text-foreground-muted">Tem que ser de foto ou carrossel (vídeo e Advantage+ não servem de base).</p>
+                  <label className="text-xs text-foreground-muted flex flex-col gap-1">
+                    Nome do anúncio (nomenclatura)
+                    <input value={anuncioNome} onChange={(e) => setAnuncioNome(e.target.value)} maxLength={120} className={campo} />
+                  </label>
                 </div>
               </section>
 

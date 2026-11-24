@@ -37,3 +37,21 @@ export async function anunciarAgora(carroId: string, escolha: EscolhaDoAnuncio |
     return r;
   }, { ok: false });
 }
+
+/** O estoque da loja (com a situação de anúncio de cada carro), pro balão de Estoque do Meta Ads. */
+export async function lerEstoqueDaLoja(clientId: string): Promise<{ ok: boolean; erro?: string; estoque?: import("@/lib/estoque/da-loja").EstoqueDaFicha; loja?: string }> {
+  const user = await requireModuleAccess("clientes");
+  const { clienteEDaCarteira } = await import("@/lib/carteira");
+  const { estoqueDaFicha } = await import("@/lib/estoque/da-loja");
+  const { prisma } = await import("@/lib/prisma");
+  try {
+    if (typeof clientId !== "string" || !clientId || !(await clienteEDaCarteira({ id: user.id, role: user.role }, clientId))) return { ok: false, erro: "Esta loja não está na sua carteira." };
+    const loja = await prisma.client.findUnique({ where: { id: clientId }, select: { companyName: true } });
+    return { ok: true, estoque: await estoqueDaFicha(clientId), loja: loja?.companyName };
+  } catch (erro) {
+    const digest = (erro as { digest?: unknown })?.digest;
+    if (typeof digest === "string" && digest.startsWith("NEXT_")) throw erro;
+    console.error("[estoque] leitura da ficha falhou", erro);
+    return { ok: false, erro: "Deu erro no servidor. Tenta de novo." };
+  }
+}

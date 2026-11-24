@@ -39,4 +39,6 @@ export interface EscolhaDoAnuncio {
   /** Endereços das fotos que ficam (na ordem). */
   fotos: string[];
   legenda: string;
+  /** O nome do anúncio novo. Vazio = o nome do carro. */
+  anuncioNome?: string;
 }

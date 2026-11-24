@@ -1265,3 +1265,30 @@ lead caiu 10%, e seguimos acompanhando de perto."
 - Desligar de vez: `COMENTARIO_NO_RELATORIO=0` no ambiente. A legenda em si mora em `src/lib/whatsapp/legenda-do-relatorio.ts`.
 - Vale pros três caminhos de envio (robô de segunda, botão da tela e aprovação da Andrielli): todos passam por
   `mandarRelatorioNoGrupo`.
+
+## Editar o público do conjunto (`src/lib/meta/publico-do-conjunto.ts`, `meta-ads/[clientId]/publico.tsx`)
+
+No Meta Ads, na aba de **conjuntos**, cada linha tem o botão **Público**. Abre uma bolha com o que o Gerenciador mostra:
+**idade** (18 a 65+), **gênero** (todos / homens / mulheres) e **localização** — as cidades e estados do conjunto, com **raio** em
+km (só a cidade, ou 17, 25, 30, 40, 50, 65, 80), **tirar** uma localização e **adicionar** outra pesquisando pelo nome (a busca é a
+da própria Meta, só cidades e estados do Brasil). Pontos no mapa (latitude/longitude) aparecem e dá pra mudar o raio.
+
+- **"Alcançar mais pessoas fora da região"** (Advantage+ público) **nunca é opção**: a caixinha aparece desmarcada e travada, e **todo
+  "Salvar" manda explicitamente `advantage_audience = 0`** (e tira o `individual_setting`, que só existe com ele ligado). Se o
+  conjunto estiver com ele ligado, a bolha avisa em vermelho que vai ser desligado. ⚠️ Eu não consegui confirmar na documentação da
+  Meta qual campo é exatamente essa caixinha do Gerenciador; o Advantage+ público é o que a API tem de "expandir além do público e da
+  região", e é esse que fica desligado. Na primeira vez de verdade, confere no Gerenciador se a caixinha ficou desmarcada.
+- **O que NÃO é mexido**: interesses, comportamentos, públicos personalizados e semelhantes, exclusões, posicionamentos, idiomas,
+  CEP e outros tipos de local. A escrita parte do `targeting` que a Meta acabou de devolver e troca só idade, gênero, localização e
+  o Advantage+; a bolha só diz quantos desses existem.
+- **Travas**: o conjunto tem que ser de uma conta da loja (e a loja da carteira de quem usa); mostra "de → para" e pede
+  confirmação (avisa se o conjunto está **no ar**: mudar o público reinicia o aprendizado da Meta); depois de salvar, **lê de
+  novo** e compara — o que a Meta não aplicou (idade, gênero, quantidade de locais, Advantage+ ainda ligado) vira aviso, nunca "deu
+  certo" no escuro. Todo pedido fica em `meta_acoes` (tipo `publico`) com o público de antes e de depois.
+
+## Estoque dentro do Meta Ads
+
+O botão **Estoque** (ao lado de "Subir anúncio") abre uma bolha com os carros do site da loja, a situação de anúncio de cada um e o
+**Anunciar agora**. Selecionar o carro abre, por cima, a bolha do Anunciar agora: campanha (existente ou nova, duplicando um molde),
+conjunto (existente ou novo, duplicando o molde), anúncio-base, **nome de cada um** (campanha nova, conjunto novo e anúncio), fotos
+e legenda. Ver `docs/anuncio-rascunho.md`.

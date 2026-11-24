@@ -241,7 +241,8 @@ export async function anunciarCarroDoEstoque(p: {
       avisosDaLegenda.push(...conferirLegenda(legenda, dadosDoCarroEmTexto(carro)));
     }
 
-    const nome = carro.titulo.slice(0, 120);
+    // A nomenclatura do anúncio: a que a pessoa escreveu na tela, ou o nome do carro.
+    const nome = (e.anuncioNome?.trim() || carro.titulo).slice(0, 120);
     const r = await subirRascunho({
       clientId: carro.clientId,
       baseAdId: e.baseAdId,

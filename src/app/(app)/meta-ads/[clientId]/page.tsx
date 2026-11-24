@@ -42,6 +42,7 @@ import { Criativo } from "./criativo";
 import { ChaveDeStatus } from "./chave";
 import { Verba } from "./verba";
 import { PublicoDoConjuntoBotao } from "./publico";
+import { EstoqueBalao } from "./estoque-balao";
 import { Legenda } from "./legenda";
 import { TipoErrado } from "./tipo-errado";
 import {
@@ -312,12 +313,16 @@ export default async function LojaNoMetaAdsPage({
             </div>
           </div>
           <div className="flex flex-col items-start sm:items-end gap-2">
-            <Link
-              href={`/meta-ads/${cliente.id}/subir-anuncio`}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-accent text-white rounded-lg text-sm font-medium"
-            >
-              <FilePlus2 size={14} /> Subir anúncio
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              {/* O estoque do site, numa bolha: escolhe o carro e anuncia agora. */}
+              <EstoqueBalao clientId={cliente.id} loja={cliente.companyName} />
+              <Link
+                href={`/meta-ads/${cliente.id}/subir-anuncio`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-accent text-white rounded-lg text-sm font-medium"
+              >
+                <FilePlus2 size={14} /> Subir anúncio
+              </Link>
+            </div>
           <AcoesDaLoja
             clientId={cliente.id}
             contas={contas.map((c) => ({

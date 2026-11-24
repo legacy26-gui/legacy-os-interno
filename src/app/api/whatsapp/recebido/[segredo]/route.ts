@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import { atenderMensagemDoGrupo } from "@/lib/whatsapp/atender-grupo";
 import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
 import { atenderAudioDoGrupo } from "@/lib/whatsapp/atender-audio";
+import { atenderAudioPrivado } from "@/lib/whatsapp/atender-audio-privado";
 import { receberFotoNoPrivado } from "@/lib/whatsapp/foto-recebida";
 import { registrarConexao } from "@/lib/whatsapp/vigia-conexao";
 import { primeiraVez } from "@/lib/whatsapp/so-uma-vez";
@@ -158,11 +159,13 @@ export async function POST(
       ? corpo.text.message
       : null;
   const audioUrl = typeof corpo.audio?.audioUrl === "string" ? corpo.audio.audioUrl : null;
-  // Áudio só interessa em GRUPO (o financeiro). No privado e fora dele, sem texto = sem nada a fazer.
+  // Áudio em GRUPO só interessa no financeiro (o do dono). No PRIVADO vale pra quem é da casa: vira texto e segue como
+  // se tivesse sido digitado (ver atender-audio-privado.ts).
   const eAudioDeGrupo = !!de && !texto?.trim() && !!audioUrl && corpo.isGroup === true;
+  const eAudioPrivado = !!de && !texto?.trim() && !!audioUrl && corpo.isGroup !== true;
   const imagemUrl = typeof corpo.image?.imageUrl === "string" ? corpo.image.imageUrl : null;
   const eFotoPrivada = !!de && !texto?.trim() && !!imagemUrl && corpo.isGroup !== true;
-  if (!de || (!texto?.trim() && !eAudioDeGrupo && !eFotoPrivada)) {
+  if (!de || (!texto?.trim() && !eAudioDeGrupo && !eAudioPrivado && !eFotoPrivada)) {
     return NextResponse.json({ ok: true, ignorado: "sem texto" });
   }
 
@@ -202,6 +205,23 @@ export async function POST(
       }
     });
     return NextResponse.json({ ok: true, foto: "recebida" });
+  }
+
+  if (eAudioPrivado && audioUrl) {
+    after(async () => {
+      try {
+        await atenderAudioPrivado({
+          telefone: de,
+          audioUrl,
+          mimeType: typeof corpo.audio?.mimeType === "string" ? corpo.audio.mimeType : null,
+          segundos: typeof corpo.audio?.seconds === "number" ? corpo.audio.seconds : null,
+          messageId: idDaMensagem,
+        });
+      } catch (e) {
+        await anotar(idDaMensagem, de, "audio-privado-estourou", e instanceof Error ? e.message : String(e));
+      }
+    });
+    return NextResponse.json({ ok: true, audio: "recebido" });
   }
 
   if (corpo.isGroup !== true) {

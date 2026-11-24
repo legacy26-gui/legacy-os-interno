@@ -22,6 +22,7 @@ import {
 } from "./pausar-no-privado";
 import { executarVendaNoPrivado, lerRespostaDaVenda, montarVendaNoPrivado } from "@/lib/vendas/venda-no-privado";
 import { tratarSubirAnuncio } from "./subir-anuncio";
+import { executarComercial, tratarComandoDoDia } from "./comandos-do-dia";
 
 // A IA atendendo no privado do WhatsApp.
 //
@@ -93,6 +94,12 @@ export type DesfechoPrivado =
   | { tipo: "pediu-confirmacao-de-aviso"; userId: string }
   /** O dono confirmou: o robô mandou o recado pelo WhatsApp. */
   | { tipo: "avisou"; userId: string; enviados: number; falhas: number }
+  /** Registro do dia a dia (visita, anotação, gravação, entrega, relatório, etapa): feito na hora, ou o robô perguntou o que faltou. */
+  | { tipo: "registrou"; userId: string; comando: string }
+  /** Comercial (só o dono): o robô mostrou o que vai pro funil e pra agenda, e espera o "sim". */
+  | { tipo: "pediu-confirmacao-de-comercial"; userId: string }
+  /** O dono confirmou e o robô mexeu no funil/agenda. */
+  | { tipo: "registrou-comercial"; userId: string }
   /** Disse "não", ou mandou outra coisa: a confirmação foi descartada. */
   | { tipo: "cancelou"; userId: string }
   /** Disse "sim" tarde demais. Nada foi pausado. */
@@ -382,6 +389,33 @@ export async function atenderMensagemPrivada(
       return { tipo: "cancelou", userId: pessoa.id };
     }
     // Outra mensagem: segue como conversa nova, já sem a pendência.
+  } else if (pendente.acao?.tipo === "comercial") {
+    // ── Reunião/fechamento esperando o "sim" (só o dono) ──────────────────
+    const resposta = confirmaAviso(m.texto);
+    if (resposta === "sim" && !pendente.venceu) {
+      if (!(await tomarPendente(pessoa.id))) {
+        await responder(m.telefone, "Esse pedido já foi tratado.", m.messageId);
+        return { tipo: "cancelou", userId: pessoa.id };
+      }
+      const feito = await executarComercial(pessoa, pendente.acao, agora, m.messageId);
+      await responder(m.telefone, feito.resposta, m.messageId);
+      await guardarMemoria(pessoa.id, [
+        ...historico,
+        { de: "gestor", texto: m.texto.slice(0, 4000) },
+        { de: "copiloto", texto: feito.resposta.slice(0, 4000) },
+      ]);
+      return { tipo: "registrou-comercial", userId: pessoa.id };
+    }
+    await descartarPendente(pessoa.id);
+    if (resposta === "sim") {
+      await responder(m.telefone, "Esse pedido venceu (passou de 10 minutos) e eu não registrei nada. Me manda de novo.", m.messageId);
+      return { tipo: "confirmacao-vencida", userId: pessoa.id };
+    }
+    if (resposta === "nao") {
+      await responder(m.telefone, "Tudo bem, não registrei nada.", m.messageId);
+      return { tipo: "cancelou", userId: pessoa.id };
+    }
+    // Outra mensagem: segue como conversa nova, já sem a pendência.
   } else if (pendente.acao?.tipo === "pausar-anuncios") {
     const resposta = respostaDeConfirmacao(m.texto);
 
@@ -441,6 +475,22 @@ export async function atenderMensagemPrivada(
       { de: "copiloto", texto: aviso.resposta.slice(0, 4000) },
     ]);
     return aviso.pendente ? { tipo: "pediu-confirmacao-de-aviso", userId: pessoa.id } : { tipo: "pedido-sem-alvo", userId: pessoa.id };
+  }
+
+  // ── "Visitei a Vilela", "anota na Vilela: …", "gravei…", "mandei o relatório…" ──────────────────────────────
+  //
+  // O dia a dia registrado pelo WhatsApp (ver comandos-do-dia.ts). Vem DEPOIS do aviso pra equipe ("avisa o Igor que
+  // gravei…" é um aviso, não uma gravação) e ANTES da venda e da pausa.
+  const comando = await tratarComandoDoDia(pessoa, m.texto, agora, m.messageId);
+  if (comando) {
+    if (comando.pendente) await guardarPendente(pessoa.id, comando.pendente, agora);
+    await responder(m.telefone, comando.resposta, m.messageId);
+    await guardarMemoria(pessoa.id, [
+      ...historico,
+      { de: "gestor", texto: m.texto.slice(0, 4000) },
+      { de: "copiloto", texto: comando.resposta.slice(0, 4000) },
+    ]);
+    return comando.pendente ? { tipo: "pediu-confirmacao-de-comercial", userId: pessoa.id } : { tipo: "registrou", userId: pessoa.id, comando: comando.tipo };
   }
 
   // ── "Vilela vendeu o Versa" (só o dono) ───────────────────────────────

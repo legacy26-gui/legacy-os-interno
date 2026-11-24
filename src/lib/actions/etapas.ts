@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { etapaExiste, ETAPA_QUE_CONCLUI } from "@/lib/etapas-implantacao";
+import { gravarEtapa } from "@/lib/etapas-gravar";
 
 // As etapas de implantação de um cliente novo, marcadas na ficha.
 //
@@ -16,24 +17,7 @@ export async function marcarEtapa(onboardingId: string, chave: string) {
   // Chave que não está na lista de hoje não entra: o valor vem do navegador.
   if (!etapaExiste(chave)) return;
 
-  await prisma.onboardingEtapa.upsert({
-    where: { onboardingId_chave: { onboardingId, chave } },
-    // Já marcada: não mexe. Reclicar não troca o autor nem a data de quem
-    // fez de verdade.
-    update: {},
-    create: { onboardingId, chave, concluidoPorId: user.id },
-  });
-
-  // Campanha no ar encerra a implantação: a ficha sai da lista de abertas e
-  // vai pra "Concluídos" sozinha. Sem isso alguém teria que lembrar de mudar
-  // o status na mão, e ficha pronta ficaria entulhando a tela de quem ainda
-  // tem trabalho a fazer.
-  if (chave === ETAPA_QUE_CONCLUI) {
-    await prisma.clientOnboarding.update({
-      where: { id: onboardingId },
-      data: { status: "CONCLUIDO" },
-    });
-  }
+  await gravarEtapa(onboardingId, chave, user.id);
 
   revalidatePath("/formularios");
 }

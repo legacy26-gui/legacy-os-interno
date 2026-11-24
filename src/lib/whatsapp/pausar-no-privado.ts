@@ -106,7 +106,24 @@ export interface AcaoDeAviso {
   pedido: string;
 }
 
-export type AcaoPendente = AcaoDePausa | AcaoDeVenda | AcaoDeAviso;
+/**
+ * "Reunião com a Garagem Y dia 25 às 15h" / "fechei a Garagem Y, R$ 1.800 por mês": o que vai pro funil e pra agenda,
+ * guardado enquanto se espera o "sim". Só o dono (ADMIN) usa — ver comandos-do-dia.ts.
+ */
+export interface AcaoDeComercial {
+  tipo: "comercial";
+  acao: "reuniao" | "fechamento";
+  /** O lead que já existe no funil; `null` = criar um novo. */
+  leadId: string | null;
+  nome: string;
+  /** Só reunião: o momento, em ISO (UTC). */
+  quandoISO: string | null;
+  /** Só fechamento: o valor mensal. */
+  valorMensal: number | null;
+  pedido: string;
+}
+
+export type AcaoPendente = AcaoDePausa | AcaoDeVenda | AcaoDeAviso | AcaoDeComercial;
 
 // ───────────────────────── Ler a resposta do "sim" ─────────────────────────
 
@@ -618,6 +635,18 @@ export async function lerPendente(
         (d) => d && typeof d.id === "string" && typeof d.nome === "string" && typeof d.telefone === "string" && /^\d{10,15}$/.test(d.telefone),
       );
     return certa ? { acao: v as AcaoDeAviso, venceu } : { acao: null, venceu: false };
+  }
+
+  if (bruto?.tipo === "comercial") {
+    const v = bruto as Partial<AcaoDeComercial>;
+    const certa =
+      (v.acao === "reuniao" || v.acao === "fechamento") &&
+      (v.leadId === null || typeof v.leadId === "string") &&
+      typeof v.nome === "string" &&
+      v.nome.length > 0 &&
+      typeof v.pedido === "string" &&
+      (v.acao === "reuniao" ? typeof v.quandoISO === "string" && !Number.isNaN(new Date(v.quandoISO).getTime()) : typeof v.valorMensal === "number" && v.valorMensal > 0);
+    return certa ? { acao: v as AcaoDeComercial, venceu } : { acao: null, venceu: false };
   }
 
   if (bruto?.tipo === "registrar-venda") {

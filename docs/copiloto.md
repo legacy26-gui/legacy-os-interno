@@ -342,6 +342,40 @@ No privado do robô, **só o dono (ADMIN)**: `envie um aviso à Tatiana e à Gio
 - Antes disto o Copiloto respondia "Aviso de teste para…" como se tivesse mandado. Agora o prompt dele proíbe fingir
   envio.
 
+## Registrar o dia a dia pelo WhatsApp (`src/lib/whatsapp/comandos-do-dia.ts`)
+
+No privado do robô, frase **afirmativa e no passado** (sem "?") vira registro no sistema. O robô responde repetindo
+**exatamente o que gravou** — é assim que um engano aparece na hora. Tudo é desfazível na tela da loja.
+
+| Você manda | O que o robô faz | Quem pode |
+|---|---|---|
+| `visitei a Vilela` (`ontem`, `na terça`) | Marca a **última visita** (a data certa). Se vier "…, conversei com o dono sobre o estoque", guarda isso no **histórico** da loja, com o seu nome | gestora (lojas dela), gerência e dono (todas) |
+| `anota na Vilela: o dono quer trocar o carro` | Grava a nota no **histórico** da loja (`ClientHistory`) | idem |
+| `gravei na Vilela, 3 carros` | Lança a **gravação** (3 carros, entrega no dia seguinte). Mesma gravação duas vezes não duplica; sem quantidade ele pergunta | Igor / gerência / dono |
+| `entreguei os vídeos da Vilela` | **Dá baixa** na gravação pendente mais antiga da loja (e diz se ainda há outras) | Igor / gerência / dono |
+| `mandei o relatório da Vilela` | Marca **"Enviei"** na semana (o mesmo botão da tela) | gestora (lojas dela), gerência, dono |
+| `acessos do cliente Pereira completos`, `contrato assinado da Pereira`, `campanha no ar da Pereira` | Marca a(s) **etapa(s) de implantação** da ficha aberta. "Acessos completos" marca Meta + Instagram. "Campanha no ar" encerra a implantação | gerência / dono |
+| `reunião com a Garagem Y dia 25 às 15h` | **Pede confirmação** e, no "sim": leva o lead pra *Reunião agendada* (ou cria o lead) e põe na **Agenda** (1h, horário de Brasília) | **só o dono** |
+| `fechei a Garagem Y, R$ 1.800 por mês` | **Pede confirmação** e, no "sim": lead em *Fechado* com o valor, entra no painel de vendas/metas e avisa a Meta | **só o dono** |
+
+Travas:
+- **Pergunta não registra** ("quando visitei a Vilela?"), nem negativa ("não mandei o relatório").
+- **A loja vem da carteira de quem escreve** (mesma régua da tela). Loja que não é achada, ou citada em dupla, nunca é
+  adivinhada: o robô pergunta. Gestora não registra em loja de outra.
+- Sem acesso ao módulo (gravação, implantação, Comercial) o robô diz de quem é aquilo e **não registra nada**.
+- Comercial: lead que não existe **só é criado depois do "sim"**, e o robô avisa na confirmação que vai criar. O nome do
+  lead só casa por nome igual ou contido ("Pereira" ↔ "Pereira Motors"), nunca por uma palavra solta ("garagem").
+- A anotação da visita usa as **palavras da própria pessoa** (não é resumida por IA: resumo errado no histórico é pior
+  que nota crua).
+- A regra do funil (marcos, evento de venda) mora em `src/lib/comercial/funil.ts` e a das etapas em
+  `src/lib/etapas-gravar.ts`, usadas pela tela e pelo WhatsApp — uma regra só.
+
+### Áudio no privado (`src/lib/whatsapp/atender-audio-privado.ts`)
+
+Qualquer comando acima (e qualquer pergunta) vale por **áudio**: o robô transcreve, responde `🎙️ Ouvi: "…"` e trata como
+se tivesse sido digitado. Número de fora, ou sem acesso a clientes, é ignorado **sem baixar o áudio**. Até 2 minutos.
+Precisa de `OPENAI_API_KEY` (a mesma do áudio do financeiro).
+
 ## O erro "A IA respondeu fora do formato esperado"
 
 Causa: o modelo **pensa** antes de responder e o pensamento conta dentro do teto de tokens (`max_tokens`). Chamadas com

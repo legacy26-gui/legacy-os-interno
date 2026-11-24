@@ -7,23 +7,14 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { empresaAtual } from "@/lib/empresa-atual";
 import { avisarMetaDaEtapa } from "@/lib/meta-capi";
-import type { Empresa, LeadStage } from "@/generated/prisma/enums";
+import { ETAPAS, marcosDaEtapa, sincronizarEventoDaVenda } from "@/lib/comercial/funil";
+import type { LeadStage } from "@/generated/prisma/enums";
 
 // O funil é de uma empresa só. Toda busca e toda gravação daqui levam a empresa
 // aberta na tela, e quem mexe num cartão existente confere primeiro que o
 // cartão é dela — o id vem do navegador e não serve de prova de nada.
 
 const CANAIS = ["META", "PRESENCIAL", "REDE", "MESA_LOJISTA", "ORGANICO"] as const;
-const ETAPAS = [
-  "LEAD",
-  "QUALIFICADO",
-  "REUNIAO_AGENDADA",
-  "REUNIAO_REALIZADA",
-  "PROPOSTA",
-  "NEGOCIACAO",
-  "FECHADO",
-  "PERDIDO",
-] as const;
 
 const LeadSchema = z.object({
   companyName: z.string().min(2, "Informe o nome da empresa."),
@@ -99,24 +90,6 @@ export async function updateLead(
   after(() => avisarMetaDaEtapa(leadId).catch((e) => console.error("[meta] aviso falhou", e)));
   revalidar();
   return { ok: true };
-}
-
-/**
- * Marcos que já aconteceram quando o cartão chega numa etapa. Só preenche o que
- * estiver vazio: o cartão pode ir e voltar, mas a reunião que aconteceu não
- * "desacontece" — é isso que segura os números do dashboard de pé.
- */
-function marcosDaEtapa(etapa: LeadStage, agora: Date) {
-  const ordem = ETAPAS.indexOf(etapa as (typeof ETAPAS)[number]);
-  const passou = (alvo: (typeof ETAPAS)[number]) =>
-    etapa !== "PERDIDO" && ordem >= ETAPAS.indexOf(alvo);
-
-  return {
-    qualifiedAt: passou("QUALIFICADO") ? agora : undefined,
-    meetingSetAt: passou("REUNIAO_AGENDADA") ? agora : undefined,
-    meetingHeldAt: passou("REUNIAO_REALIZADA") ? agora : undefined,
-    proposalAt: passou("PROPOSTA") ? agora : undefined,
-  };
 }
 
 /**
@@ -218,35 +191,4 @@ export async function deleteLead(leadId: string) {
   const empresa = await empresaAtual();
   await prisma.lead.deleteMany({ where: { id: leadId, empresa } });
   revalidar();
-}
-
-/**
- * Mantém o painel de vendas/metas em dia sozinho: cartão em Fechado vira um
- * evento de venda; cartão que sai de Fechado leva o evento junto. Assim ninguém
- * precisa lançar a mesma venda duas vezes.
- */
-async function sincronizarEventoDaVenda(lead: {
-  id: string;
-  empresa: Empresa;
-  stage: LeadStage;
-  companyName: string;
-  monthlyValue: unknown;
-}) {
-  if (lead.stage === "FECHADO") {
-    await prisma.commercialEvent.upsert({
-      where: { leadId: lead.id },
-      create: {
-        leadId: lead.id,
-        // O evento é da mesma empresa do lead que o gerou, não da tela aberta.
-        empresa: lead.empresa,
-        type: "VENDA",
-        companyName: lead.companyName,
-        value: Number(lead.monthlyValue),
-      },
-      update: { companyName: lead.companyName, value: Number(lead.monthlyValue) },
-    });
-  } else {
-    await prisma.commercialEvent.deleteMany({ where: { leadId: lead.id } });
-  }
-  revalidatePath("/dashboard");
 }

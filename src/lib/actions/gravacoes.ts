@@ -4,6 +4,7 @@ import * as z from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
+import { avisarGestorDaEntrega } from "@/lib/gravacoes-aviso";
 import { empresaAtual } from "@/lib/empresa-atual";
 import { diaDaEntrega } from "@/lib/gravacoes";
 
@@ -154,14 +155,14 @@ export async function updateGravacao(
   return { ok: true };
 }
 
-/** Marca que a entrega saiu. Clicar de novo desmarca, pra desfazer o engano. */
+/** Marca que a entrega saiu. Clicar de novo desmarca, pra desfazer o engano. Ao marcar, o gestor da loja é avisado. */
 export async function alternarEntrega(gravacaoId: string) {
-  await requireModuleAccess("gravacoes");
+  const user = await requireModuleAccess("gravacoes");
   const empresa = await empresaAtual();
 
   const atual = await prisma.gravacao.findFirst({
     where: { id: gravacaoId, empresa },
-    select: { entregueEm: true },
+    select: { entregueEm: true, clientId: true, loja: true, quantidade: true },
   });
   if (!atual) return;
 
@@ -169,6 +170,8 @@ export async function alternarEntrega(gravacaoId: string) {
     where: { id: gravacaoId, empresa },
     data: { entregueEm: atual.entregueEm ? null : new Date() },
   });
+  // Só quando a entrega SAI (desmarcar não avisa ninguém). Falha de envio não derruba o clique.
+  if (!atual.entregueEm) await avisarGestorDaEntrega(atual, { id: user.id, name: user.name });
   revalidar();
 }
 

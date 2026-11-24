@@ -13,6 +13,7 @@ import { numerosPorExtenso } from "@/lib/financeiro-ia/numeros-por-extenso";
 import { dobrar, NOMES_DOS_DIAS, diaDeBrasilia, somarDias, lerDiaFuturo } from "@/lib/datas-da-conversa";
 import { acharLojaNoTexto, type AcaoDeComercial, type LojaDaPessoa } from "./pausar-no-privado";
 import { anotar } from "./trilha";
+import { avisarGestorDaEntrega } from "@/lib/gravacoes-aviso";
 
 // Registrar o dia a dia pelo WhatsApp, no privado do robô: "visitei a Vilela", "anota na Vilela: …", "gravei na Vilela, 3
 // carros", "entreguei", "mandei o relatório da Vilela", "acessos do cliente X completos" e, só pro dono, "reunião com a
@@ -195,7 +196,9 @@ export function qualComando(texto: string, agora = new Date()): Comando | null {
 
   if (/\b(mandei|enviei|enviamos|mandamos|enviado|mandado)\b/.test(t) && /\brelatorios?\b/.test(t)) return "relatorio";
   if (/\b(gravei|gravamos|gravacao feita|fiz (a |uma )?gravacao)\b/.test(t)) return "gravacao";
-  if (/\b(entreguei|entregamos|entrega feita|dei baixa)\b/.test(t) && /\b(video|videos|gravacao|gravacoes|entrega|carro|carros|material)\b|\b(na|no|da|do)\b/.test(t)) return "entrega";
+  if (/\b(entreguei|entregamos|entrega feita|dei baixa)\b/.test(t) && /\b(video|videos|gravacao|gravacoes|entrega|carro|carros|material)\b|\b(a|o|na|no|da|do)\b/.test(t)) return "entrega";
+  // "enviei os vídeos da Vilela" (o Igor mandando o material): só com a palavra vídeo/gravação, pra não confundir com relatório.
+  if (/\b(enviei|mandei|enviamos|mandamos|enviado|mandado)\b/.test(t) && /\b(videos?|gravacao|gravacoes|material)\b/.test(t) && !/\brelatorios?\b/.test(t)) return "entrega";
   if (/\b(visitei|visitamos|fiz (a |uma )?visita|fui visitar|estive (na|no|em))\b/.test(t)) return "visita";
   if (etapasDaFrase(original).length > 0) return "etapa";
   return null;
@@ -353,7 +356,7 @@ async function registrarGravacao(pessoa: PessoaDoComando, texto: string, agora: 
   };
 }
 
-async function darBaixaNaEntrega(pessoa: PessoaDoComando, texto: string, agora: Date): Promise<ComandoRespondido | null> {
+async function darBaixaNaEntrega(pessoa: PessoaDoComando, texto: string, agora: Date, messageId?: string | null): Promise<ComandoRespondido | null> {
   if (!canAccessModule(pessoa.role as "ADMIN", "gravacoes", pessoa.email)) {
     // "entreguei" é palavra comum: sem acesso, só responde se a frase deixa claro que é entrega de vídeo.
     return /\b(video|videos|gravacao|gravacoes)\b/.test(dobrar(texto)) ? { tipo: "sem-acesso", pendente: null, resposta: SO_PRO_IGOR } : null;
@@ -365,7 +368,7 @@ async function darBaixaNaEntrega(pessoa: PessoaDoComando, texto: string, agora: 
   const pendentes = await prisma.gravacao.findMany({
     where: { clientId: achada.loja.id, entregueEm: null },
     orderBy: { gravadoEm: "asc" },
-    select: { id: true, quantidade: true, gravadoEm: true },
+    select: { id: true, quantidade: true, gravadoEm: true, clientId: true, loja: true },
   });
   if (pendentes.length === 0) {
     return { tipo: "entrega", pendente: null, resposta: `A ${negrito(achada.loja.nome)} não tem entrega pendente. Nada a dar baixa.` };
@@ -374,11 +377,23 @@ async function darBaixaNaEntrega(pessoa: PessoaDoComando, texto: string, agora: 
   await prisma.gravacao.update({ where: { id: alvo.id }, data: { entregueEm: agora } });
   const dia = dataCurta(diaDeBrasilia(alvo.gravadoEm));
   const sobra = pendentes.length - 1;
+  // O gestor de tráfego da loja é avisado que tem vídeo novo (o mesmo aviso do botão da tela).
+  const aviso = await avisarGestorDaEntrega(alvo, { id: pessoa.id, name: pessoa.name }, messageId);
+  const linhaDoAviso = aviso.avisou
+    ? `\n📣 Avisei ${aviso.avisou} (gestor da loja) que tem vídeo novo.`
+    : aviso.motivo === "sem-gestor"
+      ? "\n⚠️ A loja não tem gestor de tráfego definido, então não avisei ninguém."
+      : aviso.motivo === "sem-whatsapp"
+        ? "\n⚠️ O gestor da loja não tem WhatsApp cadastrado, então não consegui avisar."
+        : aviso.motivo === "falhou"
+          ? "\n⚠️ Tentei avisar o gestor da loja, mas o WhatsApp não aceitou o envio."
+          : "";
   return {
     tipo: "entrega",
     pendente: null,
     resposta:
       `📦 Entrega dada como feita: ${negrito(achada.loja.nome)} — gravação de ${dia} (${alvo.quantidade} ${alvo.quantidade === 1 ? "carro" : "carros"}).` +
+      linhaDoAviso +
       (sobra > 0 ? `\nAinda ${sobra === 1 ? "tem 1 gravação" : `tem ${sobra} gravações`} dessa loja esperando entrega.` : ""),
   };
 }
@@ -748,7 +763,7 @@ export async function tratarComandoDoDia(
       r = await registrarGravacao(pessoa, texto, agora);
       break;
     case "entrega":
-      r = await darBaixaNaEntrega(pessoa, texto, agora);
+      r = await darBaixaNaEntrega(pessoa, texto, agora, messageId);
       break;
     case "relatorio":
       r = await marcarRelatorio(pessoa, texto, agora);

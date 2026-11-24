@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { rodarRotinaDeTarefas, type Hora } from "@/lib/tarefas/robo";
+import { extrasDaManha } from "@/lib/tarefas/resumo-da-manha";
 
 // A porta do agendador pro robô das tarefas (ver vercel.json e src/lib/tarefas/robo.ts):
-//   /api/tarefas/rodar?hora=manha  → a lista do dia de cada pessoa
+//   /api/tarefas/rodar?hora=manha  → a lista do dia de cada pessoa + o resumo da carteira (gestora) / as gravações do dia (Igor)
 //   /api/tarefas/rodar?hora=tarde  → "está feito?" + quadro das atrasadas pro dono e a Andrielli
 //
 // Com CRON_SECRET configurado, só o agendador da Vercel entra. A rota não devolve conteúdo de tarefa nenhum (só quantos
@@ -19,7 +20,7 @@ export async function GET(req: Request) {
   const hora = new URL(req.url).searchParams.get("hora");
   if (hora !== "manha" && hora !== "tarde") return NextResponse.json({ ok: false, motivo: "hora-invalida" }, { status: 400 });
   try {
-    const r = await rodarRotinaDeTarefas(hora as Hora);
+    const r = await rodarRotinaDeTarefas(hora as Hora, new Date(), extrasDaManha);
     console.log("[tarefas] rotina:", JSON.stringify(r));
     return NextResponse.json({ ok: true, hora: r.hora, avisos: r.avisos.length, atrasadasPara: r.atrasadasPara.length, pulou: r.pulou ?? null });
   } catch (erro) {

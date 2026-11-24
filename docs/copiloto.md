@@ -410,6 +410,22 @@ Perguntas que não são exatamente estes formatos (`tarefas atrasadas das lojas?
 **No Meu Dia** há o bloco "Tarefas de hoje": marcar como feita (e desfazer), cancelar/parar, e um formulário (título, data,
 repete, e — só pro dono e a gerência — "pra quem"). Atribuir pela tela também avisa a pessoa por WhatsApp.
 
+## Resumo da manhã (gestora) e aviso das gravações (Igor)
+
+Na mesma mensagem das **8h30** (ver "Tarefas"; `src/lib/tarefas/resumo-da-manha.ts`), tudo **determinístico** — os mesmos
+números do Meu Dia, escritos em frase, sem IA no meio:
+
+- **Gestora (quem tem carteira):** quantas lojas conferir hoje; **verba** (Pix cobrado e não veio, sem saldo/acabando,
+  esperando a verba cair, gastando acima do combinado, verba sobrando — ou "nenhum alerta ✅"); **relatórios da semana**
+  (segunda: "hoje é dia"; terça em diante: quais ainda faltam); e as **tarefas do dia** logo acima. "Artes cansadas" só
+  entra se o aviso de arte cansada estiver ligado no sistema (`AVISOS_DE_CANSACO_LIGADOS`, hoje desligado).
+- **Igor** (e-mail `igor…@legacydigital.com`, `ehIgor` em `permissions.ts`): **gravações de hoje** e **entregas pra mandar**
+  (pra hoje e atrasadas). Sem nada, não manda mensagem.
+- Quando o Igor manda **`enviei os vídeos da Vilela`** (ou `entreguei…`, `mandei os vídeos…`), o robô dá baixa na entrega mais
+  antiga da loja e **avisa o gestor de tráfego da loja**: "🎬 Vídeo novo — Vilela…". O Igor vê quem foi avisado (ou por que
+  não: loja sem gestor, gestor sem WhatsApp, envio recusado). O mesmo aviso sai quando a entrega é marcada **no botão da tela
+  de Gravações** (uma regra só, `src/lib/gravacoes-aviso.ts`). Desmarcar a entrega não avisa ninguém; repetir não avisa de novo.
+
 ## O erro "A IA respondeu fora do formato esperado"
 
 Causa: o modelo **pensa** antes de responder e o pensamento conta dentro do teto de tokens (`max_tokens`). Chamadas com

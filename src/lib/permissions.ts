@@ -158,6 +158,14 @@ export function ehAndrielli(email: string | null | undefined): boolean {
   return /^andriel/i.test(e) && e.endsWith("@legacydigital.com");
 }
 
+// O Igor (videomaker, gerência): recebe o aviso das gravações do dia pelo WhatsApp e marca "enviei" quando entrega.
+// Mesma lógica do e-mail da Andrielli: pelo começo do endereço, dentro do domínio da agência.
+export function ehIgor(email: string | null | undefined): boolean {
+  if (!email) return false;
+  const e = email.toLowerCase();
+  return /^igor/i.test(e) && e.endsWith("@legacydigital.com");
+}
+
 // Hoje está vazia, e isso é bom: toda exceção que existia aqui era pra
 // Andrielli, e caiu quando ficou claro que o cargo dela é GERENTE — Gerente já
 // abre Formulários e Gravações pela matriz acima. Exceção por pessoa é dívida:

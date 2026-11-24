@@ -483,8 +483,8 @@ da Área 42. Agora a regra é de código, nos dois lados (`falaDeGastoOuResultad
 - Nos dois casos o robô fica **calado no grupo** e o **gestor da loja recebe um aviso no privado** com a pergunta ("não respondi:
   gasto e leads não saem no grupo do cliente"). Na trilha aparece `gasto-ou-leads-nao-vai-pro-grupo`.
 - Resposta sem dinheiro (ex.: "o que você faz?") segue saindo normalmente.
-- Os **parabéns de venda** (`textoDeParabens`) ainda mostram "Valor investido" e "Leads" do carro: foi decisão anterior, pendente de
-  confirmação se continua.
+- Os **parabéns de venda por tráfego** (`textoDeParabens`) **mantêm** "Valor investido" e "Leads" do carro vendido — confirmado
+  pelo Guilherme em 24/11/2026. Venda que não veio de lead recebe só os parabéns, sem número. A trava acima é só da IA.
 
 **Reconhecimento largo do pedido de lista:** qualquer mensagem que junte carro/anúncio/veículo com "ativo", "no ar", "rodando",
 "patrocinado", "anunciando", "impulsionado" vira a lista (grupo e privado), desde que não peça gasto/leads nem mande mexer

@@ -3,6 +3,7 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { lerCarro, lerLista, type CarroLido } from "./autocerto";
 import { lerCatalogo, pareceCatalogo } from "./site-catalogo";
+import { lerApiDeVeiculos, pareceApiDeVeiculos } from "./site-api";
 
 // A leitura do estoque de uma loja: lê o site, atualiza o banco.
 //
@@ -135,6 +136,7 @@ export async function lerEstoqueDaLoja(clientId: string, agora: Date = new Date(
   };
   if (!origem || !urlDeSiteSegura(origem)) return fim({ ...VAZIO, erro: "o endereço do site não é válido" });
   if (loja.sistema === "catalogo") return fim(await lerSiteDeCatalogo(clientId, origem, agora));
+  if (loja.sistema === "api") return fim(await lerSiteComApi(clientId, origem, agora));
 
   // ── 1. A lista ───────────────────────────────────────────────────────
   const paginaLista = await baixar(`${origem}/Veiculos`);
@@ -216,7 +218,28 @@ async function lerSiteDeCatalogo(clientId: string, origem: string, agora: Date):
   const pagina = await baixar(`${origem}/estoque`);
   if (!pagina.ok) return { ...VAZIO, erro: pagina.erro };
   if (!pareceCatalogo(pagina.html)) return { ...VAZIO, erro: "a página /estoque não trouxe a lista de carros no formato esperado" };
-  const carros = lerCatalogo(pagina.html);
+  return gravarListaInteira(clientId, origem, lerCatalogo(pagina.html), agora);
+}
+
+/** Site com API JSON pública de veículos (ex.: bomjesusautomoveis.com): GET /api/vehicles traz a lista inteira. */
+async function lerSiteComApi(clientId: string, origem: string, agora: Date): Promise<ResultadoDaLeitura> {
+  const resposta = await baixar(`${origem}/api/vehicles`);
+  if (!resposta.ok) return { ...VAZIO, erro: resposta.erro };
+  let dados: unknown;
+  try {
+    dados = JSON.parse(resposta.html);
+  } catch {
+    return { ...VAZIO, erro: "a lista de veículos do site não veio em JSON" };
+  }
+  if (!pareceApiDeVeiculos(dados)) return { ...VAZIO, erro: "a lista de veículos do site não veio no formato esperado" };
+  return gravarListaInteira(clientId, origem, lerApiDeVeiculos(dados), agora);
+}
+
+/**
+ * Grava uma lista que já veio INTEIRA e com todos os dados (catálogo e API): cada carro a cada leitura, sem abrir página de carro.
+ * As mesmas travas do AutoCerto valem pra marcar saída.
+ */
+async function gravarListaInteira(clientId: string, origem: string, carros: (CarroLido & { codigo: string; caminho: string })[], agora: Date): Promise<ResultadoDaLeitura> {
   if (carros.length === 0) return { ...VAZIO, erro: "a lista de veículos veio vazia" };
 
   const conhecidos = await prisma.estoqueCarro.findMany({ where: { clientId }, select: { codigo: true, sumiuEm: true } });

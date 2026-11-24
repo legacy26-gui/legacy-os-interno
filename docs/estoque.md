@@ -41,6 +41,18 @@ sei ler esse site, me manda o endereço".
 agora" ela é lida de novo da página do carro (`/veiculo/<id>`, só as da pasta `car-images/<id>/`), e a foto escolhida é comparada
 **sem a parte depois do "?"**. Foto WebP, ou JPEG/PNG acima de 4 MB (a 7 Point manda PNG de ~3,4 MB), vira JPEG de até 2048 px.
 
+## Terceiro tipo: site com API de veículos (ex.: bomjesusautomoveis.com) — `src/lib/estoque/site-api.ts`
+
+Sites que têm a lista pública em JSON: **GET /api/vehicles** traz o estoque inteiro (`id, slug, marca, modelo, versao,
+anoFabricacao, anoModelo, preco` em reais`, quilometragem, cor, fotos[]`), e **GET /api/vehicles/<slug>** traz um carro. A página do
+carro (`/veiculo/<slug>`) é montada no navegador e não tem foto no HTML: o "anunciar agora" pega as fotos do JSON do carro. As
+fotos ficam no servidor do AutoCerto (link fixo). `sistema` = `api`.
+
+**Só a lista pública é lida.** O site da Bom Jesus também expõe em `/api/config` o token de integração do AutoCerto da loja: o
+sistema **não usa** isso (é credencial da loja, exposta por engano no site dela) — vale avisar quem fez o site.
+
+O "Ligar site" testa, nesta ordem: AutoCerto (`/Veiculos`), catálogo (`/estoque`), API (`/api/vehicles`).
+
 ## Carro que some da lista: só anota
 
 Decisão do Guilherme: **não vira aviso** (muito carro sai do site por motivo que não é venda, e muito carro

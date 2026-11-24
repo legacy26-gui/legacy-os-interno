@@ -4,6 +4,7 @@ import { tipoDeImagem } from "@/lib/meta/rascunho-anuncio";
 import sharp from "sharp";
 import { urlDeSiteSegura } from "./ler-estoque";
 import { fotosDaPaginaDoCatalogo } from "./site-catalogo";
+import { apiDoCarro, fotosDoJson } from "./site-api";
 
 // As fotos de um carro do estoque, lidas da página dele no site da loja.
 //
@@ -114,7 +115,21 @@ export async function enderecosDasFotos(paginaUrl: string): Promise<{ ok: true; 
   } catch {
     return { ok: false, erro: "o site da loja não respondeu" };
   }
-  const urls = lerFotosDaPagina(html, paginaUrl).filter(urlDeSiteSegura);
+  let urls = lerFotosDaPagina(html, paginaUrl).filter(urlDeSiteSegura);
+  // Site com API de veículos (ex.: bomjesusautomoveis.com): a página é montada no navegador e não traz foto no HTML (no máximo
+  // o logo/og:image) — as fotos vêm do JSON do carro.
+  const api = apiDoCarro(paginaUrl);
+  if (urls.length <= 1 && api && urlDeSiteSegura(api)) {
+    try {
+      const r = await fetch(api, { headers: { "User-Agent": USER_AGENT, Accept: "application/json" }, signal: AbortSignal.timeout(PRAZO_MS), cache: "no-store" });
+      if (r.ok) {
+        const daApi = fotosDoJson(await r.json()).filter(urlDeSiteSegura);
+        if (daApi.length > 0) urls = daApi;
+      }
+    } catch {
+      // fica com o que a página deu
+    }
+  }
   return urls.length === 0 ? { ok: false, erro: "a página do carro não mostra foto" } : { ok: true, urls };
 }
 

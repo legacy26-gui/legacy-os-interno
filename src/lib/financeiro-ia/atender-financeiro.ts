@@ -276,7 +276,10 @@ export async function atenderGrupoFinanceiro(
   // anotado na mão: as contas a pagar, as perguntas abertas, a equipe. O código confere o
   // que ela propôs antes de mexer em dinheiro. Sem IA (ou se ela falhar), seguem as
   // regras de antes, logo abaixo.
-  const daIa = await atenderComIa(m, grupo.donoId, pendentes, loteId, agora);
+  // Gastar menos: mensagem que é SÓ gasto simples ("almoço 45", "uber 23,50 pessoal") e que as regras leem por inteiro, com
+  // certeza, não vai pra IA — segue direto pras regras de sempre, logo abaixo. Qualquer outra coisa (conta a pagar, "paguei",
+  // saldo, pergunta, correção, resposta a uma dúvida aberta) continua indo pra IA.
+  const daIa = gastoSimplesSemIa(m.texto, pendentes.length, hoje) ? null : await atenderComIa(m, grupo.donoId, pendentes, loteId, agora);
   if (daIa) return daIa;
 
   // ── 2b. O saldo em caixa dito no grupo ─────────────────────────────────
@@ -979,4 +982,19 @@ async function marcarComoJaPago(conta: ContaAberta, valorDito: number | null, ho
         ? " Descontei do saldo em caixa."
         : "")
   );
+}
+
+
+/**
+ * A mensagem é só gasto simples que as regras leem inteira, com certeza? Aí não precisa de IA. Pura.
+ * Fora: quando há pergunta aberta (a mensagem pode ser a resposta), palavras de outra ação (paguei, falta, vence, saldo, caixa,
+ * quanto, desfaz, corrige, recebi, retirada…), interrogação, ou pedaço que as regras não resolveram.
+ */
+export function gastoSimplesSemIa(texto: string, perguntasAbertas: number, hoje: string): boolean {
+  if (perguntasAbertas > 0) return false;
+  const t = texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (t.includes("?")) return false;
+  if (/\b(pag(o|uei|ar|ou|amos|ei)|falta\w*|venc\w*|boleto|parcela\w*|saldo|caixa|quanto|desfaz\w*|apag\w*|corrig\w*|errad\w*|mud\w*|troc\w*|receb\w*|entrou|entrada|retir\w*|nao|devolv\w*|reembols\w*|empresta\w*|divid\w*|cada|metade|todo (mes|dia)|mensal|fixo|conta de)\b/.test(t)) return false;
+  const leitura = lerGastos(texto, hoje);
+  return leitura.gastos.length > 0 && leitura.semCerteza.length === 0;
 }

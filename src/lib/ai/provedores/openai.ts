@@ -27,12 +27,14 @@ export async function chamarOpenAi<S extends z.ZodType>({
   user,
   schema,
   maxTokens,
+  modelo,
+  esforco,
 }: ChamadaIa<S>): Promise<RespostaBruta<z.infer<S>>> {
   const resposta = await cliente(apiKey)
     .chat.completions.parse({
-      model: AI_CONFIG.model,
+      model: modelo ?? AI_CONFIG.model,
       max_completion_tokens: Math.max(maxTokens, AI_CONFIG.maxTokens), // o raciocínio também conta no teto
-      reasoning_effort: esforcoDeRaciocinio(),
+      reasoning_effort: esforco ?? esforcoDeRaciocinio(),
       messages: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -66,7 +68,7 @@ export async function chamarOpenAi<S extends z.ZodType>({
   return {
     dados: escolha.message.parsed as z.infer<S>,
     bruto,
-    model: resposta.model ?? AI_CONFIG.model,
+    model: resposta.model ?? modelo ?? AI_CONFIG.model,
     uso: u
       ? {
           entrada: u.prompt_tokens ?? 0,

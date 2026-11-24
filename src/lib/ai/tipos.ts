@@ -9,6 +9,10 @@ export interface ChamadaIa<S extends z.ZodType> {
   user: string;
   schema: S;
   maxTokens: number;
+  /** Troca o modelo só nesta chamada (tarefas simples usam um mais barato). */
+  modelo?: string;
+  /** Troca o esforço de raciocínio só nesta chamada. */
+  esforco?: "minimal" | "low" | "medium" | "high";
 }
 
 export interface RespostaBruta<T> {

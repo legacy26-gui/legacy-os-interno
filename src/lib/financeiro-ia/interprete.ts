@@ -154,7 +154,7 @@ export async function interpretarComIa(texto: string, contexto: ContextoDoFinanc
   const deTeste = (globalThis as Record<string, unknown>)[CHAVE] as Interprete | undefined;
   if (deTeste) return deTeste(texto, contexto);
   try {
-    const r = await gerarJson({ funcao: "financeiro-interpretar", system: SISTEMA, user: montarMensagem(texto, contexto), schema: Interpretacao, maxTokens: 3000 });
+    const r = await gerarJson({ funcao: "financeiro-interpretar", nivel: "simples", system: SISTEMA, user: montarMensagem(texto, contexto), schema: Interpretacao, maxTokens: 3000 });
     return r.dados;
   } catch {
     return null;

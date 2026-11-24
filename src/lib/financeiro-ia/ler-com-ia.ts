@@ -54,6 +54,7 @@ export async function lerComIa(
   try {
     const r = await gerarJson({
       funcao: "financeiro-ler",
+      nivel: "simples",
       system: SISTEMA.replace("{HOJE}", hoje),
       user: pedacos.map((p) => p.texto).join("\n"),
       schema: Resposta,

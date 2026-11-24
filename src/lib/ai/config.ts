@@ -29,6 +29,19 @@ export const AI_CONFIG = {
   maxRetries: Number(process.env.AI_MAX_RETRIES ?? 0),
 } as const;
 
+// ── Gastar menos: cada função usa o nível que precisa ─────────────────────────
+// "simples" (entender uma mensagem de gasto, escolher a consulta, legenda, comentário de 2 linhas): modelo barato e pouco
+// raciocínio. "resposta" (o copiloto escrevendo com os dados): modelo principal, raciocínio baixo. "pesado" (diagnóstico): o
+// padrão de sempre. Só vale pra OpenAI; dá pra trocar o modelo barato por AI_MODELO_SIMPLES.
+export type NivelDaTarefa = "simples" | "resposta" | "pesado";
+
+export function ajusteDoNivel(nivel: NivelDaTarefa): { modelo?: string; esforco?: "minimal" | "low" | "medium" | "high" } {
+  if (PROVIDER !== "openai") return {};
+  if (nivel === "simples") return { modelo: process.env.AI_MODELO_SIMPLES?.trim() || "gpt-5-mini", esforco: "low" };
+  if (nivel === "resposta") return { esforco: (process.env.AI_ESFORCO_RESPOSTA as "low" | "medium" | undefined) ?? "low" };
+  return {};
+}
+
 // Cada provedor lê a chave dele. Nenhuma delas sai do servidor.
 export function aiApiKey(): string | null {
   const chave = AI_CONFIG.provider === "openai" ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;

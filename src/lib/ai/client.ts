@@ -1,6 +1,6 @@
 import "server-only";
 import type * as z from "zod";
-import { AI_CONFIG, aiApiKey, AiNaoConfigurado } from "@/lib/ai/config";
+import { AI_CONFIG, aiApiKey, AiNaoConfigurado, ajusteDoNivel, type NivelDaTarefa } from "@/lib/ai/config";
 import { RespostaIaInvalida } from "@/lib/ai/tipos";
 import { registrarUso } from "@/lib/ai/uso";
 import {
@@ -70,6 +70,7 @@ export async function gerarJson<S extends z.ZodType>({
   schema,
   maxTokens = AI_CONFIG.maxTokens,
   funcao = "outros",
+  nivel = "pesado",
 }: {
   system: string;
   user: string;
@@ -77,6 +78,8 @@ export async function gerarJson<S extends z.ZodType>({
   maxTokens?: number;
   /** Qual função do sistema está chamando — vai pro registro de uso (uso_da_ia). */
   funcao?: string;
+  /** Quanto de IA a tarefa precisa (ver ajusteDoNivel): simples usa o modelo barato. */
+  nivel?: NivelDaTarefa;
 }): Promise<ResultadoIa<z.infer<S>>> {
   const apiKey = aiApiKey();
   if (!apiKey) throw new AiNaoConfigurado();
@@ -87,7 +90,17 @@ export async function gerarJson<S extends z.ZodType>({
 
   for (let tentativa = 1; tentativa <= AI_CONFIG.maxRetries + 1; tentativa++) {
     try {
-      const resposta = await provedor.chamar({ apiKey, system, user, schema, maxTokens });
+      let resposta;
+      const ajuste = ajusteDoNivel(nivel);
+      try {
+        resposta = await provedor.chamar({ apiKey, system, user, schema, maxTokens, ...ajuste });
+      } catch (erro) {
+        // O modelo barato não existe/não está liberado nesta conta: segue com o principal, em vez de deixar a função sem IA.
+        const st = (erro as { status?: number })?.status;
+        if (!ajuste.modelo || (st !== 404 && st !== 403 && st !== 400)) throw erro;
+        console.error(`[ia] modelo ${ajuste.modelo} recusado (${st}); usando o principal`);
+        resposta = await provedor.chamar({ apiKey, system, user, schema, maxTokens, esforco: ajuste.esforco });
+      }
       await registrarUso(funcao, resposta.model, resposta.uso ?? null, Date.now() - comecou);
 
       // Cinto e suspensório: revalida com o schema antes de devolver.

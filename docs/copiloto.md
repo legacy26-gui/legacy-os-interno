@@ -485,3 +485,7 @@ da Área 42. Agora a regra é de código, nos dois lados (`falaDeGastoOuResultad
 - Resposta sem dinheiro (ex.: "o que você faz?") segue saindo normalmente.
 - Os **parabéns de venda** (`textoDeParabens`) ainda mostram "Valor investido" e "Leads" do carro: foi decisão anterior, pendente de
   confirmação se continua.
+
+**Reconhecimento largo do pedido de lista:** qualquer mensagem que junte carro/anúncio/veículo com "ativo", "no ar", "rodando",
+"patrocinado", "anunciando", "impulsionado" vira a lista (grupo e privado), desde que não peça gasto/leads nem mande mexer
+(pausar, ligar, trocar…). A IA não tem o inventário de carros, e quando o pedido caía nela a resposta era "não tenho como listar".

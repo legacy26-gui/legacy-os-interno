@@ -30,6 +30,15 @@ export function pedeListaDeAnuncios(texto: string): boolean {
   if (/\b(paus\w*|desl\w*|tir[ae]\w*|vend\w*|ativ(a|e|ar|em)|lig(a|ue|ar)|sub(a|e|ir)|aument\w*|dimin\w*|mud\w*|troc\w*|cri(a|e|ar)|exclu\w*|apag\w*)\b/.test(t)) return false;
   // Quem pergunta de GASTO, de pausado, de vendido… não quer esta lista (a lista é só dos que estão no ar, sem valor).
   if (/\b(gast\w*|custo\w*|invest\w*|valor\w*|quanto|verba|saldo|pausad\w*|desligad\w*|parad\w*|inativ\w*|vendid\w*|encerrad\w*|arquivad\w*|recusad\w*|reprovad\w*|estoque|preco\w*|fipe|leads?|resultado\w*|relatorio\w*)\b/.test(t)) return false;
+  // O jeito mais largo, que pega a maioria das frases ("manda os carros que estão ativos", "carros ativos aí", "quais carros
+  // estamos patrocinando", "tem quais anúncios no ar"): fala de carro/anúncio E de estar no ar. Só chega aqui quem não pediu
+  // gasto, nem pausar/ligar/mudar nada (travas acima). Melhor responder a lista que mandar a pergunta pra IA, que não tem o inventário.
+  if (
+    /\b(carros?|anuncios?|veiculos?|campanhas?|automoveis?|seminovos?)\b/.test(t) &&
+    /\b(ativ\w*|no ar|rodand\w*|veiculand\w*|anunciand\w*|patrocin\w*|na rua|em veiculacao|impulsionad\w*|impulsionand\w*)\b/.test(t)
+  ) {
+    return true;
+  }
   const itens = "(anuncios?|carros?|veiculos?|campanhas?)";
   const noAr = "(ativos?|ativas?|rodando|no ar|ligados?|ligadas?|veiculando|anunciando|na rua|em veiculacao)";
   return (

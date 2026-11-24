@@ -15,6 +15,8 @@ export interface RespostaBruta<T> {
   dados: T;
   bruto: string;
   model: string;
+  /** Tokens gastos nesta chamada, quando o provedor diz. */
+  uso?: { entrada: number; cacheados: number; saida: number; raciocinio: number };
 }
 
 // Resposta que não obedeceu ao formato pedido (JSON torto, recusa, corte por

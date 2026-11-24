@@ -2389,3 +2389,22 @@ model VisitaDaLoja {
   @@index([clientId, dia])
   @@map("visitas_da_loja")
 }
+
+/// Uma linha por chamada à IA: qual função do sistema chamou, qual modelo e quantos tokens. Serve pra responder "quanto gastamos
+/// com cada coisa". Custo é ESTIMADO pelo preço de tabela (ver src/lib/ai/uso.ts); a conta real é a do painel da OpenAI.
+model UsoDaIa {
+  id              String   @id @default(cuid())
+  quando          DateTime @default(now())
+  funcao          String
+  modelo          String
+  entrada         Int      @default(0)
+  cacheados       Int      @default(0)
+  saida           Int      @default(0)
+  /// Parte da saída que foi "pensamento" do modelo (cobrada como saída).
+  raciocinio      Int      @default(0)
+  segundosDeAudio Int?
+  ms              Int      @default(0)
+
+  @@index([quando])
+  @@map("uso_da_ia")
+}

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { MessageCircle, ChevronRight } from "lucide-react";
+import { MessageCircle, ChevronRight, Sparkles } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { ROLE_LABELS } from "@/lib/permissions";
@@ -44,6 +44,21 @@ export default async function ConfiguracoesPage() {
           <span className="text-sm text-foreground-muted">
             A ligação pela Z-API: número do robô, grupo de cada loja e teste
             de envio
+          </span>
+        </span>
+        <ChevronRight size={18} className="text-foreground-muted shrink-0" />
+      </Link>
+
+      <Link
+        href="/configuracoes/uso-da-ia"
+        className="rounded-2xl border border-border bg-surface p-5 flex items-center gap-3
+          hover:border-border-forte transition-colors"
+      >
+        <Sparkles size={18} className="text-accent shrink-0" />
+        <span className="flex-1">
+          <span className="font-medium block">Uso da IA</span>
+          <span className="text-sm text-foreground-muted">
+            Quanto cada função do sistema gasta de IA (hoje, 7 dias, 30 dias)
           </span>
         </span>
         <ChevronRight size={18} className="text-foreground-muted shrink-0" />

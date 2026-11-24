@@ -62,7 +62,20 @@ export async function chamarOpenAi<S extends z.ZodType>({
     throw new RespostaIaInvalida("não veio JSON válido no formato pedido", bruto);
   }
 
-  return { dados: escolha.message.parsed as z.infer<S>, bruto, model: resposta.model ?? AI_CONFIG.model };
+  const u = resposta.usage;
+  return {
+    dados: escolha.message.parsed as z.infer<S>,
+    bruto,
+    model: resposta.model ?? AI_CONFIG.model,
+    uso: u
+      ? {
+          entrada: u.prompt_tokens ?? 0,
+          cacheados: u.prompt_tokens_details?.cached_tokens ?? 0,
+          saida: u.completion_tokens ?? 0,
+          raciocinio: u.completion_tokens_details?.reasoning_tokens ?? 0,
+        }
+      : undefined,
+  };
 }
 
 // ── Modo segundo plano ───────────────────────────────────────────────────────

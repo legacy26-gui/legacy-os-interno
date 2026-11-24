@@ -39,7 +39,7 @@ export async function atenderAudioPrivado(a: {
     return { tipo: "falhou" };
   }
 
-  const t = await transcreverAudio(a.audioUrl, { mimeType: a.mimeType });
+  const t = await transcreverAudio(a.audioUrl, { mimeType: a.mimeType, segundos: a.segundos });
   if (!t.ok) {
     await anotar(a.messageId, a.telefone, "audio-privado-nao-transcreveu", t.erro);
     await dizer(`🎙️ Não consegui ouvir esse áudio: ${t.erro}. Manda de novo ou escreve.`);

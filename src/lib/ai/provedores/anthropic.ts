@@ -57,7 +57,14 @@ export async function chamarAnthropic<S extends z.ZodType>({
     throw new RespostaIaInvalida("não veio JSON válido no formato pedido", bruto);
   }
 
-  return { dados: resposta.parsed_output as z.infer<S>, bruto, model: resposta.model ?? AI_CONFIG.model };
+  return {
+    dados: resposta.parsed_output as z.infer<S>,
+    bruto,
+    model: resposta.model ?? AI_CONFIG.model,
+    uso: resposta.usage
+      ? { entrada: resposta.usage.input_tokens ?? 0, cacheados: resposta.usage.cache_read_input_tokens ?? 0, saida: resposta.usage.output_tokens ?? 0, raciocinio: 0 }
+      : undefined,
+  };
 }
 
 export function descreveErroAnthropic(erro: unknown): string | null {

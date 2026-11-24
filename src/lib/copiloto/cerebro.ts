@@ -174,6 +174,7 @@ async function escolherConsulta(
     .join("\n");
 
   const r = await gerarJson({
+    funcao: "copiloto-escolher",
     system: `Você decide QUAL consulta o sistema deve rodar pra responder a pergunta do gestor.
 Você não responde a pergunta agora — só escolhe a consulta. Não invente dados.
 
@@ -262,6 +263,7 @@ async function escreverResposta(
   const cortado = comoTexto.length > CORTE;
 
   const r = await gerarJson({
+    funcao: "copiloto-responder",
     system:
       canal === "whatsapp" ? COMO_FALAR + COMO_FALAR_NO_WHATSAPP : COMO_FALAR,
     user: [

@@ -58,7 +58,7 @@ export async function atenderAudioDoGrupo(a: {
     return { tipo: "falhou", erro: "longo" };
   }
 
-  const t = await transcreverAudio(a.audioUrl, { mimeType: a.mimeType });
+  const t = await transcreverAudio(a.audioUrl, { mimeType: a.mimeType, segundos: a.segundos });
   if (!t.ok) {
     await anotar(a.messageId, a.grupoId, "audio-nao-transcreveu", t.erro);
     await responder(`🎙️ Não consegui ouvir esse áudio: ${t.erro}. Manda de novo ou escreve o gasto.`);

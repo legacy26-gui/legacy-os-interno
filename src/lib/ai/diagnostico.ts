@@ -134,7 +134,7 @@ export async function gerarDiagnostico({
   }
 
   try {
-    const resultado = await gerarJson(pedido);
+    const resultado = await gerarJson({ ...pedido, funcao: "diagnostico" });
 
     await prisma.onboardingAnalysis.update({
       where: { id: analise.id },

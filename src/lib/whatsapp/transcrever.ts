@@ -1,5 +1,7 @@
 import "server-only";
 
+import { registrarUso } from "@/lib/ai/uso";
+
 // Áudio do WhatsApp → texto.
 //
 // ── Por que OpenAI, e não o provedor do Copiloto ─────────────────────────
@@ -49,7 +51,7 @@ function extensaoDe(tipo: string | null | undefined): string {
   return "ogg"; // o áudio de voz do WhatsApp é ogg/opus
 }
 
-export async function transcreverAudio(url: string, opcoes: { mimeType?: string | null } = {}): Promise<ResultadoDaTranscricao> {
+export async function transcreverAudio(url: string, opcoes: { mimeType?: string | null; segundos?: number | null } = {}): Promise<ResultadoDaTranscricao> {
   const chave = process.env.OPENAI_API_KEY?.trim();
   if (!chave) return { ok: false, erro: "falta a chave da OpenAI (OPENAI_API_KEY) pra transcrever áudio" };
   if (!urlDeAudioSegura(url)) return { ok: false, erro: "o endereço do áudio não é confiável" };
@@ -89,6 +91,8 @@ export async function transcreverAudio(url: string, opcoes: { mimeType?: string 
       signal: AbortSignal.timeout(60_000),
     });
     if (!r.ok) return { ok: false, erro: `a transcrição falhou (${r.status})` };
+    // Registro de uso: transcrição é cobrada pelo tempo de áudio (o WhatsApp diz quantos segundos tem).
+    await registrarUso("audio-transcricao", MODELO, null, 0, opcoes.segundos ?? null);
     const j = (await r.json()) as { text?: unknown };
     const texto = typeof j.text === "string" ? j.text.trim() : "";
     if (!texto) return { ok: false, erro: "não ouvi fala nesse áudio" };

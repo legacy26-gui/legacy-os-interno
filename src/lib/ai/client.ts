@@ -2,6 +2,7 @@ import "server-only";
 import type * as z from "zod";
 import { AI_CONFIG, aiApiKey, AiNaoConfigurado } from "@/lib/ai/config";
 import { RespostaIaInvalida } from "@/lib/ai/tipos";
+import { registrarUso } from "@/lib/ai/uso";
 import {
   chamarAnthropic,
   descreveErroAnthropic,
@@ -68,11 +69,14 @@ export async function gerarJson<S extends z.ZodType>({
   user,
   schema,
   maxTokens = AI_CONFIG.maxTokens,
+  funcao = "outros",
 }: {
   system: string;
   user: string;
   schema: S;
   maxTokens?: number;
+  /** Qual função do sistema está chamando — vai pro registro de uso (uso_da_ia). */
+  funcao?: string;
 }): Promise<ResultadoIa<z.infer<S>>> {
   const apiKey = aiApiKey();
   if (!apiKey) throw new AiNaoConfigurado();
@@ -84,6 +88,7 @@ export async function gerarJson<S extends z.ZodType>({
   for (let tentativa = 1; tentativa <= AI_CONFIG.maxRetries + 1; tentativa++) {
     try {
       const resposta = await provedor.chamar({ apiKey, system, user, schema, maxTokens });
+      await registrarUso(funcao, resposta.model, resposta.uso ?? null, Date.now() - comecou);
 
       // Cinto e suspensório: revalida com o schema antes de devolver.
       const validado = schema.safeParse(resposta.dados);

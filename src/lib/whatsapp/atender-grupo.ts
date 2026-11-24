@@ -732,6 +732,34 @@ async function tirarConjuntos(
   return { tipo: "desligou-varios", clientId: loja.id, quantos: tirados.length };
 }
 
+/** Não responde no grupo do cliente (gasto/leads não saem aí) e avisa a equipe, em particular, que ficou sem resposta. */
+async function deixarDeResponderPorGastoOuLeads(m: MensagemDoGrupo, clientId: string, nomeDaLoja: string, motivo: string): Promise<Desfecho> {
+  await anotar(m.messageId, m.grupoId, "gasto-ou-leads-nao-vai-pro-grupo", `${nomeDaLoja} · ${motivo}`);
+  await avisarAEquipeDaLoja(
+    clientId,
+    `*${nomeDaLoja}* — perguntaram algo no grupo e eu **não respondi**: gasto e leads não saem no grupo do cliente (${motivo}).\n\n` +
+      `A pergunta: "${semAMarcacao(m.texto).slice(0, 200)}"\n\nSe precisar responder, é com você.`,
+  );
+  return { tipo: "sem-pedido", clientId };
+}
+
+/**
+ * O texto fala de DINHEIRO ou de RESULTADO de anúncio (gasto, investimento, verba, leads, custo, alcance…)? Pura.
+ *
+ * Isso NUNCA vai pro grupo de um cliente: a regra do Guilherme é que gasto e leads não saem na frente da loja. Por isso é uma
+ * trava em CÓDIGO, nos dois lados — na pergunta (nem chama a IA) e na resposta (se a IA escreveu um valor, não sai) —, e não um
+ * pedido pro modelo se comportar. O modelo já provou que não basta: mandou a lista de carros "dos últimos 7 dias" com leads e
+ * gastos de cada um no grupo da Área 42.
+ */
+export function falaDeGastoOuResultado(texto: string): boolean {
+  const t = texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return (
+    /r\$|\breais\b/.test(t) ||
+    /\b(gast\w*|invest\w*|verba|saldo|orcamento|custo\w*|cpl|cpm|cpc|ctr|roas|leads?|conversa(o|oes)|impress(ao|oes)|alcance|cliques?|resultados?|mensagens? recebidas?|ticket|faturamento|retorno)\b/.test(t) ||
+    /\b\d+[.,]?\d*\s*(leads?|conversas?|mensagens)\b/.test(t)
+  );
+}
+
 /**
  * A IA respondendo uma pergunta DENTRO do grupo de um cliente.
  *
@@ -764,6 +792,11 @@ async function responderSobreALoja(
   clientId: string,
   nomeDaLoja: string,
 ): Promise<Desfecho> {
+  // Pergunta de gasto/leads/resultado no grupo do cliente: não chega nem na IA.
+  if (falaDeGastoOuResultado(semAMarcacao(m.texto))) {
+    return deixarDeResponderPorGastoOuLeads(m, clientId, nomeDaLoja, "a pergunta fala de gasto/leads/resultado");
+  }
+
   const dono = await prisma.client.findUnique({
     where: { id: clientId },
     select: { manager: { select: { id: true, role: true, active: true } } },
@@ -799,6 +832,10 @@ async function responderSobreALoja(
   // Ação proposta NÃO vira texto aqui: "daria pra pausar o anúncio X" dito no
   // grupo do cliente é a agência sugerindo serviço na frente dele, sem
   // ninguém da casa ter olhado. Quem decide isso é a equipe, no sistema.
+  // A resposta também passa pela trava: se a IA escreveu valor, gasto ou leads, NÃO sai no grupo do cliente.
+  if (falaDeGastoOuResultado(r.resposta)) {
+    return deixarDeResponderPorGastoOuLeads(m, clientId, nomeDaLoja, "a resposta da IA trazia valores/leads");
+  }
   await responder(m.grupoId, r.resposta, m.messageId);
   return { tipo: "respondeu-da-loja", clientId };
 }

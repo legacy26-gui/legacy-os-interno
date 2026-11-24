@@ -470,3 +470,18 @@ um limite, não custa nada quando não é usado.
 - Onboarding **concluído** (campanha no ar, ou concluído à mão) não avisa mais. Onboarding com etapa marcada nas últimas 24h e dentro
   do prazo fica quieto. Cada aviso sai uma vez por pessoa/dia/ficha.
 - Quem recebe: usuário ADMIN e a Andrielli (e-mail `andriel…@legacydigital.com`) com **WhatsApp cadastrado**.
+
+
+## Gasto e leads NUNCA saem no grupo do cliente (trava em código)
+
+No grupo de uma **loja**, quando a mensagem marca o robô e não é pedido de pausar nem de lista, a IA responde recortada naquela loja
+(`responderSobreALoja`, em `atender-grupo.ts`). Ela mandou a lista de carros "dos últimos 7 dias" com **leads e gastos** no grupo
+da Área 42. Agora a regra é de código, nos dois lados (`falaDeGastoOuResultado`):
+
+- **Pergunta** com gasto/investimento/verba/saldo/custo/leads/resultado/alcance/R$…: a IA **nem é chamada**.
+- **Resposta** da IA com R$, gasto, leads etc.: **não sai** no grupo.
+- Nos dois casos o robô fica **calado no grupo** e o **gestor da loja recebe um aviso no privado** com a pergunta ("não respondi:
+  gasto e leads não saem no grupo do cliente"). Na trilha aparece `gasto-ou-leads-nao-vai-pro-grupo`.
+- Resposta sem dinheiro (ex.: "o que você faz?") segue saindo normalmente.
+- Os **parabéns de venda** (`textoDeParabens`) ainda mostram "Valor investido" e "Leads" do carro: foi decisão anterior, pendente de
+  confirmação se continua.

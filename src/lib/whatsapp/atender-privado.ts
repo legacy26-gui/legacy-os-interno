@@ -23,6 +23,7 @@ import {
 } from "./pausar-no-privado";
 import { executarVendaNoPrivado, lerRespostaDaVenda, montarVendaNoPrivado } from "@/lib/vendas/venda-no-privado";
 import { tratarSubirAnuncio } from "./subir-anuncio";
+import { tratarListaNoPrivado } from "./anuncios-ativos-no-privado";
 import { executarComercial, tratarComandoDoDia } from "./comandos-do-dia";
 import { executarAtribuicao, tratarTarefaNoPrivado } from "./tarefas-no-privado";
 import { executarAnuncioDoEstoque, montarAnuncioDoEstoque } from "./anunciar-do-estoque-no-privado";
@@ -77,6 +78,8 @@ export type DesfechoPrivado =
   | { tipo: "sem-acesso"; userId: string }
   /** Perguntou demais na última hora. */
   | { tipo: "teto"; userId: string }
+  /** Pediu a lista dos anúncios no ar (ou o robô perguntou de qual loja). */
+  | { tipo: "lista-de-anuncios"; userId: string }
   /** Perguntou quanto gastou com algo: respondido pelo financeiro, sem IA. */
   | { tipo: "respondeu-gasto"; userId: string }
   /** Respondeu. */
@@ -339,6 +342,25 @@ export async function atenderMensagemPrivada(
       m.messageId,
     );
     return { tipo: "teto", userId: pessoa.id };
+  }
+
+  // ── "Quais anúncios ativos?" ───────────────────────────────────────────
+  //
+  // A lista dos carros no ar da loja (só leitura, sem gasto), no estilo do grupo. Só responde quando PEDEM.
+  const lista = await tratarListaNoPrivado(
+    pessoa,
+    m.texto,
+    historico.slice(-6).map((t) => t.texto),
+  );
+  if (lista) {
+    for (const texto of lista.mensagens) await responder(m.telefone, texto, m.messageId);
+    await anotar(m.messageId, `privado ${ponta}`, "privado-lista-de-anuncios", lista.clientId ? "respondeu" : "perguntou a loja");
+    await guardarMemoria(pessoa.id, [
+      ...historico,
+      { de: "gestor", texto: m.texto.slice(0, 4000) },
+      { de: "copiloto", texto: lista.mensagens.join("\n").slice(0, 4000) },
+    ]);
+    return { tipo: "lista-de-anuncios", userId: pessoa.id };
   }
 
   // ── Subir anúncio pelo WhatsApp ───────────────────────────────────────

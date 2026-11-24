@@ -28,6 +28,8 @@ export function pedeListaDeAnuncios(texto: string): boolean {
   if (!t) return false;
   // Quem pede pra MEXER (pausar, desligar, vender, subir…) não está pedindo uma lista.
   if (/\b(paus\w*|desl\w*|tir[ae]\w*|vend\w*|ativ(a|e|ar|em)|lig(a|ue|ar)|sub(a|e|ir)|aument\w*|dimin\w*|mud\w*|troc\w*|cri(a|e|ar)|exclu\w*|apag\w*)\b/.test(t)) return false;
+  // Quem pergunta de GASTO, de pausado, de vendido… não quer esta lista (a lista é só dos que estão no ar, sem valor).
+  if (/\b(gast\w*|custo\w*|invest\w*|valor\w*|quanto|verba|saldo|pausad\w*|desligad\w*|parad\w*|inativ\w*|vendid\w*|encerrad\w*|arquivad\w*|recusad\w*|reprovad\w*|estoque|preco\w*|fipe|leads?|resultado\w*|relatorio\w*)\b/.test(t)) return false;
   const itens = "(anuncios?|carros?|veiculos?|campanhas?)";
   const noAr = "(ativos?|ativas?|rodando|no ar|ligados?|ligadas?|veiculando|anunciando|na rua|em veiculacao)";
   return (
@@ -35,7 +37,9 @@ export function pedeListaDeAnuncios(texto: string): boolean {
     new RegExp(`\\b(quais|qual|lista|listar|lista dos|lista de|mostra|mostrar|me mostra|manda|me manda|mande|ver|quero ver)\\b.*\\b${itens}\\b.*\\b${noAr}\\b`).test(t) ||
     (new RegExp(`\\b${itens} ${noAr}\\b`).test(t) && /\b(quais|qual|lista|mostra|manda|mande|ver|quero)\b/.test(t)) ||
     new RegExp(`\\bo que (esta|ta|tem|estao|tao) ${noAr}\\b`).test(t) ||
-    new RegExp(`\\bquais? ${itens} (estao|tao|tem) ${noAr}\\b`).test(t)
+    new RegExp(`\\bquais? ${itens} (estao|tao|tem) ${noAr}\\b`).test(t) ||
+    // "listar os anúncios", "lista dos carros", "me manda os anúncios": pedir a lista já é pedir os que estão no ar.
+    new RegExp(`^(por favor |pf |pfv |me |pode |consegue )*(listar|lista|listagem|mostra|mostrar|manda|mandar|mande|ver|quero ver)( de| dos| das| os| as| o| a| todos| todas)* ?${itens}( da loja| da| do)?( [a-z0-9 ]{2,40})?$`).test(t)
   );
 }
 

@@ -342,6 +342,15 @@ muda nada), por isso responde também na loja que não autorizou o robô a desli
   numeração contínua e o total na última.
 - Frase que manda mexer ("pausa os anúncios ativos do gol", "vendeu o virtus") **não** vira lista: segue o fluxo de sempre.
 
+
+### No privado do robô (`src/lib/whatsapp/anuncios-ativos-no-privado.ts`)
+
+O mesmo pedido vale no privado ("carros ativos", "listar os anúncios", "lista dos carros ativos da Lourenço"): mesma lista, **só os que
+estão no ar, sem gasto**, e **só quando a pessoa pede**. Antes isso caía na IA, que misturava anúncio desligado e mandava os valores.
+A loja vem da frase, ou da conversa de agora há pouco, ou da única loja da pessoa; sem nenhuma das três o robô **pergunta de qual
+loja** (nunca chuta). A carteira vale: a gestora só vê as lojas dela. Quem pergunta de **gasto, pausado, estoque, leads ou
+resultado** não recebe esta lista (segue pro fluxo de sempre), e pedir a lista descarta uma pausa que esperava "sim".
+
 ## Avisar a equipe pelo robô (`src/lib/whatsapp/aviso-para-equipe.ts`)
 
 No privado do robô, **só o dono (ADMIN)**: `envie um aviso à Tatiana e à Giovana: a reunião mudou pra 15h`,

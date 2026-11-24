@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CheckCircle2, Wallet, Clock, Undo2, GripVertical, UserX } from "lucide-react";
 import { formatCurrency } from "@/lib/labels";
 import { markRevenuePaid, markRevenueUnpaid, moveMrrRevenueToDay, excludeClientFromBilling } from "@/lib/actions/financeiro";
+import { ValorEditavel } from "./valor-editavel";
 import type { MrrRevenueGroup } from "@/lib/mrr-revenue";
 
 type MrrItem = MrrRevenueGroup["items"][number];
@@ -141,7 +142,7 @@ function MrrCard({ r, moving, month, monthLabel }: { r: MrrItem; moving: boolean
         </form>
       </div>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{formatCurrency(r.value.toString())}</span>
+        <ValorEditavel revenueId={r.id} value={r.value.toString()} className="text-sm font-medium" />
         {r.status === "PAGO" ? (
           <div className="flex items-center gap-1">
             <span className="flex items-center gap-1 text-xs font-medium text-emerald-500 px-2 py-1 rounded-full bg-emerald-500/15">

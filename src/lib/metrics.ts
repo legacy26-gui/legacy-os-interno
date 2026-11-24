@@ -304,9 +304,11 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
   const windowStart = new Date(Date.UTC(refDate.getUTCFullYear(), refDate.getUTCMonth() - (monthsBack - 1), 1));
 
   const [paid, despesas, pendingThisMonth, cashSetting, retiradasDoCaixa] = await Promise.all([
+    // Caixa é dinheiro que ENTROU: vale o dia em que a cobrança foi dada como paga (`paidDate`), não o do vencimento. Sem
+    // `paidDate` (baixa antiga) cai no vencimento. Ver `entrouEm` abaixo.
     prisma.revenue.findMany({
-      where: { empresa, status: "PAGO", dueDate: { lt: monthEnd } },
-      select: { value: true, dueDate: true, description: true },
+      where: { empresa, status: "PAGO", OR: [{ paidDate: { lt: monthEnd } }, { paidDate: null, dueDate: { lt: monthEnd } }] },
+      select: { value: true, dueDate: true, paidDate: true, description: true },
     }),
     // Fluxo de caixa é dinheiro que saiu de verdade: só saída confirmada.
     prisma.expense.findMany({
@@ -330,11 +332,13 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
   ];
 
   const key = (d: Date) => d.toISOString().slice(0, 7);
+  // Quando o dinheiro entrou: o dia da baixa; sem ele (baixa antiga), o vencimento.
+  const entrouEm = (r: { dueDate: Date; paidDate: Date | null }) => r.paidDate ?? r.dueDate;
   const entradasPorMes = new Map<string, number>();
   const saidasPorMes = new Map<string, number>();
 
   for (const r of paid) {
-    const k = key(r.dueDate);
+    const k = key(entrouEm(r));
     entradasPorMes.set(k, (entradasPorMes.get(k) ?? 0) + Number(r.value));
   }
   for (const e of expenses) {
@@ -365,12 +369,25 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
     return e.date.getTime() === openingDate.getTime() && !!conferidoEm && saiuEm > conferidoEm;
   }
 
+  // A ENTRADA conta pro saldo quando o dinheiro entrou DEPOIS da conferência — pelo dia da baixa (`paidDate`), igual à
+  // saída. Antes valia o vencimento: marcar como pago hoje uma cobrança que venceu antes do saldo informado não mexia no
+  // caixa (o sistema achava que o dinheiro "já estava dentro do saldo"), e o dono via o pagamento sumir.
+  // Baixa dada no mesmo dia da conferência conta se foi depois da hora em que o saldo foi informado. Sem `paidDate`
+  // (baixa antiga), vale o vencimento, como sempre foi.
+  function entradaContaDepoisDaConferencia(r: { dueDate: Date; paidDate: Date | null }): boolean {
+    if (!openingDate) return false;
+    if (!r.paidDate) return r.dueDate > openingDate;
+    const dia = Date.UTC(r.paidDate.getUTCFullYear(), r.paidDate.getUTCMonth(), r.paidDate.getUTCDate());
+    if (dia > openingDate.getTime()) return true;
+    return dia === openingDate.getTime() && !!conferidoEm && r.paidDate > conferidoEm;
+  }
+
   // Saldo em caixa numa data-limite qualquer (fim de mês, ou hoje).
   function saldoAte(limite: Date): number | null {
     if (!openingDate) return null;
     if (limite <= openingDate) return null;
     let s = openingBalance;
-    for (const r of paid) if (r.dueDate > openingDate && r.dueDate < limite) s += Number(r.value);
+    for (const r of paid) if (entradaContaDepoisDaConferencia(r) && entrouEm(r) < limite) s += Number(r.value);
     for (const e of expenses) if (saidaContaDepoisDaConferencia(e) && e.date < limite) s -= Number(e.value);
     return s;
   }
@@ -403,7 +420,7 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
   let recorrente = 0;
   let avulso = 0;
   for (const r of paid) {
-    if (key(r.dueDate) !== atual.month) continue;
+    if (key(entrouEm(r)) !== atual.month) continue;
     if (r.description.startsWith(mrrTag)) recorrente += Number(r.value);
     else avulso += Number(r.value);
   }
@@ -434,7 +451,7 @@ export async function getCashFlow(empresa: Empresa, refDate: Date, monthsBack = 
           date: openingDate,
           insideDisplayedMonth: openingDate >= monthStart && openingDate < monthEnd,
           entradasDepois: paid
-            .filter((r) => r.dueDate > openingDate && r.dueDate < monthEnd)
+            .filter((r) => entradaContaDepoisDaConferencia(r) && entrouEm(r) < monthEnd)
             .reduce((s, r) => s + Number(r.value), 0),
           saidasDepois: expenses
             .filter((e) => saidaContaDepoisDaConferencia(e) && e.date < monthEnd)

@@ -23,6 +23,7 @@ import { FixedExpenseForm } from "../fixed-expense-form";
 import { GoalForm } from "../goal-form";
 import { MrrBoard } from "../mrr-board";
 import { DueDateInput } from "../due-date-input";
+import { ValorEditavel } from "../valor-editavel";
 import { FinanceTabs } from "../finance-tabs";
 
 function monthParam(d: Date) {
@@ -353,7 +354,9 @@ export default async function FinanceiroPage({
                 <td className="px-5 py-3 text-foreground-muted">
                   <DueDateInput revenueId={r.id} dueDate={r.dueDate} />
                 </td>
-                <td className="px-5 py-3 text-right font-medium">{formatCurrency(r.value.toString())}</td>
+                <td className="px-5 py-3 text-right font-medium">
+                  <ValorEditavel revenueId={r.id} value={r.value.toString()} />
+                </td>
                 <td className="px-5 py-3">
                   <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${REVENUE_STATUS_COLORS[r.status]}`}>
                     {REVENUE_STATUS_LABELS[r.status]}

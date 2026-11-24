@@ -76,6 +76,23 @@ export async function markRevenueUnpaid(revenueId: string) {
   revalidatePath("/financeiro", "layout");
 }
 
+/**
+ * Corrige o valor de uma cobrança: o cliente pagou a menos ou a mais do que estava combinado.
+ *
+ * Vale pra cobrança em qualquer status. Numa já PAGA, o caixa e o faturamento do mês passam a contar o valor novo (é o
+ * que entrou de verdade). Devolve o erro em frase pra tela mostrar.
+ */
+export async function updateRevenueValue(revenueId: string, valor: number): Promise<{ ok: boolean; erro?: string }> {
+  await requireModuleAccess("financeiro");
+  const empresa = await empresaAtual();
+  if (typeof valor !== "number" || !Number.isFinite(valor) || valor <= 0) return { ok: false, erro: "Informe um valor maior que zero." };
+  if (valor > 10_000_000) return { ok: false, erro: "Esse valor parece grande demais. Confere." };
+  const { count } = await prisma.revenue.updateMany({ where: { id: revenueId, empresa }, data: { value: Math.round(valor * 100) / 100 } });
+  if (count === 0) return { ok: false, erro: "Não achei essa cobrança." };
+  revalidatePath("/financeiro", "layout");
+  return { ok: true };
+}
+
 export async function deleteRevenue(revenueId: string) {
   await requireModuleAccess("financeiro");
   const empresa = await empresaAtual();

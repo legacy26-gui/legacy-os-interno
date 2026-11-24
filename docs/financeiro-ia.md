@@ -212,3 +212,16 @@ nada de IA decidindo o que é "muito". Gasto fixo (salário, aluguel) fica fora 
 contas vencendo/atrasadas, e só se houver. Cada aviso é reservado em `avisos_financeiros_enviados`
 (grupo + `vencimentos:AAAA-MM-DD` / `semana:AAAA-MM-DD`) antes de sair: nunca repete; se o WhatsApp falhar, a
 reserva é desfeita. Fora das 7h–20h não manda nada. Com `CRON_SECRET`, só o agendador entra.
+
+## Caixa: a entrada conta no dia em que foi PAGA, e o valor da cobrança dá pra corrigir
+
+- **Saldo em caixa** (`getCashFlow`, em `src/lib/metrics.ts`): uma cobrança dada como paga conta como dinheiro que entrou no
+  dia da **baixa** (`paidDate`), igual à saída. Antes valia o **vencimento**: marcar como pago hoje uma cobrança que venceu
+  antes de o saldo ser informado não mexia no caixa (o sistema achava que o dinheiro já estava dentro do saldo). Agora:
+  paga depois da conferência do saldo = soma; paga antes = já está dentro do saldo, não soma de novo; baixa antiga sem
+  `paidDate` continua valendo pelo vencimento; cobrança paga adiantada entra no dia em que foi paga. O DFC mês a mês segue
+  a mesma regra (a entrada aparece no mês em que o dinheiro entrou). O DRE/"faturado do mês" continua por competência
+  (vencimento), como era.
+- **Editar o valor**: lápis ao lado do valor, na lista de receitas da Análise e no quadro de mensalidades (MRR). O cliente
+  pagou a menos ou a mais? Corrige o valor: numa cobrança já paga, o caixa e o faturamento do mês passam a contar o valor
+  novo. (`updateRevenueValue`, só quem tem acesso ao Financeiro; valor tem que ser maior que zero.)

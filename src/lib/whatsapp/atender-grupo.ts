@@ -15,6 +15,7 @@ import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { anotar } from "./trilha";
 import { listaDosAnunciosAtivos, pedeListaDeAnuncios } from "./anuncios-ativos";
+import { tratarListaNoPrivado } from "./anuncios-ativos-no-privado";
 import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
 import { atenderGrupoFinanceiro, type DesfechoFinanceiro } from "@/lib/financeiro-ia/atender-financeiro";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
@@ -889,6 +890,15 @@ async function atenderNoGrupoInterno(m: MensagemDoGrupo): Promise<Desfecho> {
       m.messageId,
     );
     return { tipo: "interno-sem-dono" };
+  }
+
+  // "Nos envie os carros ativos": a lista, direto (a IA não tem o inventário e respondia "não tenho como listar"). A loja vem da frase
+  // ou da única loja da carteira de quem pediu; sem isso, pergunta de qual. Só os ativos, sem gasto.
+  const lista = await tratarListaNoPrivado(pessoa, semAMarcacao(m.texto), []);
+  if (lista) {
+    await anotar(m.messageId, m.grupoId, "lista-de-anuncios", lista.clientId ? "grupo interno" : "perguntou a loja");
+    for (const texto of lista.mensagens) await responder(m.grupoId, texto, m.messageId);
+    return { tipo: "respondeu-interno", userId: pessoa.id };
   }
 
   const r = await responderComoPessoa(

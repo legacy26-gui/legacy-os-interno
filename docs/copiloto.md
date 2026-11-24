@@ -489,3 +489,6 @@ da Área 42. Agora a regra é de código, nos dois lados (`falaDeGastoOuResultad
 **Reconhecimento largo do pedido de lista:** qualquer mensagem que junte carro/anúncio/veículo com "ativo", "no ar", "rodando",
 "patrocinado", "anunciando", "impulsionado" vira a lista (grupo e privado), desde que não peça gasto/leads nem mande mexer
 (pausar, ligar, trocar…). A IA não tem o inventário de carros, e quando o pedido caía nela a resposta era "não tenho como listar".
+
+**Também no grupo interno da equipe:** "nos envie os carros ativos" (frase real da Tati) agora responde a lista direto — a loja vem da
+frase ou da única loja da carteira de quem pediu, senão o robô pergunta de qual. Antes a IA respondia "não tenho como listar".

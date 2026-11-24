@@ -2192,6 +2192,11 @@ model EstoqueCarro {
   /// O mês da tabela ("novembro de 2026").
   fipeReferencia  String?
   fipeConferidoEm DateTime?
+  /// Quando o gestor da loja foi avisado por WhatsApp que este carro novo está sem anúncio (um aviso só por carro).
+  avisoNovoEm   DateTime?
+  /// O rascunho (pausado) que o "anunciar agora" já subiu pra este carro. "pendente" = subindo neste momento.
+  rascunhoAdId  String?
+  rascunhoEm    DateTime?
   precos        EstoquePreco[]
 
   @@unique([clientId, codigo])

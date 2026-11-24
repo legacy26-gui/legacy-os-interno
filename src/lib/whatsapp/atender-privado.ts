@@ -24,6 +24,7 @@ import { executarVendaNoPrivado, lerRespostaDaVenda, montarVendaNoPrivado } from
 import { tratarSubirAnuncio } from "./subir-anuncio";
 import { executarComercial, tratarComandoDoDia } from "./comandos-do-dia";
 import { executarAtribuicao, tratarTarefaNoPrivado } from "./tarefas-no-privado";
+import { executarAnuncioDoEstoque, montarAnuncioDoEstoque } from "./anunciar-do-estoque-no-privado";
 
 // A IA atendendo no privado do WhatsApp.
 //
@@ -97,6 +98,10 @@ export type DesfechoPrivado =
   | { tipo: "avisou"; userId: string; enviados: number; falhas: number }
   /** Registro do dia a dia (visita, anotação, gravação, entrega, relatório, etapa): feito na hora, ou o robô perguntou o que faltou. */
   | { tipo: "registrou"; userId: string; comando: string }
+  /** "Anunciar o Compass da Vilela": o robô mostrou o que vai subir (rascunho pausado) e espera o "sim". */
+  | { tipo: "pediu-confirmacao-de-anuncio"; userId: string }
+  /** Confirmou: o robô tentou subir o rascunho do estoque (ok = criou). */
+  | { tipo: "anunciou-do-estoque"; userId: string; ok: boolean }
   /** Tarefas: lista, criou pra si, concluiu, cancelou — ou perguntou o que faltou. */
   | { tipo: "tarefa"; userId: string; acao: string }
   /** O dono/gerência pediu pra passar tarefa a outra pessoa: o robô mostrou e espera o "sim". */
@@ -316,6 +321,19 @@ export async function atenderMensagemPrivada(
   //
   // Vem ANTES da confirmação de pausa: se há um anúncio sendo montado, o "sim" é dele. E começar a montar um
   // anúncio descarta uma pausa que estivesse esperando (ver tratarSubirAnuncio).
+  // "Anunciar o Compass da Vilela" (carro do ESTOQUE → rascunho pausado): só age se acha UM carro assim; senão segue.
+  const doEstoque = await montarAnuncioDoEstoque(pessoa, m.texto);
+  if (doEstoque) {
+    if (doEstoque.pendente) await guardarPendente(pessoa.id, doEstoque.pendente, agora);
+    await responder(m.telefone, doEstoque.resposta, m.messageId);
+    await guardarMemoria(pessoa.id, [
+      ...historico,
+      { de: "gestor", texto: m.texto.slice(0, 4000) },
+      { de: "copiloto", texto: doEstoque.resposta.slice(0, 4000) },
+    ]);
+    return doEstoque.pendente ? { tipo: "pediu-confirmacao-de-anuncio", userId: pessoa.id } : { tipo: "pedido-sem-alvo", userId: pessoa.id };
+  }
+
   const sobe = await tratarSubirAnuncio(pessoa, m.texto, agora);
   if (sobe !== null) {
     await responder(m.telefone, sobe, m.messageId);
@@ -393,6 +411,34 @@ export async function atenderMensagemPrivada(
     }
     if (resposta === "nao") {
       await responder(m.telefone, "Tudo bem, não mandei nada.", m.messageId);
+      return { tipo: "cancelou", userId: pessoa.id };
+    }
+    // Outra mensagem: segue como conversa nova, já sem a pendência.
+  } else if (pendente.acao?.tipo === "anunciar-do-estoque") {
+    // ── Um carro do estoque esperando o "sim" pra virar rascunho pausado ──
+    const resposta = confirmaAviso(m.texto);
+    if (resposta === "sim" && !pendente.venceu) {
+      if (!(await tomarPendente(pessoa.id))) {
+        await responder(m.telefone, "Esse pedido já foi tratado.", m.messageId);
+        return { tipo: "cancelou", userId: pessoa.id };
+      }
+      await responder(m.telefone, "⏳ Pegando as fotos no site e montando o rascunho… leva um minutinho.", m.messageId);
+      const feito = await executarAnuncioDoEstoque(pessoa, pendente.acao);
+      await responder(m.telefone, feito.resposta, m.messageId);
+      await guardarMemoria(pessoa.id, [
+        ...historico,
+        { de: "gestor", texto: m.texto.slice(0, 4000) },
+        { de: "copiloto", texto: feito.resposta.slice(0, 4000) },
+      ]);
+      return { tipo: "anunciou-do-estoque", userId: pessoa.id, ok: feito.ok };
+    }
+    await descartarPendente(pessoa.id);
+    if (resposta === "sim") {
+      await responder(m.telefone, "Esse pedido venceu (passou de 10 minutos) e eu não subi nada. Me pede de novo.", m.messageId);
+      return { tipo: "confirmacao-vencida", userId: pessoa.id };
+    }
+    if (resposta === "nao") {
+      await responder(m.telefone, "Tudo bem, não subi nada.", m.messageId);
       return { tipo: "cancelou", userId: pessoa.id };
     }
     // Outra mensagem: segue como conversa nova, já sem a pendência.

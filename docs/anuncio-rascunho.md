@@ -169,3 +169,26 @@ dinâmico. Diferença → escreve na cópia o valor do molde e relê; se continu
 conjunto (pausado, vazio) é apontado pra apagar. Nome e orçamento ficam de fora da comparação (mudam de propósito).
 
 Testes: `t-rascunho.mjs` seções 10 e 11 (Meta falsa que liga recursos sozinha / muda o público da cópia).
+
+
+## Anunciar agora: do estoque ao rascunho pausado (`src/lib/estoque/anunciar-agora.ts`)
+
+Carro novo no site da loja e sem anúncio vira rascunho PAUSADO na Meta com um comando ou um clique:
+
+1. **Aviso**: depois de cada leitura do estoque (9h e 15h), o **gestor de tráfego da loja** recebe no WhatsApp os carros novos
+   sem anúncio (a regra é a de "Carro novo sem anúncio" das Sugestões: entrou há até 7 dias, nenhum anúncio dele em nenhum
+   status). **Um aviso por carro** (`estoque_carros.avisoNovoEm`, só depois de a mensagem sair). A mensagem traz o comando
+   pronto (`anunciar JEEP COMPASS 2.0`).
+2. **Pelo WhatsApp**: `anunciar o Compass da Vilela`. O robô acha UM carro (só os da carteira de quem pede, que estão no site e
+   sem rascunho), mostra o que vai fazer e só faz depois do **"sim"**. Dois carros parecidos = ele lista e pede o nome mais
+   completo. Se não acha um carro assim, a frase segue pro Copiloto.
+3. **Pela tela**: botão **Anunciar agora** no cartão do carro em Inteligência Comercial → Sugestões (pede confirmação no
+   navegador).
+4. **O que faz**: lê a página do carro no site (até **5 fotos**, só https público, até 4 MB, só JPEG/PNG, conferido pelos
+   bytes), sobe as fotos pra conta da loja, a IA escreve a legenda na voz da loja com os dados do carro (mesma conferência da
+   tela) e cria o anúncio **PAUSADO** pelo mesmo `subirRascunho` da tela e do WhatsApp — usando o **"mesmo de sempre"** da loja
+   (conjunto e anúncio-base; `padrao_de_rascunho`). Foto única ou carrossel conforme o número de fotos.
+5. **Travas**: nunca liga nada; **um rascunho por carro** (`rascunhoAdId`, e "pendente" enquanto sobe — clique duplo ou "sim"
+   repetido não duplica); loja **sem** o "mesmo de sempre" não sobe sozinho (o robô explica: suba o primeiro pela tela ou
+   mandando as fotos); carro que saiu do site não sobe; gestora não anuncia carro de loja de outra; qualquer falha libera o
+   carro pra tentar de novo e vira frase (nada de erro técnico).

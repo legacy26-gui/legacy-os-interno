@@ -139,7 +139,19 @@ export interface AcaoDeTarefa {
   pedido: string;
 }
 
-export type AcaoPendente = AcaoDePausa | AcaoDeVenda | AcaoDeAviso | AcaoDeComercial | AcaoDeTarefa;
+/**
+ * "Anunciar o Compass da Vilela": o carro do estoque que vai virar rascunho PAUSADO na Meta, guardado enquanto se espera o
+ * "sim". Ver anunciar-do-estoque-no-privado.ts.
+ */
+export interface AcaoDeAnuncioDoEstoque {
+  tipo: "anunciar-do-estoque";
+  carroId: string;
+  carro: string;
+  loja: string;
+  pedido: string;
+}
+
+export type AcaoPendente = AcaoDePausa | AcaoDeVenda | AcaoDeAviso | AcaoDeComercial | AcaoDeTarefa | AcaoDeAnuncioDoEstoque;
 
 // ───────────────────────── Ler a resposta do "sim" ─────────────────────────
 
@@ -651,6 +663,12 @@ export async function lerPendente(
         (d) => d && typeof d.id === "string" && typeof d.nome === "string" && typeof d.telefone === "string" && /^\d{10,15}$/.test(d.telefone),
       );
     return certa ? { acao: v as AcaoDeAviso, venceu } : { acao: null, venceu: false };
+  }
+
+  if (bruto?.tipo === "anunciar-do-estoque") {
+    const v = bruto as Partial<AcaoDeAnuncioDoEstoque>;
+    const certa = typeof v.carroId === "string" && v.carroId.length > 0 && typeof v.carro === "string" && typeof v.loja === "string" && typeof v.pedido === "string";
+    return certa ? { acao: v as AcaoDeAnuncioDoEstoque, venceu } : { acao: null, venceu: false };
   }
 
   if (bruto?.tipo === "atribuir-tarefa") {

@@ -3,6 +3,7 @@ import { Scale, BadgeDollarSign, CircleDollarSign, ExternalLink, FilePlus2, Mega
 import { requireModuleAccess } from "@/lib/dal";
 import { sugestoesDaCarteira } from "@/lib/inteligencia/sugestoes-da-carteira";
 import { REGUA, type Sugestao, type TipoDeSugestao } from "@/lib/inteligencia/sugestoes";
+import { BotaoAnunciarAgora } from "./botao-anunciar-agora";
 
 // As sugestões da Inteligência Comercial: o estoque do site cruzado com anúncio, lead e venda.
 // As regras moram em src/lib/inteligencia/sugestoes.ts; esta tela só mostra, por loja, da mais urgente pra menos.
@@ -36,7 +37,8 @@ function Cartao({ s }: { s: Sugestao }) {
       <p className="text-sm">
         <strong>O que fazer:</strong> {s.acao}
       </p>
-      <div className="flex flex-wrap gap-2 pt-1">
+      <div className="flex flex-wrap items-start gap-2 pt-1">
+        {anunciar && s.carro && <BotaoAnunciarAgora carroId={s.carro.id} carro={s.carro.titulo} />}
         {anunciar && s.carro && (
           <Link
             href={`/meta-ads/${s.lojaId}/subir-anuncio?carro=${s.carro.id}`}

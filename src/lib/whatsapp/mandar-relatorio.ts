@@ -4,6 +4,8 @@ import { prisma } from "@/lib/prisma";
 import { desenharRelatorioDaLoja } from "@/app/api/meta-ads/relatorio/route";
 import { lerIntervalo, PADRAO_DO_RELATORIO } from "@/lib/meta/insights";
 import { enviarImagemAoGrupo, type ResultadoDoEnvio } from "./zapi";
+import { comentarioDaSemana } from "@/lib/meta/comentario-do-relatorio";
+import { legenda } from "./legenda-do-relatorio";
 
 // Pegar o relatório da semana de uma loja e mandar no grupo dela.
 //
@@ -21,17 +23,6 @@ import { enviarImagemAoGrupo, type ResultadoDoEnvio } from "./zapi";
 //
 // O endereço abaixo é interno: nada sai pela rede. O `new Request` só existe
 // porque é assim que um handler recebe os parâmetros.
-
-/**
- * O que vai escrito junto da imagem.
- *
- * Curto de propósito. A imagem já diz tudo: loja, período e os quatro
- * números. Legenda comprida no WhatsApp aparece cortada com um "ler mais", e
- * quem recebe lê a imagem antes do texto de qualquer jeito.
- */
-function legenda(loja: string): string {
-  return `Relatório da semana — ${loja}\n\nQualquer dúvida é só chamar por aqui. 🦅`;
-}
 
 export type EnvioDoRelatorio =
   | { ok: true; id: string | null }
@@ -85,13 +76,17 @@ export async function mandarRelatorioNoGrupo(clientId: string): Promise<EnvioDoR
     return { ok: false, erro: `Não consegui gerar o relatório (${resposta.status}).` };
   }
 
+  // Duas linhas sobre a semana, escritas pela IA e CONFERIDAS em código contra os números. Reprovou ou a IA falhou: o
+  // relatório sai como sempre, sem comentário (ele nunca atrasa nem impede o envio).
+  const comentario = await comentarioDaSemana(clientId);
+
   const bytes = Buffer.from(await resposta.arrayBuffer());
   const dataUri = `data:image/png;base64,${bytes.toString("base64")}`;
 
   const r: ResultadoDoEnvio = await enviarImagemAoGrupo(
     loja.whatsappGrupoId,
     dataUri,
-    legenda(loja.companyName)
+    legenda(loja.companyName, comentario)
   );
   return r;
 }

@@ -1247,3 +1247,21 @@ virou 0, e a loja continuou cliente com status intacto.
 **O que ainda não está bom:** depois de apagar não aparece mensagem de
 sucesso — a linha simplesmente some da lista, porque a tela recarrega e a
 loja não está mais lá. Funciona, mas o retorno é por ausência.
+
+## Comentário de duas linhas no relatório semanal (`src/lib/meta/comentario-do-relatorio.ts`)
+
+A legenda da imagem do relatório (a que o cliente recebe no grupo) ganha **duas linhas** sobre a semana, escritas pela IA e
+**conferidas em código** contra os números reais. Ex.: "A semana trouxe 42 leads, 20% a mais que a anterior. O custo por
+lead caiu 10%, e seguimos acompanhando de perto."
+
+- A IA **não calcula nada**: recebe os fatos prontos (leads, custo por lead, investido, visualizações — da semana e da
+  anterior — e as variações em %, já com SUBIU/CAIU). Sem semana anterior pra comparar, não há comparação.
+- A **conferência** (`conferirComentario`) reprova se: não são exatamente 2 linhas curtas; cita qualquer número que não esteja
+  nos fatos; cita uma porcentagem diferente da real, de outra métrica, ou na direção contrária (diz "caíram" quando subiu);
+  tem promessa/garantia ("garantimos", "dobrar", "100%"), link ou telefone. Reprovou: pede de novo uma vez, com o motivo; se
+  reprovar de novo, **não sai comentário**.
+- **Nunca atrasa nem impede o relatório**: IA sem chave, fora do ar, loja sem leitura boa da Meta, ou conferência reprovada =
+  o relatório sai exatamente como era antes (sem o comentário).
+- Desligar de vez: `COMENTARIO_NO_RELATORIO=0` no ambiente. A legenda em si mora em `src/lib/whatsapp/legenda-do-relatorio.ts`.
+- Vale pros três caminhos de envio (robô de segunda, botão da tela e aprovação da Andrielli): todos passam por
+  `mandarRelatorioNoGrupo`.

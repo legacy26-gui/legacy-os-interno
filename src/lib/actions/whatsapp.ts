@@ -396,6 +396,7 @@ export async function verQuemOPrivadoReconhece() {
   if (user.role !== "ADMIN") return null;
   const { acharPessoaPeloNumero, formasDoNumero } = await import("@/lib/whatsapp/atender-privado");
   const { lidDoRobo } = await import("@/lib/whatsapp/identidade-do-robo");
+  const { mesmoNumero } = await import("@/lib/whatsapp/mencao");
 
   const fim = (n: string) => `…${n.replace(/\D/g, "").slice(-4)}`;
   const gente = await prisma.user.findMany({
@@ -418,7 +419,7 @@ export async function verQuemOPrivadoReconhece() {
     const repetido = gente.filter((o) => {
       if (o.id === p.id || !o.whatsapp) return false;
       const e = o.whatsapp.replace(/\D/g, "");
-      return d.length >= 10 && e.length >= 10 && (e === d || e.endsWith(d) || d.endsWith(e));
+      return d.length >= 10 && e.length >= 10 && mesmoNumero(e, d);
     }).map((o) => o.name);
     pessoas.push({
       nome: p.name,

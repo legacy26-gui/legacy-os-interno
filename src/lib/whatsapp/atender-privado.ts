@@ -1,5 +1,6 @@
 import "server-only";
 
+import { mesmoNumero } from "./mencao";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma/client";
 import { enviarTexto } from "./zapi";
@@ -164,7 +165,7 @@ export async function acharPessoaPeloNumero(telefone: string) {
   const donos = gente.filter((p) => {
     const dele = soDigitos(p.whatsapp!);
     if (dele.length < 10) return false;
-    return dele === digitos || dele.endsWith(digitos) || digitos.endsWith(dele);
+    return mesmoNumero(dele, digitos);
   });
 
   return donos.length === 1 ? donos[0] : null;

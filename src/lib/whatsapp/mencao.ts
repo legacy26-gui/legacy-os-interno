@@ -65,7 +65,23 @@ export function mesmoNumero(a: string, b: string): boolean {
   const x = soDigitos(a);
   const y = soDigitos(b);
   if (x.length < MINIMO_DE_DIGITOS || y.length < MINIMO_DE_DIGITOS) return false;
-  return x === y || x.endsWith(y) || y.endsWith(x);
+  if (x === y || x.endsWith(y) || y.endsWith(x)) return true;
+  // O nono dígito fica NO MEIO do número (DDD + 9 + 8 dígitos): "5542984279897" e "554284279897" são o mesmo celular, e o
+  // sufixo não vê isso. A Z-API manda um e a ficha tem o outro — foi por aqui que a Andrielli não era reconhecida no privado.
+  const cx = chaveDoCelular(x);
+  return cx !== null && cx === chaveDoCelular(y);
+}
+
+/**
+ * DDD + os 8 últimos dígitos, que é o que NÃO muda entre "com 9" e "sem 9" e entre "com 55" e "sem 55". Só vale pra número
+ * brasileiro (DDD + 8 ou 9 dígitos, com ou sem o 55); o resto devolve null e cai na comparação por sufixo. Pura.
+ */
+export function chaveDoCelular(digitos: string): string | null {
+  let d = digitos.replace(/\D/g, "");
+  if ((d.length === 12 || d.length === 13) && d.startsWith("55")) d = d.slice(2);
+  if (d.length !== 10 && d.length !== 11) return null;
+  if (d.length === 11 && d[2] !== "9") return null;
+  return d.slice(0, 2) + d.slice(-8);
 }
 
 /** Uma marcação achada no texto: onde ela está e quais dígitos carrega. */

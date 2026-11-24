@@ -246,6 +246,11 @@ número** (o robô não escolhe e não reconhece nenhum); (2) as últimas mensag
 que eram**; (3) a trilha do que ele fez. Só o fim dos números; nunca texto de mensagem. É a primeira coisa a olhar quando
 alguém da casa recebe "este número é um atendimento interno".
 
+**O nono dígito no meio (corrigido, era a causa da Andrielli):** a Z-API manda o celular sem o 9 (`554284279897`) e a ficha tem
+com ele (`5542984279897`). A comparação era só por sufixo, e o 9 fica NO MEIO, então não batia. `mesmoNumero` (em `mencao.ts`)
+agora também compara DDD + os 8 últimos dígitos (`chaveDoCelular`), que não muda com 55 nem com o 9. Vale pro privado, pra
+marcação no grupo e pro quadro de diagnóstico.
+
 ### A trilha também vale pro privado
 
 Toda mensagem privada deixa uma linha em `passo_do_robo` (`privado-chegou` →

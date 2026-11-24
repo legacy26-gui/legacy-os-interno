@@ -492,3 +492,16 @@ da Área 42. Agora a regra é de código, nos dois lados (`falaDeGastoOuResultad
 
 **Também no grupo interno da equipe:** "nos envie os carros ativos" (frase real da Tati) agora responde a lista direto — a loja vem da
 frase ou da única loja da carteira de quem pediu, senão o robô pergunta de qual. Antes a IA respondia "não tenho como listar".
+
+
+## Pergunta é pergunta, ideia é ideia (`src/lib/copiloto/pede-sugestao.ts`)
+
+Regra do Guilherme: "carros ativos é só carros ativos, ideias são ideias". A IA respondia uma pergunta simples com "o que está
+performando e onde mexer", pontos de atenção, sugestões e "Daria pra mudar a verba … para R$ null".
+
+- **Prompt:** responde só o que foi perguntado; recomenda só quando pedem.
+- **Código (privado e grupo interno):** `pedeSugestao(pergunta)` — só quando a pergunta pede sugestão/recomendação/o que fazer/onde
+  mexer/análise/piores/melhores. Sem isso: `semRecomendacao` tira as linhas "Sugestão…", "Recomendo…", "Pontos de atenção…",
+  "Onde mexer…" da resposta, e o bloco "Daria pra pausar/mudar verba" **não sai**.
+- Ação de verba sem valor de verdade (`valorReais` nulo/zero) **nunca sai** ("R$ null").
+- "Os ativos" sem dizer "carros" ("me manda os ativos da Área 42", "envia os que estão no ar") também vira a lista.

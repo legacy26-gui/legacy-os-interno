@@ -39,6 +39,13 @@ export function pedeListaDeAnuncios(texto: string): boolean {
   ) {
     return true;
   }
+  // "me manda os ativos", "envia os que estão no ar": sem dizer "carros", mas pedindo "os ativos".
+  if (
+    /\b(manda\w*|mande|envi\w*|lista\w*|mostr\w*|quais|qual|ver|passa|me da|me de)\b/.test(t) &&
+    /\b(os|as) (ativos?|ativas?|patrocinados?|que (estao|tao|tem) (ativos?|no ar|rodando|patrocinados?))\b/.test(t)
+  ) {
+    return true;
+  }
   const itens = "(anuncios?|carros?|veiculos?|campanhas?)";
   const noAr = "(ativos?|ativas?|rodando|no ar|ligados?|ligadas?|veiculando|anunciando|na rua|em veiculacao)";
   return (

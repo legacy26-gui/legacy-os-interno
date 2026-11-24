@@ -16,6 +16,7 @@ import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { anotar } from "./trilha";
 import { listaDosAnunciosAtivos, pedeListaDeAnuncios } from "./anuncios-ativos";
 import { tratarListaNoPrivado } from "./anuncios-ativos-no-privado";
+import { pedeSugestao, semRecomendacao } from "@/lib/copiloto/pede-sugestao";
 import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
 import { atenderGrupoFinanceiro, type DesfechoFinanceiro } from "@/lib/financeiro-ia/atender-financeiro";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
@@ -916,11 +917,12 @@ async function atenderNoGrupoInterno(m: MensagemDoGrupo): Promise<Desfecho> {
     return { tipo: "interno-sem-dono" };
   }
 
-  // Ação proposta vira texto, não botão: executar daqui ainda não existe.
-  const acoes = r.acoes ?? [];
+  // Ação proposta vira texto, não botão: executar daqui ainda não existe. E só quando PEDEM sugestão.
+  const pediuSugestao = pedeSugestao(m.texto);
+  const acoes = pediuSugestao ? (r.acoes ?? []) : [];
   await responder(
     m.grupoId,
-    r.resposta +
+    (pediuSugestao ? r.resposta : semRecomendacao(r.resposta)) +
       (acoes.length > 0
         ? "\n\nAbre o Legacy OS pra executar o que eu sugeri."
         : ""),

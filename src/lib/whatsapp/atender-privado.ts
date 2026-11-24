@@ -24,6 +24,7 @@ import {
 import { executarVendaNoPrivado, lerRespostaDaVenda, montarVendaNoPrivado } from "@/lib/vendas/venda-no-privado";
 import { tratarSubirAnuncio } from "./subir-anuncio";
 import { tratarListaNoPrivado } from "./anuncios-ativos-no-privado";
+import { pedeSugestao, semRecomendacao } from "@/lib/copiloto/pede-sugestao";
 import { executarComercial, tratarComandoDoDia } from "./comandos-do-dia";
 import { executarAtribuicao, tratarTarefaNoPrivado } from "./tarefas-no-privado";
 import { executarAnuncioDoEstoque, montarAnuncioDoEstoque } from "./anunciar-do-estoque-no-privado";
@@ -679,7 +680,9 @@ export async function atenderMensagemPrivada(
     await responder(m.telefone, `Não consegui responder agora: ${erro}`, m.messageId);
     return { tipo: "falhou", userId: pessoa.id, erro };
   }
-  const resposta = r.resposta;
+  // Só recomenda quando PEDEM: o que a IA acrescentou sem ser pedida ("Sugestão: …", "Daria pra …") sai daqui, em código.
+  const pediuSugestao = pedeSugestao(m.texto);
+  const resposta = pediuSugestao ? r.resposta : semRecomendacao(r.resposta);
 
   // ── A resposta ───────────────────────────────────────────────────────
   //
@@ -687,7 +690,10 @@ export async function atenderMensagemPrivada(
   // Recomendação não é ordem: o que a pessoa pede de forma direta ("pausa o X
   // da loja Y") é tratado acima, com confirmação. Pausa de anúncio se pede por
   // aqui; verba continua só pela tela, onde o valor se confere antes.
-  const acoes = r.acoes ?? [];
+  // Sem pedido de sugestão, nenhuma. E verba sem valor de verdade ("R$ null") nunca sai.
+  const acoes = (pediuSugestao ? (r.acoes ?? []) : []).filter(
+    (a) => a.tipo === "pausar_anuncio" || (typeof a.valorReais === "number" && Number.isFinite(a.valorReais) && a.valorReais > 0),
+  );
   const texto =
     resposta +
     (acoes.length > 0

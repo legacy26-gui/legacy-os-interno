@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { lerTodasAsLojas } from "@/lib/estoque/ler-estoque";
-import { avisarCarrosNovos } from "@/lib/estoque/avisar-carros-novos";
 
 // A porta que lê o estoque das lojas. O agendador (vercel.json) bate aqui às 9h e às 15h
 // de Brasília. Sem o segredo, só trabalha se a última passada foi há mais de 30 minutos —
@@ -33,12 +32,7 @@ export async function GET(req: Request) {
 
   try {
     const r = await lerTodasAsLojas(ORCAMENTO_MS);
-    // Carro novo sem anúncio: avisa o gestor da loja (um aviso por carro). Falha aqui não estraga a leitura.
-    const avisos = await avisarCarrosNovos().catch((e) => {
-      console.error("[estoque] aviso de carro novo falhou:", e instanceof Error ? e.message : e);
-      return null;
-    });
-    return NextResponse.json({ ...r, ok: true, lojasComSucesso: r.ok, avisosDeCarroNovo: avisos ? avisos.avisos : null });
+    return NextResponse.json({ ...r, ok: true, lojasComSucesso: r.ok });
   } catch (e) {
     console.error("[estoque] leitura falhou:", e instanceof Error ? e.message : e);
     return NextResponse.json({ ok: false, motivo: "erro-interno" }, { status: 500 });

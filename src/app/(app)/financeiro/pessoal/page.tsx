@@ -27,6 +27,7 @@ export default async function GastosPessoaisPage({
       titulo="Gastos pessoais"
       subtitulo="Só você vê esta página · no DRE da empresa entram como retirada"
       caminho="/financeiro/pessoal"
+      tipo="pessoal"
       vazio="Nenhum gasto pessoal neste mês. No grupo financeiro, escreva o gasto com a palavra pessoal: gasolina 200 pessoal."
     />
   );

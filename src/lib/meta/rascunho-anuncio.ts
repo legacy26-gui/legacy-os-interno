@@ -646,6 +646,8 @@ export async function duplicarConjunto(p: {
   nome: string;
   /** Orçamento diário do conjunto novo (centavos). `null` = o mesmo do molde. */
   orcamentoCents: number | null;
+  /** A campanha onde o conjunto novo vai ficar. `null`/ausente = a mesma do molde. */
+  campanhaDestinoId?: string | null;
   pedidoPor: string | null;
   quemId: string | null;
 }): Promise<ResultadoDoConjunto> {
@@ -681,6 +683,7 @@ export async function duplicarConjunto(p: {
     deep_copy: "false",
     status_option: "PAUSED",
     rename_options: JSON.stringify({ rename_strategy: "NO_RENAME" }),
+    ...(p.campanhaDestinoId ? { campaign_id: p.campanhaDestinoId } : {}),
   });
   let novo: string;
   let ajuste: { ok: true } | { ok: false; erro: string };
@@ -696,7 +699,7 @@ export async function duplicarConjunto(p: {
     // A Meta não copia o molde porque a janela de atribuição dele não vale mais pro objetivo ("use uma destas
     // janelas compatíveis: 1 dia"). A cópia não deixa trocar campo nenhum, então o conjunto é CRIADO com os campos
     // lidos do molde, só com a janela trocada pela que a Meta aceita. A conferência abaixo prova que o resto é igual.
-    const criado = await criarConjuntoComoOMolde({ moldeId: p.adsetId, contaMeta: molde.contaMeta, nome, orcamentoCents: orcamento, janelas });
+    const criado = await criarConjuntoComoOMolde({ moldeId: p.adsetId, contaMeta: molde.contaMeta, nome, orcamentoCents: orcamento, janelas, campanhaDestinoId: p.campanhaDestinoId ?? null });
     if (!criado.ok) return { ok: false, erro: `A Meta não duplicou o conjunto: ${copia.ok ? "" : copia.erro} ${criado.erro}` };
     novo = criado.id;
     ajuste = { ok: true };
@@ -728,7 +731,7 @@ export async function duplicarConjunto(p: {
   await prisma.metaAdset.upsert({
     where: { adAccountId_adsetId: { adAccountId: molde.adAccountId, adsetId: novo } },
     create: {
-      adAccountId: molde.adAccountId, adsetId: novo, campaignId: molde.campaignId, name: ajuste.ok ? nome : molde.nome,
+      adAccountId: molde.adAccountId, adsetId: novo, campaignId: p.campanhaDestinoId ?? molde.campaignId, name: ajuste.ok ? nome : molde.nome,
       status: "PAUSED", effectiveStatus: "PAUSED", dailyBudgetCents: final, lifetimeBudgetCents: molde.lifetimeBudgetCents,
     },
     update: { name: ajuste.ok ? nome : molde.nome, status: "PAUSED", effectiveStatus: "PAUSED", dailyBudgetCents: final },
@@ -774,6 +777,61 @@ export async function duplicarConjunto(p: {
     });
   }
   return { ok: true, adsetId: novo, nome: nomeFinal, orcamentoCents: final, avisos, anuncioCopiadoId: null };
+}
+
+// ─────────────────────────── Duplicar a CAMPANHA ───────────────────────────
+//
+// "Campanha nova" no Anunciar agora: a campanha que contém o conjunto molde é copiada pela própria Meta (`/copies`, só a
+// campanha, sem conjuntos nem anúncios de dentro), nasce PAUSADA e ganha o nome pedido. O conjunto novo é criado DENTRO dela
+// (duplicarConjunto com campanhaDestinoId). Nada é ligado: tudo pausado.
+
+export type ResultadoDaCampanha = { ok: true; campaignId: string; nome: string; avisos: AvisoDoConjunto[] } | { ok: false; erro: string };
+
+export async function duplicarCampanha(p: {
+  clientId: string;
+  /** A campanha molde (a do conjunto molde). */
+  campaignId: string;
+  nome: string;
+  pedidoPor: string | null;
+  quemId: string | null;
+}): Promise<ResultadoDaCampanha> {
+  if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
+  const nome = p.nome.trim().slice(0, 200);
+  if (!nome) return { ok: false, erro: "Falta o nome da campanha nova." };
+  const molde = await prisma.metaCampaign.findFirst({
+    where: { campaignId: p.campaignId, adAccount: { clientId: p.clientId } },
+    select: { name: true, objective: true, dailyBudgetCents: true, lifetimeBudgetCents: true, adAccountId: true, adAccount: { select: { metaAccountId: true } } },
+  });
+  if (!molde) return { ok: false, erro: "Essa campanha não é de uma conta desta loja." };
+
+  const copia = await escreverNaGraph<{ copied_campaign_id?: string }>(`${p.campaignId}/copies`, {
+    deep_copy: "false",
+    status_option: "PAUSED",
+    rename_options: JSON.stringify({ rename_strategy: "NO_RENAME" }),
+  });
+  if (!copia.ok || !copia.dados.copied_campaign_id) return { ok: false, erro: `A Meta não duplicou a campanha: ${copia.ok ? "sem id" : copia.erro}` };
+  const novo = copia.dados.copied_campaign_id;
+
+  const avisos: AvisoDoConjunto[] = [];
+  const ajuste = await escreverNaGraph(novo, { name: nome });
+  if (!ajuste.ok) avisos.push({ tipo: "conjunto", texto: `A campanha foi duplicada, mas a Meta não aceitou o nome novo (${ajuste.erro}). Ela está pausada com o nome do molde: ajusta no Gerenciador.` });
+
+  await prisma.metaCampaign.upsert({
+    where: { adAccountId_campaignId: { adAccountId: molde.adAccountId, campaignId: novo } },
+    create: {
+      adAccountId: molde.adAccountId, campaignId: novo, name: ajuste.ok ? nome : molde.name, status: "PAUSED", effectiveStatus: "PAUSED",
+      objective: molde.objective, dailyBudgetCents: molde.dailyBudgetCents, lifetimeBudgetCents: molde.lifetimeBudgetCents,
+    },
+    update: { name: ajuste.ok ? nome : molde.name, status: "PAUSED", effectiveStatus: "PAUSED" },
+  });
+  await prisma.metaAcao.create({
+    data: {
+      clientId: p.clientId, quemId: p.quemId, nivel: "campanha", objetoId: novo, nome: ajuste.ok ? nome : molde.name,
+      statusPedido: "PAUSED", statusAntes: null, ok: true, origem: "criacao-rascunho", pedidoPor: p.pedidoPor,
+      pedidoTexto: `campanha duplicada de ${molde.name} · conta ${molde.adAccount.metaAccountId}`.slice(0, 2000),
+    },
+  });
+  return { ok: true, campaignId: novo, nome: ajuste.ok ? nome : molde.name, avisos };
 }
 
 // ─────────── Quando a Meta não copia: criar o conjunto com os campos do molde ───────────
@@ -826,6 +884,7 @@ async function criarConjuntoComoOMolde(p: {
   nome: string;
   orcamentoCents: number | null;
   janelas: number[];
+  campanhaDestinoId?: string | null;
 }): Promise<{ ok: true; id: string; aviso: string } | { ok: false; erro: string }> {
   const lido = await buscarNaGraph<Record<string, unknown>>(p.moldeId, { fields: [...CAMPOS_DO_CONJUNTO, ...CAMPOS_EXTRAS_DO_MOLDE].join(",") });
   if (!lido.ok) return { ok: false, erro: "E não consegui ler o molde pra criar um igual." };
@@ -839,6 +898,7 @@ async function criarConjuntoComoOMolde(p: {
   }
   if (m.lifetime_budget && m.end_time) base.end_time = String(m.end_time);
   if (p.orcamentoCents !== null && base.daily_budget) base.daily_budget = String(p.orcamentoCents);
+  if (p.campanhaDestinoId) base.campaign_id = p.campanhaDestinoId;
 
   const ajustada = atribuicaoCompativel(m.attribution_spec, p.janelas);
   const tentativas: (Record<string, unknown>[] | null)[] = ajustada ? [ajustada, null] : [null];
@@ -1091,9 +1151,18 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
 export interface PedidoCompleto extends Omit<PedidoDeRascunho, "conjuntoNovo"> {
   /** Duplicar o conjunto `adsetId` (o molde) e subir o anúncio no novo. */
   conjuntoNovo?: { nome: string; orcamentoCents: number | null; jaCriadoId?: string | null } | null;
+  /**
+   * Criar também uma CAMPANHA nova (cópia da campanha do conjunto molde) e pôr o conjunto novo nela. Exige `conjuntoNovo`.
+   * `jaCriadaId`: uma tentativa anterior já criou a campanha (e o resto falhou): reaproveita em vez de criar outra.
+   */
+  campanhaNova?: { nome: string; jaCriadaId?: string | null } | null;
+  /** Pôr o conjunto novo numa campanha que JÁ existe (diferente da do molde). Ignorado se `campanhaNova` vier. */
+  campanhaDestinoId?: string | null;
 }
 
 export interface ResultadoCompleto extends ResultadoDoRascunho {
+  /** A campanha criada nesta tentativa, mesmo se o resto falhou: a próxima tentativa usa ela (não cria outra). */
+  campanhaCriada?: { campaignId: string; nome: string } | null;
   /** O conjunto criado nesta tentativa, mesmo se o anúncio falhou: a próxima tentativa sobe nele (não cria outro). */
   adsetCriado?: { adsetId: string; nome: string } | null;
 }
@@ -1107,7 +1176,10 @@ export async function subirRascunho(p: PedidoCompleto): Promise<ResultadoComplet
   const avisos: AvisoDoConjunto[] = [];
   let adsetCriado: { adsetId: string; nome: string } | null = null;
   let substituirAnuncioId: string | null = null;
+  let campanhaCriada: { campaignId: string; nome: string } | null = null;
   const semAvisos = { avisos: [], orcamentoSugeridoCents: null, orcamentoDoConjuntoCents: null };
+
+  if (p.campanhaNova && !p.conjuntoNovo) return { ok: false, erro: "Campanha nova pede conjunto novo (o conjunto molde é copiado dentro dela).", ...semAvisos };
 
   if (p.conjuntoNovo) {
     // Antes de criar qualquer coisa na Meta: o anúncio-base serve? (Senão sobraria um conjunto sem anúncio útil.)
@@ -1136,16 +1208,37 @@ export async function subirRascunho(p: PedidoCompleto): Promise<ResultadoComplet
       adsetCriado = { adsetId, nome: jaCriado.nome };
       substituirAnuncioId = manter?.id ?? null;
     } else {
+      // Campanha nova: copia a campanha do molde (pausada) e o conjunto novo nasce DENTRO dela.
+      if (p.campanhaNova) {
+        if (p.campanhaNova.jaCriadaId) {
+          campanhaCriada = { campaignId: p.campanhaNova.jaCriadaId, nome: p.campanhaNova.nome };
+        } else {
+          const moldeDoConjunto = await contaDoConjunto(p.clientId, p.adsetId);
+          if (!moldeDoConjunto?.campaignId) return { ok: false, erro: "Não achei a campanha do conjunto molde.", ...semAvisos };
+          const cc = await duplicarCampanha({ clientId: p.clientId, campaignId: moldeDoConjunto.campaignId, nome: p.campanhaNova.nome, pedidoPor: p.pedidoPor, quemId: p.quemId });
+          if (!cc.ok) return { ok: false, erro: cc.erro, ...semAvisos };
+          campanhaCriada = { campaignId: cc.campaignId, nome: cc.nome };
+          avisos.push(...cc.avisos);
+        }
+      }
       const c = await duplicarConjunto({
         clientId: p.clientId,
         adsetId: p.adsetId,
         baseAdId: p.baseAdId,
         nome: p.conjuntoNovo.nome,
         orcamentoCents: p.conjuntoNovo.orcamentoCents,
+        campanhaDestinoId: campanhaCriada?.campaignId ?? p.campanhaDestinoId ?? null,
         pedidoPor: p.pedidoPor,
         quemId: p.quemId,
       });
-      if (!c.ok) return { ok: false, erro: c.erro, ...semAvisos };
+      if (!c.ok) {
+        return {
+          ok: false,
+          erro: `${c.erro}${campanhaCriada ? ` A campanha nova "${campanhaCriada.nome}" já foi criada (pausada): tentando de novo, eu uso ela.` : ""}`,
+          campanhaCriada,
+          ...semAvisos,
+        };
+      }
       adsetId = c.adsetId;
       adsetCriado = { adsetId: c.adsetId, nome: c.nome };
       substituirAnuncioId = c.anuncioCopiadoId;
@@ -1165,6 +1258,7 @@ export async function subirRascunho(p: PedidoCompleto): Promise<ResultadoComplet
       avisos: [...avisos, ...r.avisos],
       erro: adsetCriado ? `${r.erro} O conjunto novo "${adsetCriado.nome}" já foi criado (pausado): tentando de novo, eu subo nele.` : r.erro,
       adsetCriado,
+      campanhaCriada,
     };
   }
 
@@ -1173,5 +1267,5 @@ export async function subirRascunho(p: PedidoCompleto): Promise<ResultadoComplet
     create: { clientId: p.clientId, adsetId: p.adsetId, baseAdId: p.baseAdId, duplicarConjunto: !!p.conjuntoNovo, orcamentoCents: p.conjuntoNovo?.orcamentoCents ?? null },
     update: { adsetId: p.adsetId, baseAdId: p.baseAdId, duplicarConjunto: !!p.conjuntoNovo, orcamentoCents: p.conjuntoNovo?.orcamentoCents ?? null },
   });
-  return { ...r, avisos: [...avisos, ...r.avisos], adsetCriado };
+  return { ...r, avisos: [...avisos, ...r.avisos], adsetCriado, campanhaCriada };
 }

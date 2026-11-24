@@ -2,21 +2,38 @@
 
 import { revalidatePath } from "next/cache";
 import { requireModuleAccess } from "@/lib/dal";
-import { anunciarCarroDoEstoque, type ResultadoDoAnunciarAgora } from "@/lib/estoque/anunciar-agora";
+import { anunciarCarroDoEstoque, prepararAnuncio, type ResultadoDoAnunciarAgora } from "@/lib/estoque/anunciar-agora";
+import type { EscolhaDoAnuncio, PlanoDoAnuncio } from "@/lib/estoque/anunciar-tipos";
 
-// O botão "Anunciar agora" das sugestões: do carro do estoque ao rascunho PAUSADO na Meta. A regra e as travas moram
-// em src/lib/estoque/anunciar-agora.ts (a mesma do WhatsApp). Aqui só se confere quem pede e se devolve uma frase.
+// "Anunciar agora" da ficha da loja (Estoque) e das Sugestões. A regra e as travas moram em src/lib/estoque/anunciar-agora.ts
+// (a mesma do WhatsApp). Aqui só se confere quem pede e se devolve uma frase — nunca erro técnico, nunca token.
 
-export async function anunciarAgora(carroId: string): Promise<ResultadoDoAnunciarAgora> {
-  const user = await requireModuleAccess("clientes");
+async function semQuebrar<T extends { ok: boolean; erro?: string }>(fazer: () => Promise<T>, aoFalhar: T): Promise<T> {
   try {
-    const r = await anunciarCarroDoEstoque({ carroId: String(carroId ?? ""), pessoa: { id: user.id, role: user.role, name: user.name }, origem: "tela" });
-    if (r.ok) revalidatePath("/inteligencia-comercial/sugestoes");
-    return r;
+    return await fazer();
   } catch (erro) {
     const digest = (erro as { digest?: unknown })?.digest;
     if (typeof digest === "string" && digest.startsWith("NEXT_")) throw erro;
     console.error("[anunciar-agora] a ação falhou", erro);
-    return { ok: false, erro: "Deu erro no servidor. Tenta de novo, ou sobe pela tela de Subir anúncio." };
+    return { ...aoFalhar, ok: false, erro: "Deu erro no servidor. Tenta de novo, ou sobe pela tela de Subir anúncio." };
   }
+}
+
+/** Abre o "Anunciar agora": as fotos do carro, as campanhas e conjuntos da loja, o "mesmo de sempre" e a legenda da IA. */
+export async function prepararAnunciarAgora(carroId: string): Promise<PlanoDoAnuncio> {
+  const user = await requireModuleAccess("clientes");
+  return semQuebrar<PlanoDoAnuncio>(() => prepararAnuncio({ carroId: String(carroId ?? ""), pessoa: { id: user.id, role: user.role } }), { ok: false });
+}
+
+/** Cria o rascunho PAUSADO com o que a pessoa escolheu (campanha e conjunto existentes ou novos, fotos, legenda). */
+export async function anunciarAgora(carroId: string, escolha: EscolhaDoAnuncio | null = null): Promise<ResultadoDoAnunciarAgora> {
+  const user = await requireModuleAccess("clientes");
+  return semQuebrar<ResultadoDoAnunciarAgora>(async () => {
+    const r = await anunciarCarroDoEstoque({ carroId: String(carroId ?? ""), pessoa: { id: user.id, role: user.role, name: user.name }, origem: "tela", escolha });
+    if (r.ok) {
+      revalidatePath("/inteligencia-comercial/sugestoes");
+      revalidatePath("/clientes");
+    }
+    return r;
+  }, { ok: false });
 }

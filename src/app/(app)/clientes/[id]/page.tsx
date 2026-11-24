@@ -15,6 +15,8 @@ import { AttachmentForm } from "./attachment-form";
 import { DeleteClientButton } from "../delete-client-button";
 import { VisitaCliente } from "../visita-cliente";
 import { HistoricoDaLoja } from "../historico-da-loja";
+import { estoqueDaFicha } from "@/lib/estoque/da-loja";
+import { EstoqueDaLoja } from "./estoque-da-loja";
 
 // O botão de regenerar diagnóstico roda a IA nesta rota.
 export const maxDuration = 300;
@@ -71,6 +73,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
   });
 
   if (!client) notFound();
+  const estoque = await estoqueDaFicha(client.id);
 
   const ultimaGravacao = client.gravacoes[0] ?? null;
   const diasSemGravar = ultimaGravacao?.entregueEm
@@ -227,6 +230,9 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
           meetingNotes={client.onboardings[0].meetingNotes}
         />
       )}
+
+      {/* O estoque do site da loja: dados, FIPE e se já tem anúncio — e o botão pra anunciar o que está sem. */}
+      <EstoqueDaLoja estoque={estoque} />
 
       {client.internalNotes && (
         <div className="rounded-2xl border border-border bg-surface p-5">

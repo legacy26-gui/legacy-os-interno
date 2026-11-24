@@ -225,3 +225,10 @@ reserva é desfeita. Fora das 7h–20h não manda nada. Com `CRON_SECRET`, só o
 - **Editar o valor**: lápis ao lado do valor, na lista de receitas da Análise e no quadro de mensalidades (MRR). O cliente
   pagou a menos ou a mais? Corrige o valor: numa cobrança já paga, o caixa e o faturamento do mês passam a contar o valor
   novo. (`updateRevenueValue`, só quem tem acesso ao Financeiro; valor tem que ser maior que zero.)
+
+## Excluir um gasto (duplicado, lançado por engano)
+
+Nas telas **Gastos da empresa** e **Gastos pessoais**, cada linha de "Lançamentos do mês" tem a lixeirinha. Pergunta antes de
+apagar (não volta) e o gasto sai dos gastos, do DRE e do caixa. Gasto pessoal só o dono dele exclui (a consulta filtra por quem
+está logado). Gasto fixo (ex.: salário) que for excluído volta no mês seguinte como "a pagar", porque o lançamento é gerado
+da conta fixa — pra parar de vez, desative a conta fixa.

@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, MessageCircle, TrendingDown, TrendingUp } fr
 import { formatCurrency } from "@/lib/labels";
 import type { GastosDoMes } from "@/lib/financeiro-ia/painel";
 import { FinanceTabs } from "./finance-tabs";
+import { ExcluirLancamento } from "./excluir-lancamento";
 
 // A página "pra onde foi o dinheiro", usada pela empresa e pelo pessoal.
 //
@@ -57,6 +58,7 @@ export function GastosDoMesTela({
   caminho,
   vazio,
   aviso,
+  tipo = "empresa",
 }: {
   dados: GastosDoMes;
   titulo: string;
@@ -65,6 +67,8 @@ export function GastosDoMesTela({
   caminho: string;
   vazio: string;
   aviso?: string;
+  /** De onde vêm os lançamentos: decide qual exclusão vale. */
+  tipo?: "empresa" | "pessoal";
 }) {
   const hoje = new Date();
   const mesDeHoje = `${hoje.getUTCFullYear()}-${String(hoje.getUTCMonth() + 1).padStart(2, "0")}`;
@@ -258,6 +262,7 @@ export function GastosDoMesTela({
                     <th className="py-2 font-medium">O quê</th>
                     <th className="py-2 font-medium">Categoria</th>
                     <th className="py-2 font-medium text-right">Valor</th>
+                    <th className="py-2 w-8" aria-label="Excluir" />
                   </tr>
                 </thead>
                 <tbody>
@@ -276,6 +281,9 @@ export function GastosDoMesTela({
                       </td>
                       <td className="py-2 text-foreground-muted">{l.categoria}</td>
                       <td className="py-2 text-right tabular-nums font-medium">{reais(l.cents)}</td>
+                      <td className="py-2 text-right">
+                        <ExcluirLancamento id={l.id} tipo={tipo} descricao={l.descricao} valor={reais(l.cents)} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

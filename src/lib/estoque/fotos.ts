@@ -14,7 +14,7 @@ import { urlDeSiteSegura } from "./ler-estoque";
 // só https público (nada de IP, "localhost", nome interno), no máximo MAX_FOTOS, até 4 MB cada, só JPEG/PNG (conferido pelos
 // primeiros bytes), tempo máximo por foto. Foto que não passa é pulada e contada, nunca estoura.
 
-export const MAX_FOTOS = 5;
+export const MAX_FOTOS = 6;
 const MAX_BYTES = 4 * 1024 * 1024;
 const PRAZO_MS = 15_000;
 const USER_AGENT = "Mozilla/5.0 (compatible; LegacyOS/1.0; +estoque)";
@@ -89,21 +89,31 @@ async function baixarFoto(url: string): Promise<Buffer | null> {
   }
 }
 
-/** Lê a página do carro e baixa as fotos (até MAX_FOTOS). */
-export async function baixarFotosDoCarro(paginaUrl: string): Promise<FotosDoCarro> {
-  if (!urlDeSiteSegura(paginaUrl)) return { ok: false, erro: "o endereço do carro não é seguro de abrir", fotos: [], puladas: 0 };
+/** Só os ENDEREÇOS das fotos da página do carro (sem baixar): é o que a tela mostra pra pessoa escolher. */
+export async function enderecosDasFotos(paginaUrl: string): Promise<{ ok: true; urls: string[] } | { ok: false; erro: string }> {
+  if (!urlDeSiteSegura(paginaUrl)) return { ok: false, erro: "o endereço do carro não é seguro de abrir" };
   let html: string;
   try {
     const r = await fetch(paginaUrl, { headers: { "User-Agent": USER_AGENT, Accept: "text/html" }, signal: AbortSignal.timeout(PRAZO_MS), cache: "no-store" });
-    if (!r.ok) return { ok: false, erro: `o site respondeu ${r.status}`, fotos: [], puladas: 0 };
+    if (!r.ok) return { ok: false, erro: `o site respondeu ${r.status}` };
     html = await r.text();
-    if (html.length > 3_000_000) return { ok: false, erro: "a página do carro veio grande demais", fotos: [], puladas: 0 };
+    if (html.length > 3_000_000) return { ok: false, erro: "a página do carro veio grande demais" };
   } catch {
-    return { ok: false, erro: "o site da loja não respondeu", fotos: [], puladas: 0 };
+    return { ok: false, erro: "o site da loja não respondeu" };
   }
+  const urls = lerFotosDaPagina(html, paginaUrl).filter(urlDeSiteSegura);
+  return urls.length === 0 ? { ok: false, erro: "a página do carro não mostra foto" } : { ok: true, urls };
+}
 
-  const urls = lerFotosDaPagina(html, paginaUrl);
-  if (urls.length === 0) return { ok: false, erro: "a página do carro não mostra foto", fotos: [], puladas: 0 };
+/**
+ * Baixa as fotos do carro (até MAX_FOTOS). `escolhidas`: só estas (a tela deixa tirar fotos); elas só valem se estiverem
+ * mesmo na página do carro — endereço que o navegador mandar e a página não tem é ignorado.
+ */
+export async function baixarFotosDoCarro(paginaUrl: string, escolhidas?: string[]): Promise<FotosDoCarro> {
+  const lidas = await enderecosDasFotos(paginaUrl);
+  if (!lidas.ok) return { ok: false, erro: lidas.erro, fotos: [], puladas: 0 };
+  const urls = escolhidas ? escolhidas.filter((u, i) => lidas.urls.includes(u) && escolhidas.indexOf(u) === i) : lidas.urls;
+  if (urls.length === 0) return { ok: false, erro: "nenhuma das fotos escolhidas está na página do carro", fotos: [], puladas: 0 };
   const fotos: FotoBaixada[] = [];
   let puladas = 0;
   for (const u of urls) {

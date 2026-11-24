@@ -173,22 +173,28 @@ Testes: `t-rascunho.mjs` seções 10 e 11 (Meta falsa que liga recursos sozinha 
 
 ## Anunciar agora: do estoque ao rascunho pausado (`src/lib/estoque/anunciar-agora.ts`)
 
-Carro novo no site da loja e sem anúncio vira rascunho PAUSADO na Meta com um comando ou um clique:
+Na **ficha de cada loja** (Clientes → a loja) tem a seção **Estoque no site**: cada carro lido do site da loja, com foto, ano, km,
+cor, preço, a **comparação com a FIPE**, há quantos dias está no site e a **situação de anúncio** (`sem anúncio`, `N anúncios no ar`,
+`rascunho criado`, ou `não deu pra confirmar anúncio` — a mesma ligação carro↔anúncio das Sugestões, só com certeza). Nos que não
+têm anúncio aparece o botão **Anunciar agora** (também nos cartões de "Carro novo sem anúncio" das Sugestões). Sem site de estoque
+ligado, a seção diz isso.
 
-1. **Aviso**: depois de cada leitura do estoque (9h e 15h), o **gestor de tráfego da loja** recebe no WhatsApp os carros novos
-   sem anúncio (a regra é a de "Carro novo sem anúncio" das Sugestões: entrou há até 7 dias, nenhum anúncio dele em nenhum
-   status). **Um aviso por carro** (`estoque_carros.avisoNovoEm`, só depois de a mensagem sair). A mensagem traz o comando
-   pronto (`anunciar JEEP COMPASS 2.0`).
-2. **Pelo WhatsApp**: `anunciar o Compass da Vilela`. O robô acha UM carro (só os da carteira de quem pede, que estão no site e
-   sem rascunho), mostra o que vai fazer e só faz depois do **"sim"**. Dois carros parecidos = ele lista e pede o nome mais
-   completo. Se não acha um carro assim, a frase segue pro Copiloto.
-3. **Pela tela**: botão **Anunciar agora** no cartão do carro em Inteligência Comercial → Sugestões (pede confirmação no
-   navegador).
-4. **O que faz**: lê a página do carro no site (até **5 fotos**, só https público, até 4 MB, só JPEG/PNG, conferido pelos
-   bytes), sobe as fotos pra conta da loja, a IA escreve a legenda na voz da loja com os dados do carro (mesma conferência da
-   tela) e cria o anúncio **PAUSADO** pelo mesmo `subirRascunho` da tela e do WhatsApp — usando o **"mesmo de sempre"** da loja
-   (conjunto e anúncio-base; `padrao_de_rascunho`). Foto única ou carrossel conforme o número de fotos.
-5. **Travas**: nunca liga nada; **um rascunho por carro** (`rascunhoAdId`, e "pendente" enquanto sobe — clique duplo ou "sim"
-   repetido não duplica); loja **sem** o "mesmo de sempre" não sobe sozinho (o robô explica: suba o primeiro pela tela ou
-   mandando as fotos); carro que saiu do site não sobe; gestora não anuncia carro de loja de outra; qualquer falha libera o
-   carro pra tentar de novo e vira frase (nada de erro técnico).
+O botão abre uma **bolha por cima da tela** que já vem preenchida:
+- **Fotos**: até **6** do site (dá pra tirar as que não quer; uma foto = foto única, duas ou mais = carrossel).
+- **Campanha**: **existente** (lista as da loja) ou **nova**. Campanha nova é uma cópia **pausada** da campanha do conjunto
+  molde (só a campanha, sem conjuntos nem anúncios), com o nome que você der.
+- **Conjunto**: **existente** (os da campanha escolhida) ou **novo** (um por carro: cópia do conjunto molde, com o nome do carro
+  e orçamento diário opcional). Em campanha nova o conjunto é sempre novo, criado dentro dela.
+- **Copiar as configurações de**: o conjunto molde (público, localização, otimização) quando algo é novo, e o **anúncio-base**
+  (de onde herda página, botão e rastreamento; foto ou carrossel).
+- **Legenda**: escrita pela IA com a voz da loja, editável; avisos se citar valor que não está nos dados do carro.
+O "mesmo de sempre" da loja (`padrao_de_rascunho`) vem já escolhido; sem ele, escolhe-se na hora.
+
+**Travas**: tudo nasce **PAUSADO** (campanha, conjunto e anúncio) e nada é ligado; loja, campanha, conjunto e anúncio escolhidos
+têm que ser da loja (conferido no servidor); as fotos só valem se estiverem na página do carro (endereço mandado pelo navegador
+que a página não tem é ignorado); um rascunho por carro (`rascunhoAdId`; clique duplo não duplica); erro no meio vira frase e
+libera o carro pra tentar de novo (e diz se uma campanha/conjunto já chegou a ser criado, pra apagar no Gerenciador).
+**Atenção**: a criação de campanha nova foi testada contra uma Meta de mentira; a primeira vez de verdade vale conferir no Gerenciador.
+
+Pelo WhatsApp continua existindo `anunciar o Compass da Vilela` (usa o "mesmo de sempre", mostra o que vai fazer e só faz no
+"sim"). **Não há mais aviso automático de carro novo** — a pessoa vê o estoque na ficha da loja.

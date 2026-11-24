@@ -260,6 +260,16 @@ export async function markExpenseUnpaid(expenseId: string) {
   revalidatePath("/financeiro", "layout");
 }
 
+/**
+ * Exclui um gasto PESSOAL (lançado em duplicidade, por exemplo). Só o dono do gasto exclui: a trava é a consulta
+ * (`donoId` = quem está logado), então o id mandado do navegador de outra pessoa não apaga nada.
+ */
+export async function deleteGastoPessoal(gastoId: string) {
+  const user = await requireModuleAccess("financeiro");
+  await prisma.gastoPessoal.deleteMany({ where: { id: gastoId, donoId: user.id } });
+  revalidatePath("/financeiro", "layout");
+}
+
 export async function deleteExpense(expenseId: string) {
   await requireModuleAccess("financeiro");
   const empresa = await empresaAtual();

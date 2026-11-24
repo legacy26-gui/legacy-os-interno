@@ -26,9 +26,6 @@ export function HistoricoDaLoja({ clientId, nomeDaLoja, rotulo = false }: { clie
   const [data, setData] = useState(hojeISO());
   const [nota, setNota] = useState("");
   const [pendente, comecar] = useTransition();
-  const [montado, setMontado] = useState(false);
-
-  useEffect(() => setMontado(true), []);
 
   function carregar() {
     comecar(async () => {
@@ -181,7 +178,8 @@ export function HistoricoDaLoja({ clientId, nomeDaLoja, rotulo = false }: { clie
         <History size={14} />
         {rotulo && "Histórico"}
       </button>
-      {aberto && montado ? createPortal(bolha, document.body) : null}
+      {/* Só existe depois do clique (no navegador), então o portal pode usar o document direto. */}
+      {aberto ? createPortal(bolha, document.body) : null}
     </>
   );
 }

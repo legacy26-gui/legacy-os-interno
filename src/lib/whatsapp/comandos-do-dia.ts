@@ -14,6 +14,7 @@ import { dobrar, NOMES_DOS_DIAS, diaDeBrasilia, somarDias, lerDiaFuturo } from "
 import { acharLojaNoTexto, type AcaoDeComercial, type LojaDaPessoa } from "./pausar-no-privado";
 import { anotar } from "./trilha";
 import { avisarGestorDaEntrega } from "@/lib/gravacoes-aviso";
+import { registrarVisita as gravarVisita } from "@/lib/visitas-registro";
 
 // Registrar o dia a dia pelo WhatsApp, no privado do robô: "visitei a Vilela", "anota na Vilela: …", "gravei na Vilela, 3
 // carros", "entreguei", "mandei o relatório da Vilela", "acessos do cliente X completos" e, só pro dono, "reunião com a
@@ -80,8 +81,6 @@ export function diaDoRegistro(texto: string, agora: Date): { y: number; m: numbe
   return { ...hoje, rotulo: "hoje" };
 }
 
-/** Meio-dia UTC do dia: é como o sistema guarda "a data" sem escorregar de fuso. */
-const meioDiaUtc = (x: { y: number; m: number; d: number }) => new Date(Date.UTC(x.y, x.m - 1, x.d, 12, 0, 0));
 
 const QUANTIDADES: Record<string, number> = {
   um: 1, uma: 1, dois: 2, duas: 2, tres: 3, quatro: 4, cinco: 5, seis: 6, sete: 7, oito: 8, nove: 9, dez: 10, onze: 11, doze: 12,
@@ -253,20 +252,17 @@ async function registrarVisita(pessoa: PessoaDoComando, texto: string, agora: Da
   if ("resposta" in achada) return { tipo: "pergunta", resposta: achada.resposta, pendente: null };
 
   const dia = diaDoRegistro(texto, agora);
-  await prisma.client.update({ where: { id: achada.loja.id }, data: { ultimaVisitaEm: meioDiaUtc(dia) } });
-
   const nota = notaDaVisita(texto);
-  if (nota) {
-    await prisma.clientHistory.create({
-      data: { clientId: achada.loja.id, note: `📍 Visita (pelo WhatsApp): ${nota}`, authorId: pessoa.id },
-    });
-  }
+  // Um dia por loja no histórico; a "última visita" da tabela é sempre a mais recente dele. O que foi falado vai junto da
+  // visita (aparece no histórico em bolha da loja).
+  const r = await gravarVisita({ clientId: achada.loja.id, dia: new Date(Date.UTC(dia.y, dia.m - 1, dia.d)), nota, quemId: pessoa.id }, agora);
+  if (!r.ok) return { tipo: "pergunta", pendente: null, resposta: r.erro };
   return {
     tipo: "visita",
     pendente: null,
     resposta:
       `📍 Visita registrada: ${negrito(achada.loja.nome)} — ${dia.rotulo} (${dataCurta(dia)}).` +
-      (nota ? `\n📝 Anotei no histórico da loja: “${nota}”` : "\nSe quiser guardar o que rolou, manda: *anota na " + achada.loja.nome + ": …*"),
+      (nota ? `\n📝 Guardei no histórico de visitas da loja: “${nota}”` : "\nSe quiser guardar o que rolou, manda: *anota na " + achada.loja.nome + ": …*"),
   };
 }
 

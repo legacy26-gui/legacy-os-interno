@@ -14,6 +14,7 @@ import { HistoryForm } from "./history-form";
 import { AttachmentForm } from "./attachment-form";
 import { DeleteClientButton } from "../delete-client-button";
 import { VisitaCliente } from "../visita-cliente";
+import { HistoricoDaLoja } from "../historico-da-loja";
 
 // O botão de regenerar diagnóstico roda a IA nesta rota.
 export const maxDuration = 300;
@@ -164,12 +165,15 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
             Apertou o botão, marca o dia de hoje. No lápis dá pra escrever outra data.
           </p>
         </div>
-        <VisitaCliente
-          clientId={client.id}
-          ultimaVisitaEm={client.ultimaVisitaEm?.toISOString() ?? null}
-          dataForm={client.ultimaVisitaEm ? client.ultimaVisitaEm.toISOString().slice(0, 10) : ""}
-          dataLabel={formatDate(client.ultimaVisitaEm)}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <VisitaCliente
+            clientId={client.id}
+            ultimaVisitaEm={client.ultimaVisitaEm?.toISOString() ?? null}
+            dataForm={client.ultimaVisitaEm ? client.ultimaVisitaEm.toISOString().slice(0, 10) : ""}
+            dataLabel={formatDate(client.ultimaVisitaEm)}
+          />
+          <HistoricoDaLoja clientId={client.id} nomeDaLoja={client.companyName} rotulo />
+        </div>
       </div>
 
       {/* Vídeos: quando foi a última entrega. Um dos três motivos de uma loja

@@ -80,6 +80,7 @@ model User {
   metaAcoes            MetaAcao[]             @relation("MetaAcaoFeitaPor")
   tarefasDele          Tarefa[]               @relation("TarefaResponsavel")
   tarefasQueCriou      Tarefa[]               @relation("TarefaCriadaPor")
+  visitasRegistradas   VisitaDaLoja[]         @relation("QuemVisitou")
 
   @@map("users")
 }
@@ -721,6 +722,7 @@ model Client {
   sales                 ClientSale[]
   pinnedInfo            ClientPinnedInfo[]
   onboardings           ClientOnboarding[]
+  visitasDaLoja         VisitaDaLoja[]
   cobrancasPuladas      CobrancaPulada[]
   conferencias          ClienteConferido[]
   relatoriosEnviados    RelatorioEnviado[]
@@ -2367,4 +2369,23 @@ model AvisoDeTarefaEnviado {
 
   @@id([userId, dia, tipo])
   @@map("avisos_de_tarefa_enviados")
+}
+
+/// Cada dia em que alguém da casa visitou a loja, e o que foi falado. `Client.ultimaVisitaEm` continua existindo (a tabela de
+/// clientes e os avisos leem dele) e é SEMPRE o dia mais recente daqui. Ver src/lib/visitas-registro.ts.
+model VisitaDaLoja {
+  id       String   @id @default(cuid())
+  clientId String
+  client   Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// O dia da visita (um por loja por dia).
+  dia      DateTime @db.Date
+  /// O que foi falado / combinado nessa visita.
+  nota     String?  @db.Text
+  quemId   String?
+  quem     User?    @relation("QuemVisitou", fields: [quemId], references: [id], onDelete: SetNull)
+  criadaEm DateTime @default(now())
+
+  @@unique([clientId, dia])
+  @@index([clientId, dia])
+  @@map("visitas_da_loja")
 }

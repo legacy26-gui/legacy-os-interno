@@ -8,6 +8,7 @@ import { CLIENT_STATUS_LABELS, CLIENT_STATUS_COLORS, formatCurrency, formatDate 
 import { deleteClient } from "@/lib/actions/clients";
 import { DeleteClientButton } from "./delete-client-button";
 import { VisitaCliente } from "./visita-cliente";
+import { HistoricoDaLoja } from "./historico-da-loja";
 import { estadoDaVisita, DIAS_PARA_ATENCAO } from "@/lib/visitas";
 import { ManagerSelect } from "../operacoes/manager-select";
 import type { ClientStatus } from "@/generated/prisma/enums";
@@ -247,13 +248,16 @@ export default async function ClientesPage({
                     <td className="px-5 py-3.5 text-right font-medium">{formatCurrency(c.monthlyValue.toString())}</td>
                   )}
                   <td className="px-5 py-3.5">
-                    <VisitaCliente
-                      clientId={c.id}
-                      ultimaVisitaEm={c.ultimaVisitaEm?.toISOString() ?? null}
-                      dataForm={c.ultimaVisitaEm ? c.ultimaVisitaEm.toISOString().slice(0, 10) : ""}
-                      dataLabel={formatDate(c.ultimaVisitaEm)}
-                      compacto
-                    />
+                    <div className="flex items-center gap-1.5">
+                      <VisitaCliente
+                        clientId={c.id}
+                        ultimaVisitaEm={c.ultimaVisitaEm?.toISOString() ?? null}
+                        dataForm={c.ultimaVisitaEm ? c.ultimaVisitaEm.toISOString().slice(0, 10) : ""}
+                        dataLabel={formatDate(c.ultimaVisitaEm)}
+                        compacto
+                      />
+                      <HistoricoDaLoja clientId={c.id} nomeDaLoja={c.companyName} />
+                    </div>
                   </td>
                   <td className="px-5 py-3.5">
                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${CLIENT_STATUS_COLORS[c.status]}`}>

@@ -69,3 +69,20 @@ na loja.
 | `src/app/(app)/clientes/[id]/page.tsx` | o cartão na ficha |
 
 Migração: `20261103120000_ultima_visita_ao_cliente`.
+
+## Histórico de visitas em bolha (`src/lib/visitas-registro.ts`, `clientes/historico-da-loja.tsx`)
+
+Botão **Histórico** (ícone de relógio) ao lado das visitas na tabela de Clientes e na ficha da loja. Abre uma **bolha por cima
+da tela** (não é aba nova; fecha com X, Esc ou clicando fora) com:
+
+- **cada dia em que a loja foi visitada** (um por dia) e **o que foi falado** nessa visita;
+- as **anotações soltas** da loja (as do histórico da ficha), na mesma linha do tempo, da mais nova pra mais antiga;
+- um formulário pra **registrar visita** (de hoje ou de um dia passado, com o que foi falado), **só anotar**, e a lixeirinha
+  pra **apagar** uma visita registrada por engano.
+
+Como funciona por baixo: tabela `visitas_da_loja` (um dia por loja, com `nota` e quem visitou). A "última visita" que a tabela
+e os avisos usam (`clients.ultimaVisitaEm`, "há 12 dias") é **sempre o dia mais recente** desse histórico; apagar a última visita
+faz a anterior voltar a ser a última. As visitas que já estavam marcadas viraram a primeira linha do histórico (o que veio antes
+não foi guardado). O "Visitei hoje", o lápis da data (corrige a ÚLTIMA visita, levando a nota junto) e o
+`visitei a Vilela, conversei com o dono…` do WhatsApp gravam todos no mesmo lugar. Mesma regra de acesso de sempre: só nas lojas da
+carteira de quem usa.

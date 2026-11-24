@@ -29,6 +29,18 @@ carros com a leitura mais antiga (pra renovar o preço). Uma requisição por ve
 identificando o sistema (`LegacyOS-estoque`). Passada geral com limite de tempo; o que não deu tempo é o
 primeiro da próxima. Poucas centenas de requisições por dia para 50 lojas.
 
+## Segundo tipo de site: catálogo (ex.: 7pointmotors.com) — `src/lib/estoque/site-catalogo.ts`
+
+Sites de "app" que entregam a página **/estoque** com os carros **embutidos** no HTML (`{id, brand, model, version, year_fab,
+year_model, price, mileage, color, is_available, car_images}`). Uma requisição traz o estoque inteiro com todos os dados: cada carro é
+gravado a cada leitura (preço sempre fresco), sem abrir página de carro. `is_available: false` fica de fora. Preço vem em reais
+inteiros. O "Ligar site" testa os dois tipos e grava `sistema` = `autocerto` ou `catalogo`; site de outro sistema recebe "ainda não
+sei ler esse site, me manda o endereço".
+
+**Fotos:** o link de cada foto é **assinado e expira em ~1 h**, e muda a cada visita. Por isso a foto não é guardada; no "anunciar
+agora" ela é lida de novo da página do carro (`/veiculo/<id>`, só as da pasta `car-images/<id>/`), e a foto escolhida é comparada
+**sem a parte depois do "?"**. Foto WebP, ou JPEG/PNG acima de 4 MB (a 7 Point manda PNG de ~3,4 MB), vira JPEG de até 2048 px.
+
 ## Carro que some da lista: só anota
 
 Decisão do Guilherme: **não vira aviso** (muito carro sai do site por motivo que não é venda, e muito carro

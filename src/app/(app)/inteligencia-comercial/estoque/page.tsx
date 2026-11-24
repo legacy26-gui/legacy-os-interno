@@ -181,7 +181,7 @@ export default async function EstoquePage() {
             <h2 id="h-nao-ligadas" className="font-semibold">
               Lojas sem site ligado ({naoLigadas.length})
             </h2>
-            <p className="text-sm text-foreground-muted">Cole o endereço do site da loja. O sistema confere se é do AutoCerto antes de ligar.</p>
+            <p className="text-sm text-foreground-muted">Cole o endereço do site da loja. O sistema confere se sabe ler o site (AutoCerto ou site de catálogo, como o da 7 Point) antes de ligar.</p>
           </div>
           <ul className="flex flex-col divide-y divide-border">
             {naoLigadas.map((l) => (

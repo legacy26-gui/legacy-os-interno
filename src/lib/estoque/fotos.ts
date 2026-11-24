@@ -1,7 +1,9 @@
 import "server-only";
 
 import { tipoDeImagem } from "@/lib/meta/rascunho-anuncio";
+import sharp from "sharp";
 import { urlDeSiteSegura } from "./ler-estoque";
+import { fotosDaPaginaDoCatalogo } from "./site-catalogo";
 
 // As fotos de um carro do estoque, lidas da página dele no site da loja.
 //
@@ -16,6 +18,9 @@ import { urlDeSiteSegura } from "./ler-estoque";
 
 export const MAX_FOTOS = 6;
 const MAX_BYTES = 4 * 1024 * 1024;
+/** WebP ou foto grande (ex.: PNG de 3,4 MB num site de catálogo) é convertida pra JPEG menor: aceita até 8 MB na entrada. */
+const MAX_BYTES_WEBP = 8 * 1024 * 1024;
+const ehWebp = (b: Buffer) => b.length > 12 && b.subarray(0, 4).toString("ascii") === "RIFF" && b.subarray(8, 12).toString("ascii") === "WEBP";
 const PRAZO_MS = 15_000;
 const USER_AGENT = "Mozilla/5.0 (compatible; LegacyOS/1.0; +estoque)";
 
@@ -45,6 +50,8 @@ export function lerFotosDaPagina(html: string, paginaUrl: string): string[] {
       // um bloco torto não impede de achar o outro
     }
   }
+  // Site de catálogo (ex.: 7pointmotors): as fotos estão embutidas na página, na pasta do carro.
+  if (achadas.length === 0) achadas.push(...fotosDaPaginaDoCatalogo(html, paginaUrl));
   if (achadas.length === 0) {
     const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
     if (og) achadas.push(og[1]);
@@ -77,13 +84,19 @@ export interface FotosDoCarro {
 async function baixarFoto(url: string): Promise<Buffer | null> {
   if (!urlDeSiteSegura(url)) return null;
   try {
-    const r = await fetch(url, { headers: { "User-Agent": USER_AGENT, Accept: "image/jpeg,image/png" }, signal: AbortSignal.timeout(PRAZO_MS), cache: "no-store", redirect: "error" });
+    const r = await fetch(url, { headers: { "User-Agent": USER_AGENT, Accept: "image/jpeg,image/png,image/webp" }, signal: AbortSignal.timeout(PRAZO_MS), cache: "no-store", redirect: "error" });
     if (!r.ok) return null;
     const dito = Number(r.headers.get("content-length") ?? 0);
-    if (dito > MAX_BYTES) return null;
+    if (dito > MAX_BYTES_WEBP) return null;
     const bytes = Buffer.from(await r.arrayBuffer());
-    if (bytes.length === 0 || bytes.length > MAX_BYTES) return null;
-    return tipoDeImagem(bytes) ? bytes : null;
+    if (bytes.length === 0 || bytes.length > MAX_BYTES_WEBP) return null;
+    if (tipoDeImagem(bytes) && bytes.length <= MAX_BYTES) return bytes;
+    // WebP, ou JPEG/PNG grande demais (sites de catálogo mandam PNG de vários MB): converte pra JPEG menor, que a Meta aceita.
+    if (ehWebp(bytes) || tipoDeImagem(bytes)) {
+      const jpeg = await sharp(bytes).rotate().resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+      return jpeg.length <= MAX_BYTES ? jpeg : null;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -112,7 +125,13 @@ export async function enderecosDasFotos(paginaUrl: string): Promise<{ ok: true; 
 export async function baixarFotosDoCarro(paginaUrl: string, escolhidas?: string[]): Promise<FotosDoCarro> {
   const lidas = await enderecosDasFotos(paginaUrl);
   if (!lidas.ok) return { ok: false, erro: lidas.erro, fotos: [], puladas: 0 };
-  const urls = escolhidas ? escolhidas.filter((u, i) => lidas.urls.includes(u) && escolhidas.indexOf(u) === i) : lidas.urls;
+  // A foto escolhida é comparada SEM a parte depois do "?": site de catálogo gera um link assinado novo a cada visita (o
+  // código muda, o arquivo não). Baixa-se sempre o link da leitura de AGORA, que é o que ainda vale.
+  const semAssinatura = (u: string) => u.split("?")[0];
+  const agora = new Map(lidas.urls.map((u) => [semAssinatura(u), u]));
+  const urls = escolhidas
+    ? [...new Set(escolhidas.map(semAssinatura))].map((k) => agora.get(k)).filter((u): u is string => !!u)
+    : lidas.urls;
   if (urls.length === 0) return { ok: false, erro: "nenhuma das fotos escolhidas está na página do carro", fotos: [], puladas: 0 };
   const fotos: FotoBaixada[] = [];
   let puladas = 0;

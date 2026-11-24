@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { lerCarro, lerLista, type CarroLido } from "./autocerto";
+import { lerCatalogo, pareceCatalogo } from "./site-catalogo";
 
 // A leitura do estoque de uma loja: lê o site, atualiza o banco.
 //
@@ -133,6 +134,7 @@ export async function lerEstoqueDaLoja(clientId: string, agora: Date = new Date(
     return r;
   };
   if (!origem || !urlDeSiteSegura(origem)) return fim({ ...VAZIO, erro: "o endereço do site não é válido" });
+  if (loja.sistema === "catalogo") return fim(await lerSiteDeCatalogo(clientId, origem, agora));
 
   // ── 1. A lista ───────────────────────────────────────────────────────
   const paginaLista = await baixar(`${origem}/Veiculos`);
@@ -203,6 +205,52 @@ export async function lerEstoqueDaLoja(clientId: string, agora: Date = new Date(
     detalhesLidos,
     semMarcarSaidas,
   });
+}
+
+/**
+ * Site de catálogo (ex.: 7pointmotors.com): UMA página (/estoque) traz todos os carros com todos os dados, então cada carro é
+ * gravado a cada leitura (preço sempre fresco) sem abrir página nenhuma de carro. As mesmas travas do AutoCerto valem pra
+ * marcar saída: lista vazia ou que encolheu pela metade de uma vez não marca ninguém como saído.
+ */
+async function lerSiteDeCatalogo(clientId: string, origem: string, agora: Date): Promise<ResultadoDaLeitura> {
+  const pagina = await baixar(`${origem}/estoque`);
+  if (!pagina.ok) return { ...VAZIO, erro: pagina.erro };
+  if (!pareceCatalogo(pagina.html)) return { ...VAZIO, erro: "a página /estoque não trouxe a lista de carros no formato esperado" };
+  const carros = lerCatalogo(pagina.html);
+  if (carros.length === 0) return { ...VAZIO, erro: "a lista de veículos veio vazia" };
+
+  const conhecidos = await prisma.estoqueCarro.findMany({ where: { clientId }, select: { codigo: true, sumiuEm: true } });
+  const porCodigo = new Map(conhecidos.map((c) => [c.codigo, c]));
+  const noAr = new Set(carros.map((c) => c.codigo));
+  let novos = 0;
+  for (const c of carros) {
+    const eraNovo = !porCodigo.has(c.codigo);
+    await gravarCarro(clientId, c.codigo, `${origem}${c.caminho}`, c, agora, eraNovo);
+    if (eraNovo) novos++;
+  }
+  const voltaram = conhecidos.filter((c) => noAr.has(c.codigo) && c.sumiuEm !== null).length;
+
+  let semMarcarSaidas: string | null = null;
+  const ativosAntes = conhecidos.filter((c) => c.sumiuEm === null);
+  const candidatos = ativosAntes.filter((c) => !noAr.has(c.codigo));
+  if (ativosAntes.length >= 10 && carros.length < ativosAntes.length / 2) {
+    semMarcarSaidas = `a lista encolheu de ${ativosAntes.length} para ${carros.length} de uma vez`;
+  }
+  let sairam = 0;
+  if (!semMarcarSaidas && candidatos.length > 0) {
+    await prisma.estoqueCarro.updateMany({ where: { clientId, codigo: { in: candidatos.map((c) => c.codigo) } }, data: { sumiuEm: agora } });
+    sairam = candidatos.length;
+  }
+  return {
+    ok: true,
+    erro: semMarcarSaidas ? `lista suspeita (${semMarcarSaidas}): não marquei saídas` : null,
+    total: carros.length,
+    novos,
+    sairam,
+    voltaram,
+    detalhesLidos: 0,
+    semMarcarSaidas,
+  };
 }
 
 /**

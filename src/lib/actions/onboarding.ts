@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { ONBOARDING_FIELDS } from "@/lib/onboarding-form";
 import { gerarDiagnostico, GeracaoDuplicada } from "@/lib/ai/diagnostico";
+import { avisarFormularioRecebido } from "@/lib/onboarding/avisos";
 import type { OnboardingStatus, AnalysisKind } from "@/generated/prisma/enums";
 
 export type OnboardingFormState = { error?: string; ok?: boolean } | undefined;
@@ -59,6 +60,9 @@ export async function submitOnboarding(
   // O diagnóstico roda DEPOIS da resposta ir para o cliente: ele já vê a tela
   // de "recebemos" na hora, e uma falha da IA não derruba o envio da ficha —
   // ela vira uma análise com status de erro, que dá pra gerar de novo.
+  // Avisa o dono e a Andrielli no WhatsApp que chegou formulário (nunca derruba o envio: o aviso tem o próprio try/catch).
+  after(() => avisarFormularioRecebido(ficha.id));
+
   after(async () => {
     try {
       await gerarDiagnostico({ onboardingId: ficha.id });

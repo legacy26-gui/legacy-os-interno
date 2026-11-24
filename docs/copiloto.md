@@ -432,3 +432,16 @@ Causa: o modelo **pensa** antes de responder e o pensamento conta dentro do teto
 teto baixo (1.000, 1.500, 3.000, 4.000) tinham a resposta cortada no meio e o robô desistia. Os adaptadores
 (`src/lib/ai/provedores/`) agora nunca mandam teto abaixo do padrão do sistema (`AI_MAX_TOKENS`, 8.000): o teto é só
 um limite, não custa nada quando não é usado.
+
+## Onboarding: aviso de formulário respondido e prazo de 7 dias (`src/lib/onboarding/avisos.ts`)
+
+- **Chegou formulário** (o formulário público do cliente novo): na hora, o **dono (ADMIN)** e a **Andrielli** recebem no WhatsApp
+  "📝 Formulário respondido!" com a loja, o contato, o telefone e o **prazo de 7 dias** (a data limite). O aviso nunca atrapalha o
+  envio do formulário (se o WhatsApp falhar, o cliente continua vendo "recebemos").
+- **O onboarding tem no máximo 7 dias**, contados do dia em que o formulário chegou (dia 1 = chegada, dia 7 = último dia). Todo dia
+  às 8h30 (junto da rotina das tarefas, seg–sáb) o robô avisa os dois **enquanto o onboarding estiver aberto e nada estiver andando**
+  (nenhuma etapa de implantação marcada nas últimas 24h): "Dia 4 de 7 · 0 de 11 etapas · nada marcado há 3 dias · faltam 3 dias".
+  Depois que o prazo estoura o aviso é **"ATRASADO"** e sai todo dia **mesmo com coisa andando**.
+- Onboarding **concluído** (campanha no ar, ou concluído à mão) não avisa mais. Onboarding com etapa marcada nas últimas 24h e dentro
+  do prazo fica quieto. Cada aviso sai uma vez por pessoa/dia/ficha.
+- Quem recebe: usuário ADMIN e a Andrielli (e-mail `andriel…@legacydigital.com`) com **WhatsApp cadastrado**.

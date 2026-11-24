@@ -41,6 +41,7 @@ import { AcoesDaLoja, TrocarPraPix } from "./acoes";
 import { Criativo } from "./criativo";
 import { ChaveDeStatus } from "./chave";
 import { Verba } from "./verba";
+import { PublicoDoConjuntoBotao } from "./publico";
 import { Legenda } from "./legenda";
 import { TipoErrado } from "./tipo-errado";
 import {
@@ -965,6 +966,12 @@ function Tabela({
                       diario={i.orcamentoDiario}
                       podeMexer={podeMexer}
                     />
+                    {/* Só o conjunto tem público (idade, gênero, localização). */}
+                    {nivel === "conjunto" && (
+                      <div className="mt-1.5">
+                        <PublicoDoConjuntoBotao clientId={clientId} adsetId={i.id} nome={i.nome} podeMexer={podeMexer} />
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-4 text-right align-top tabular-nums whitespace-nowrap">
                     {i.spendCents > 0 ? (

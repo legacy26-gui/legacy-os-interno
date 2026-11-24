@@ -22,6 +22,7 @@ import type { EstadoDaLigacao, GrupoNaTela } from "@/lib/whatsapp/ligacao";
 import { GruposInternos } from "./grupos-internos";
 import { GrupoFinanceiro } from "./grupo-financeiro";
 import { RecadosDaZapi } from "./recados";
+import { PrivadoDoRobo } from "./privado";
 import { definirGrupoDoWhatsapp } from "@/lib/actions/meta-ads";
 
 interface Loja {
@@ -162,6 +163,8 @@ export function PainelDoWhatsapp({
           <GrupoFinanceiro grupos={grupos} jaFinanceiros={gruposFinanceiros} internos={gruposInternos} />
 
       <Teste conectado={estado.conectado} />
+
+          <PrivadoDoRobo />
 
           <RecadosDaZapi />
         </>

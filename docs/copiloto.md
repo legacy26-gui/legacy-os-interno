@@ -240,6 +240,12 @@ sem. Quem tinha o número digitado "(42) 9…" caía no recado de desconhecido q
 o robô tenta as formas possíveis (`formasDoNumero`: com 55, com/sem o 9) antes de desistir. Se ainda assim não reconhecer, o
 `privado-desconhecido` na trilha diz se foi lid ou telefone.
 
+**A tela pra descobrir (Configurações → WhatsApp → "Quem o robô reconhece no privado", só ADMIN):** botão "Conferir agora"
+mostra (1) cada pessoa com WhatsApp na ficha — ativa?, fim do número, se a Z-API o conhece, e se há **dois cadastros com o mesmo
+número** (o robô não escolhe e não reconhece nenhum); (2) as últimas mensagens privadas que chegaram e **de quem o robô achou
+que eram**; (3) a trilha do que ele fez. Só o fim dos números; nunca texto de mensagem. É a primeira coisa a olhar quando
+alguém da casa recebe "este número é um atendimento interno".
+
 ### A trilha também vale pro privado
 
 Toda mensagem privada deixa uma linha em `passo_do_robo` (`privado-chegou` →

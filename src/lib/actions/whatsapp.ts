@@ -383,3 +383,77 @@ export async function verRecadosDaZapi() {
     take: 8,
   });
 }
+
+/**
+ * "Quem o robô reconhece no privado?" — pra descobrir por que uma pessoa da casa escreve e cai no recado de "número
+ * desconhecido". Só ADMIN. Mostra o fim dos números (nunca inteiros), nunca texto de mensagem.
+ *
+ * Responde às três perguntas que explicam esse silêncio: (1) a ficha dela está ativa e com número válido? (2) tem mais de uma
+ * pessoa com o mesmo número (ambiguidade vira "ninguém")? (3) as últimas mensagens privadas que chegaram, de quem o robô achou que eram?
+ */
+export async function verQuemOPrivadoReconhece() {
+  const user = await requireModuleAccess("configuracoes");
+  if (user.role !== "ADMIN") return null;
+  const { acharPessoaPeloNumero, formasDoNumero } = await import("@/lib/whatsapp/atender-privado");
+  const { lidDoRobo } = await import("@/lib/whatsapp/identidade-do-robo");
+
+  const fim = (n: string) => `…${n.replace(/\D/g, "").slice(-4)}`;
+  const gente = await prisma.user.findMany({
+    where: { whatsapp: { not: null } },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, role: true, active: true, whatsapp: true },
+  });
+
+  const pessoas = [];
+  for (const p of gente) {
+    const d = (p.whatsapp ?? "").replace(/\D/g, "");
+    const formas = d.length >= 10 ? formasDoNumero(d) : [];
+    let lidAchado = false;
+    for (const f of formas) {
+      if (await lidDoRobo(f)) {
+        lidAchado = true;
+        break;
+      }
+    }
+    const repetido = gente.filter((o) => {
+      if (o.id === p.id || !o.whatsapp) return false;
+      const e = o.whatsapp.replace(/\D/g, "");
+      return d.length >= 10 && e.length >= 10 && (e === d || e.endsWith(d) || d.endsWith(e));
+    }).map((o) => o.name);
+    pessoas.push({
+      nome: p.name,
+      papel: p.role,
+      ativa: p.active,
+      numero: d.length >= 10 ? fim(d) : "curto demais",
+      comoFicou: d.length >= 10 ? `${d.length} dígitos` : `${d.length} dígitos (precisa de DDD + número)`,
+      lidAchado,
+      repetidoCom: repetido,
+    });
+  }
+
+  const recados = await prisma.recadoDaZapi.findMany({
+    where: { isGroup: { not: true }, fromMe: { not: true } },
+    orderBy: { recebidoEm: "desc" },
+    take: 8,
+    select: { recebidoEm: true, de: true, participante: true },
+  });
+  const recentes = [];
+  for (const r of recados) {
+    const origem = r.de ?? r.participante ?? "";
+    const achada = origem ? await acharPessoaPeloNumero(origem) : null;
+    recentes.push({ quando: r.recebidoEm.toISOString(), origem: origem ? `${/@lid$/i.test(origem) ? "lid" : "tel"}${fim(origem)}` : "—", reconhecida: achada?.name ?? null });
+  }
+
+  const trilha = await prisma.passoDoRobo.findMany({
+    where: { de: { startsWith: "privado" } },
+    orderBy: { quando: "desc" },
+    take: 10,
+    select: { quando: true, de: true, passo: true, detalhe: true },
+  });
+
+  return {
+    pessoas,
+    recentes,
+    trilha: trilha.map((t) => ({ quando: t.quando.toISOString(), de: t.de, passo: t.passo, detalhe: t.detalhe })),
+  };
+}

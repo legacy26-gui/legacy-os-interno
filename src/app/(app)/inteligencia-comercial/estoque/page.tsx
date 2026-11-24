@@ -1,4 +1,4 @@
-import { Package } from "lucide-react";
+import { ChevronDown, Package } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CARTEIRA, escopoDaCarteira } from "@/lib/carteira";
@@ -98,11 +98,16 @@ export default async function EstoquePage() {
         const e = l.estoqueDaLoja!;
         const paradoMais = l.estoqueCarros.filter((c) => diasDesde(c.primeiraVezEm, agora) >= 60).length;
         return (
-          <section key={l.id} className="rounded-2xl border border-border bg-surface p-5 flex flex-col gap-4" aria-labelledby={`h-${l.id}`}>
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          // <details>: a loja abre e fecha clicando no título. Com uma loja só já vem aberta; com várias, fechadas (a página não vira
+          // uma rolagem sem fim de carros) e o resumo de cada uma fica à vista.
+          <details key={l.id} open={ligadas.length === 1} className="group rounded-2xl border border-border bg-surface p-5">
+            <summary className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
               <div className="min-w-0">
-                <h2 id={`h-${l.id}`} className="font-semibold">
+                <h2 id={`h-${l.id}`} className="font-semibold flex items-center gap-1.5">
+                  <ChevronDown size={16} className="shrink-0 text-foreground-muted transition-transform -rotate-90 group-open:rotate-0" aria-hidden />
                   {l.companyName}
+                  <span className="text-xs font-normal text-foreground-muted group-open:hidden">· clique pra abrir</span>
+                  <span className="text-xs font-normal text-foreground-muted hidden group-open:inline">· clique pra fechar</span>
                 </h2>
                 <p className="text-xs text-foreground-muted mt-0.5 break-all">
                   {e.siteUrl} · lido {haQuanto(e.ultimaLeituraEm, agora)}
@@ -122,9 +127,9 @@ export default async function EstoquePage() {
                   </p>
                 )}
               </div>
-            </div>
+            </summary>
 
-            <div className="overflow-x-auto -mx-5 px-5">
+            <div className="overflow-x-auto -mx-5 px-5 mt-4">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-foreground-muted border-b border-border">
@@ -159,12 +164,14 @@ export default async function EstoquePage() {
                 </tbody>
               </table>
             </div>
-            <p className="text-xs text-foreground-muted -mt-2">
+            <p className="text-xs text-foreground-muted mt-2">
               A contagem de dias começa quando o sistema viu o carro pela primeira vez: carros que já estavam no site no dia em que a leitura foi ligada aparecem como &quot;hoje&quot;. FIPE (tela larga): pela versão do carro; com duas versões parecidas, a faixa entre elas; &quot;—&quot; quando não achou com segurança. Passe o mouse pra ver a versão.
             </p>
 
-            <ControlesDaLoja clientId={l.id} siteUrl={e.siteUrl} podeLigar={user.role === "ADMIN"} />
-          </section>
+            <div className="mt-4">
+              <ControlesDaLoja clientId={l.id} siteUrl={e.siteUrl} podeLigar={user.role === "ADMIN"} />
+            </div>
+          </details>
         );
       })}
 

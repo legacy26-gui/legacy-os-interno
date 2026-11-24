@@ -11,6 +11,9 @@ Menu **Inteligência Comercial** → aba **Estoque** → "Lojas sem site ligado"
 → **Ligar site**. Só o administrador liga. O sistema confere que é AutoCerto **antes de gravar** e já faz a
 primeira leitura (e deixa claro quantos carros achou). Tem **Ler agora** e **Desligar leitura** em cada loja.
 
+Na tela **Estoque**, cada loja é uma caixa que **abre e fecha clicando no título** (com uma loja só já vem aberta; com várias,
+fechadas, mostrando o resumo: quantos no ar e quando foi lido).
+
 ## Por que dá pra ler com segurança (AutoCerto)
 
 Todo site feito no AutoCerto tem o mesmo molde: `/Veiculos` lista os carros (e anuncia o total) e cada

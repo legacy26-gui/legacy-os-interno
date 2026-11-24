@@ -11,13 +11,9 @@ import { prisma } from "@/lib/prisma";
 //
 // ── Como fica organizado ────────────────────────────────────────────────
 //
-// Um carro por linha, em ordem alfabética. O mesmo carro costuma ter mais de um anúncio ("C3 foto" e
-// "C3 foto vídeo — Cópia"): eles viram uma linha só, com os leads somados. Cada linha diz quantos anúncios o
-// carro tem no ar e quantos leads trouxe.
-//
-// Só LEADS, sem gasto nem custo por lead: o gasto já vai em outras mensagens do robô, e esta lista é pra bater o
-// olho nos carros que estão rodando. Os leads são o ACUMULADO do carro (o mesmo número que o robô usa ao registrar
-// uma venda), e a lista diz até quando a Meta foi lida, porque não é tempo real.
+// Um carro por linha, em ordem alfabética, no estilo que a casa usa na mão: "Carros patrocinados." e a lista numerada só com
+// nome e ano ("1. Etios X 2017"). O mesmo carro costuma ter mais de um anúncio ("C3 foto" e "C3 foto vídeo — Cópia"): viram
+// uma linha só. Sem lead, sem gasto, sem rodapé — a lista é pra bater o olho nos carros que estão rodando.
 //
 // ── O que NÃO faz ───────────────────────────────────────────────────────
 //
@@ -112,17 +108,10 @@ export function agruparPorCarro(anuncios: AnuncioNoAr[]): CarroNoAr[] {
   return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR", { sensitivity: "base", numeric: true }));
 }
 
-const quando = (d: Date) =>
-  `${d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" })} às ${d.toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" })}`;
-
-function linhaDoCarro(c: CarroNoAr, n: number): string {
-  const formatos = c.formatos.length ? ` (${c.formatos.join(", ")})` : "";
-  const topo = `${n}. *${c.nome}* — ${c.anuncios} ${c.anuncios === 1 ? "anúncio" : "anúncios"}${formatos}`;
-  if (!c.temNumeros) return `${topo} · ainda sem número da Meta`;
-  return `${topo} · ${c.leads} ${c.leads === 1 ? "lead" : "leads"}`;
-}
-
-/** Quebra a lista em mensagens que cabem no WhatsApp, sem cortar um carro no meio. Pura. */
+/**
+ * A lista no estilo que a casa usa na mão: o título e os carros numerados, só o nome e o ano. Sem lead, sem contagem de anúncio,
+ * sem rodapé. Quebra em mais de uma mensagem só se passar do limite do WhatsApp, sem cortar um carro no meio. Pura.
+ */
 export function montarMensagens(opcoes: {
   loja: string;
   carros: CarroNoAr[];
@@ -130,29 +119,22 @@ export function montarMensagens(opcoes: {
   atualizadoEm: Date | null;
   limite?: number;
 }): string[] {
-  const { loja, carros, anunciosNoAr } = opcoes;
+  const { loja, carros } = opcoes;
   const limite = opcoes.limite ?? 3000;
   if (carros.length === 0) return [`Não tem nenhum anúncio ativo agora na *${loja}*.`];
 
-  const topo = `📋 *Anúncios no ar — ${loja}*\n${carros.length} ${carros.length === 1 ? "carro" : "carros"} · ${anunciosNoAr} ${anunciosNoAr === 1 ? "anúncio ativo" : "anúncios ativos"}`;
-  const totalLeads = carros.reduce((s, c) => s + c.leads, 0);
-  const rodape =
-    `*Total:* ${totalLeads} ${totalLeads === 1 ? "lead" : "leads"} nesses carros` +
-    (opcoes.atualizadoEm ? `\n_Leads acumulados de cada carro, lidos da Meta em ${quando(opcoes.atualizadoEm)}._` : "");
-
-  const blocos = carros.map((c, i) => linhaDoCarro(c, i + 1));
+  const titulo = "Carros patrocinados.";
   const mensagens: string[] = [];
-  let atual = `${topo}\n`;
-  for (const b of blocos) {
-    if ((atual + "\n" + b).length > limite) {
-      mensagens.push(atual.trimEnd());
-      atual = `📋 *${loja}* (continuação)\n`;
+  let atual = titulo;
+  carros.forEach((c, i) => {
+    const linha = `${i + 1}. ${c.nome}`;
+    if ((atual + "\n" + linha).length > limite) {
+      mensagens.push(atual);
+      atual = `${titulo} (continuação)`;
     }
-    atual += `\n${b}`;
-  }
-  // O total vai na última mensagem; se não couber, numa só dele.
-  if ((atual + "\n\n" + rodape).length <= limite) mensagens.push(`${atual}\n\n${rodape}`);
-  else mensagens.push(atual, rodape);
+    atual += `\n${linha}`;
+  });
+  mensagens.push(atual);
   return mensagens;
 }
 

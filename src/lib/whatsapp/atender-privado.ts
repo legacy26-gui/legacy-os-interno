@@ -192,10 +192,33 @@ async function acharPessoaPeloLid(lid: string) {
   for (const p of gente) {
     const dele = soDigitos(p.whatsapp!);
     if (dele.length < 10) continue;
-    if ((await lidDoRobo(dele)) === alvo) donos.push(p);
+    // A Z-API só acha o número com o 55 na frente, e o WhatsApp guarda uns com o nono dígito e outros sem: a ficha, digitada
+    // "(42) 9…", falhava e a pessoa da casa caía no recado de desconhecido. Tenta as formas possíveis (o lid de cada uma, em cache).
+    for (const forma of formasDoNumero(dele)) {
+      if ((await lidDoRobo(forma)) === alvo) {
+        donos.push(p);
+        break;
+      }
+    }
   }
   // Ambiguidade, de novo, é ninguém: o erro que acerta quase sempre é o pior.
   return donos.length === 1 ? donos[0] : null;
+}
+
+/**
+ * As formas em que o mesmo celular brasileiro pode estar no WhatsApp: com 55 e com/sem o nono dígito. A forma mais provável vem
+ * primeiro. Número que não parece brasileiro (começa com outro DDI) segue como veio. Pura.
+ */
+export function formasDoNumero(digitos: string): string[] {
+  let d = digitos.replace(/\D/g, "");
+  if (d.length === 10 || d.length === 11) d = `55${d}`;
+  const formas = [d];
+  if (d.startsWith("55")) {
+    const resto = d.slice(2);
+    if (resto.length === 11 && resto[2] === "9") formas.push(`55${resto.slice(0, 2)}${resto.slice(3)}`);
+    if (resto.length === 10) formas.push(`55${resto.slice(0, 2)}9${resto.slice(2)}`);
+  }
+  return [...new Set(formas)];
 }
 
 /** Só pra o rastro: o fim do número, nunca ele inteiro. */
@@ -271,7 +294,7 @@ export async function atenderMensagemPrivada(
   if (!pessoa) {
     // Sem isto, "a gestora não recebeu resposta" e "o número dela não é
     // reconhecido" eram a mesma coisa de fora, e impossíveis de separar.
-    await anotar(m.messageId, `privado ${ponta}`, "privado-desconhecido");
+    await anotar(m.messageId, `privado ${ponta}`, "privado-desconhecido", /@lid$/i.test(m.telefone.trim()) ? "o lid não bateu com nenhum número cadastrado" : "o telefone não bateu com nenhum cadastro (ou bateu com mais de um)");
     await responder(m.telefone, RECADO_PARA_DESCONHECIDO, m.messageId);
     return { tipo: "desconhecido" };
   }

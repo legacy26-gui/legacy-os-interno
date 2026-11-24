@@ -235,6 +235,11 @@ exata**, não por sufixo. A resposta volta pro próprio `@lid`, que a Z-API acei
 como destino. Testado: a gestora é reconhecida, o lid de outra pessoa não herda a
 carteira dela, e lid que só termina igual não casa.
 
+**Ficha sem o 55 (corrigido):** a Z-API só acha o número com o 55 na frente, e o WhatsApp guarda uns com o nono dígito e outros
+sem. Quem tinha o número digitado "(42) 9…" caía no recado de desconhecido quando o WhatsApp escondia o telefone (`@lid`). Agora
+o robô tenta as formas possíveis (`formasDoNumero`: com 55, com/sem o 9) antes de desistir. Se ainda assim não reconhecer, o
+`privado-desconhecido` na trilha diz se foi lid ou telefone.
+
 ### A trilha também vale pro privado
 
 Toda mensagem privada deixa uma linha em `passo_do_robo` (`privado-chegou` →
@@ -311,7 +316,7 @@ conferência de número contra a Meta só a produção responde.
 ## "Quais anúncios ativos?" no grupo da loja (`src/lib/whatsapp/anuncios-ativos.ts`)
 
 No grupo da loja, marcando o robô: `quais anúncios ativos?`, `carros ativos`, `quais carros estão rodando?`,
-`o que está no ar?`, `lista dos carros ativos`. O robô responde com a lista organizada. **Só lê** (não pausa nem
+`o que está no ar?`, `lista dos carros ativos`. O robô responde com a lista no estilo da casa: `Carros patrocinados.` e os carros numerados, só nome e ano (sem leads nem rodapé). **Só lê** (não pausa nem
 muda nada), por isso responde também na loja que não autorizou o robô a desligar anúncio.
 
 - **O que entra:** anúncios no ar de verdade (`effectiveStatus` ACTIVE: anúncio, conjunto e campanha ligados), de

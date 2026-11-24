@@ -189,3 +189,24 @@ export function resumoDoPublico(p: Pick<PublicoDoConjunto, "idadeMin" | "idadeMa
   const locais = p.locais.map((l) => `${l.nome}${l.raioKm !== null ? ` +${l.raioKm} km` : ""}`).join(", ") || "sem localização";
   return `${idade} · ${gen} · ${locais}`;
 }
+
+/**
+ * O `targeting` como a Meta devolveu, SÓ pra conferência técnica: listas longas (interesses, públicos, cidades) viram "[n itens]"
+ * e sobram as chaves e os valores simples — é aí que aparece qualquer chave de liga/desliga (como a das caixinhas do Gerenciador)
+ * que esta tela ainda não conhece. Pura.
+ */
+export function resumoTecnico(targeting: unknown): string {
+  const enxuto = (v: unknown, nivel: number): unknown => {
+    if (Array.isArray(v)) return v.length === 0 ? [] : v.every((x) => typeof x !== "object" || x === null) && v.length <= 6 ? v : `[${v.length} itens]`;
+    if (v && typeof v === "object") {
+      if (nivel > 4) return "{…}";
+      return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, enxuto(x, nivel + 1)]));
+    }
+    return v;
+  };
+  try {
+    return JSON.stringify(enxuto(targeting, 0), null, 2).slice(0, 3000);
+  } catch {
+    return "";
+  }
+}

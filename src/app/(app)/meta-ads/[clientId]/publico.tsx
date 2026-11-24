@@ -8,7 +8,7 @@ import { IDADE_MAXIMA, IDADE_MINIMA, RAIOS_DA_CIDADE, resumoDoPublico, type Gene
 
 // O público de um conjunto, do jeito do Gerenciador: idade, gênero e localização (cidades com raio). Abre numa bolha por cima.
 //
-// O "alcançar mais pessoas" (Advantage+ público) NÃO é opção: fica SEMPRE desligado, e todo "Salvar" garante isso na Meta.
+// O Advantage+ público NÃO é opção: fica SEMPRE desligado, e todo "Salvar" garante isso na Meta.
 // Interesses, públicos personalizados e exclusões não são mexidos (só aparece quantos existem).
 
 const idades = Array.from({ length: IDADE_MAXIMA - IDADE_MINIMA + 1 }, (_, i) => IDADE_MINIMA + i);
@@ -20,7 +20,7 @@ export function PublicoDoConjuntoBotao({ clientId, adsetId, nome, podeMexer }: {
   const [salvando, salvar] = useTransition();
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<{ resumo: string; avisos: string[] } | null>(null);
-  const [lido, setLido] = useState<{ nome: string; noAr: boolean; publico: PublicoDoConjunto } | null>(null);
+  const [lido, setLido] = useState<{ nome: string; noAr: boolean; publico: PublicoDoConjunto; tecnico: string } | null>(null);
 
   const [idadeMin, setIdadeMin] = useState(IDADE_MINIMA);
   const [idadeMax, setIdadeMax] = useState(IDADE_MAXIMA);
@@ -44,7 +44,7 @@ export function PublicoDoConjuntoBotao({ clientId, adsetId, nome, podeMexer }: {
     carregar(async () => {
       const r = await abrirPublicoDoConjunto(clientId, adsetId);
       if (!r.ok) return setErro(r.erro);
-      setLido({ nome: r.nome, noAr: r.noAr, publico: r.publico });
+      setLido({ nome: r.nome, noAr: r.noAr, publico: r.publico, tecnico: r.tecnico });
       setIdadeMin(r.publico.idadeMin);
       setIdadeMax(r.publico.idadeMax);
       setGenero(r.publico.genero);
@@ -93,7 +93,7 @@ export function PublicoDoConjuntoBotao({ clientId, adsetId, nome, podeMexer }: {
     if (!lido) return;
     const mudou = resumoDoPublico(lido.publico) !== resumoDoPublico(atual());
     const aviso = lido.noAr ? "\n\nEste conjunto está NO AR: mudar o público reinicia o aprendizado da Meta." : "";
-    const exp = lido.publico.expansaoLigada === true ? "\n\nO 'alcançar mais pessoas' está LIGADO e vai ser DESLIGADO." : "";
+    const exp = lido.publico.expansaoLigada === true ? "\n\nO Advantage+ público está LIGADO e vai ser DESLIGADO." : "";
     if (!mudou && lido.publico.expansaoLigada !== true) {
       return setErro("Você não mudou nada.");
     }
@@ -137,7 +137,7 @@ export function PublicoDoConjuntoBotao({ clientId, adsetId, nome, podeMexer }: {
                 <Check size={15} className="text-emerald-500" /> Salvo na Meta
               </p>
               <p>{resultado.resumo}</p>
-              <p className="text-xs text-foreground-muted">“Alcançar mais pessoas” (Advantage+) está desligado.</p>
+              <p className="text-xs text-foreground-muted">Advantage+ público está desligado. A caixinha de cidades e regiões não foi mexida.</p>
               {resultado.avisos.map((a, i) => (
                 <p key={i} className="text-amber-600 dark:text-amber-400">⚠️ {a}</p>
               ))}
@@ -244,7 +244,7 @@ export function PublicoDoConjuntoBotao({ clientId, adsetId, nome, podeMexer }: {
                 <label className="flex items-start gap-2 text-sm opacity-80 cursor-not-allowed">
                   <input type="checkbox" checked={false} disabled readOnly className="mt-1" />
                   <span>
-                    <strong>Alcançar mais pessoas fora da região</strong> (Advantage+ público)
+                    <strong>Advantage+ público</strong> (deixar a Meta ampliar o público)
                     <span className="block text-xs text-foreground-muted">Sempre desligado. Ao salvar, o sistema garante que está desligado na Meta.</span>
                   </span>
                 </label>
@@ -252,6 +252,23 @@ export function PublicoDoConjuntoBotao({ clientId, adsetId, nome, podeMexer }: {
                   <p className="text-xs text-red-500 flex items-start gap-1.5">
                     <AlertTriangle size={12} className="shrink-0 mt-0.5" /> Está LIGADO neste conjunto agora. Ao salvar, vai ser desligado.
                   </p>
+                )}
+              </section>
+
+              {/* A caixinha das cidades e regiões: a Meta não documenta o campo, então o sistema ainda não a controla. */}
+              <section className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 flex flex-col gap-1.5 text-xs">
+                <p className="text-sm">
+                  <strong>“Alcançar mais pessoas com probabilidade de responder aos seus anúncios”</strong> (cidades e regiões)
+                </p>
+                <p className="text-foreground-muted">
+                  Esta caixinha eu ainda <strong>não consigo ler nem desligar</strong> por aqui: a Meta não informa o nome dela na documentação. Ao salvar,
+                  o que estiver marcado lá <strong>fica como está</strong>. Confere no Gerenciador e desmarque por lá, se precisar.
+                </p>
+                {lido.tecnico && (
+                  <details>
+                    <summary className="cursor-pointer text-foreground-muted">Detalhe técnico (o que a Meta devolveu)</summary>
+                    <pre className="mt-1.5 max-h-48 overflow-auto rounded-lg bg-surface p-2 text-[11px] leading-snug whitespace-pre-wrap">{lido.tecnico}</pre>
+                  </details>
                 )}
               </section>
 

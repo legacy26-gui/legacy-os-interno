@@ -7,6 +7,7 @@ import { acharObjetoDaLoja } from "./mudar-status";
 import {
   conferirEdicao,
   lerPublico,
+  resumoTecnico,
   montarTargeting,
   resumoDoPublico,
   type EdicaoDoPublico,
@@ -25,7 +26,7 @@ import {
 //   • Todo pedido (e toda recusa) fica gravado em MetaAcao (tipo "publico"), com o targeting de antes e de depois.
 
 export type LeituraDoPublico =
-  | { ok: true; nome: string; noAr: boolean; status: string | null; publico: PublicoDoConjunto }
+  | { ok: true; nome: string; noAr: boolean; status: string | null; publico: PublicoDoConjunto; tecnico: string }
   | { ok: false; erro: string };
 
 export async function lerPublicoDoConjunto(clientId: string, adsetId: string): Promise<LeituraDoPublico> {
@@ -40,6 +41,7 @@ export async function lerPublicoDoConjunto(clientId: string, adsetId: string): P
     status: r.dados.status ?? null,
     noAr: (r.dados.effective_status ?? r.dados.status) === "ACTIVE",
     publico: lerPublico(r.dados.targeting),
+    tecnico: resumoTecnico(r.dados.targeting),
   };
 }
 
@@ -108,7 +110,7 @@ export async function salvarPublicoDoConjunto(p: { clientId: string; quemId: str
     if (lido.idadeMin !== p.edicao.idadeMin || lido.idadeMax !== p.edicao.idadeMax) avisos.push(`A Meta ficou com a idade ${lido.idadeMin}–${lido.idadeMax}, não ${p.edicao.idadeMin}–${p.edicao.idadeMax}.`);
     if (lido.genero !== p.edicao.genero) avisos.push("A Meta não manteve o gênero pedido.");
     if (lido.locais.length !== p.edicao.locais.length) avisos.push(`A Meta ficou com ${lido.locais.length} localização(ões), e eu pedi ${p.edicao.locais.length}. Confere no Gerenciador.`);
-    if (lido.expansaoLigada === true) avisos.push("O 'alcançar mais pessoas' (Advantage+ público) continua LIGADO na Meta, e eu pedi pra desligar. Desliga no Gerenciador.");
+    if (lido.expansaoLigada === true) avisos.push("O Advantage+ público continua LIGADO na Meta, e eu pedi pra desligar. Desliga no Gerenciador.");
   }
   return { ok: true, resumo: resumoDoPublico(p.edicao), avisos };
 }

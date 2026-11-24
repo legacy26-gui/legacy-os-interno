@@ -1273,11 +1273,12 @@ No Meta Ads, na aba de **conjuntos**, cada linha tem o botão **Público**. Abre
 km (só a cidade, ou 17, 25, 30, 40, 50, 65, 80), **tirar** uma localização e **adicionar** outra pesquisando pelo nome (a busca é a
 da própria Meta, só cidades e estados do Brasil). Pontos no mapa (latitude/longitude) aparecem e dá pra mudar o raio.
 
-- **"Alcançar mais pessoas fora da região"** (Advantage+ público) **nunca é opção**: a caixinha aparece desmarcada e travada, e **todo
-  "Salvar" manda explicitamente `advantage_audience = 0`** (e tira o `individual_setting`, que só existe com ele ligado). Se o
-  conjunto estiver com ele ligado, a bolha avisa em vermelho que vai ser desligado. ⚠️ Eu não consegui confirmar na documentação da
-  Meta qual campo é exatamente essa caixinha do Gerenciador; o Advantage+ público é o que a API tem de "expandir além do público e da
-  região", e é esse que fica desligado. Na primeira vez de verdade, confere no Gerenciador se a caixinha ficou desmarcada.
+- **Duas caixinhas diferentes** (corrigido): (1) **Advantage+ público** (`targeting_automation.advantage_audience`) — esta o sistema
+  **sempre desliga**, a cada "Salvar" (e tira o `individual_setting`, que só existe com ela ligada). (2) **"Alcançar mais pessoas com
+  probabilidade de responder aos seus anúncios"** (cidades e regiões vizinhas) — **NÃO confirmei o campo** (a documentação de
+  targeting da Meta não cita; só `location_types` home/recent, que é outra coisa). Esta o sistema **não lê nem desliga**: ao salvar,
+  o que estiver na Meta fica como está, e a bolha diz isso. O "Detalhe técnico" da bolha mostra o `targeting` que a Meta devolveu;
+  comparando um conjunto com a caixinha marcada e outro desmarcado, dá pra achar a chave e passar a controlar.
 - **O que NÃO é mexido**: interesses, comportamentos, públicos personalizados e semelhantes, exclusões, posicionamentos, idiomas,
   CEP e outros tipos de local. A escrita parte do `targeting` que a Meta acabou de devolver e troca só idade, gênero, localização e
   o Advantage+; a bolha só diz quantos desses existem.

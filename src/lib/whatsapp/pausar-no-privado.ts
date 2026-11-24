@@ -123,7 +123,23 @@ export interface AcaoDeComercial {
   pedido: string;
 }
 
-export type AcaoPendente = AcaoDePausa | AcaoDeVenda | AcaoDeAviso | AcaoDeComercial;
+/**
+ * "Pede pra Tatiana conferir a verba até sexta": a tarefa que o dono/gerência vai passar pra outra pessoa, guardada
+ * enquanto se espera o "sim" (o robô avisa a pessoa pelo WhatsApp). Ver tarefas-no-privado.ts.
+ */
+export interface AcaoDeTarefa {
+  tipo: "atribuir-tarefa";
+  responsavel: { id: string; nome: string; telefone: string | null };
+  titulo: string;
+  recorrencia: "NENHUMA" | "DIARIA" | "SEMANAL" | "MENSAL";
+  /** aaaa-mm-dd, só pra tarefa única. */
+  prazo: string | null;
+  diaDaSemana: number | null;
+  diaDoMes: number | null;
+  pedido: string;
+}
+
+export type AcaoPendente = AcaoDePausa | AcaoDeVenda | AcaoDeAviso | AcaoDeComercial | AcaoDeTarefa;
 
 // ───────────────────────── Ler a resposta do "sim" ─────────────────────────
 
@@ -635,6 +651,25 @@ export async function lerPendente(
         (d) => d && typeof d.id === "string" && typeof d.nome === "string" && typeof d.telefone === "string" && /^\d{10,15}$/.test(d.telefone),
       );
     return certa ? { acao: v as AcaoDeAviso, venceu } : { acao: null, venceu: false };
+  }
+
+  if (bruto?.tipo === "atribuir-tarefa") {
+    const v = bruto as Partial<AcaoDeTarefa>;
+    const certa =
+      typeof v.titulo === "string" &&
+      v.titulo.length > 0 &&
+      typeof v.pedido === "string" &&
+      !!v.responsavel &&
+      typeof v.responsavel.id === "string" &&
+      typeof v.responsavel.nome === "string" &&
+      (v.responsavel.telefone === null || typeof v.responsavel.telefone === "string") &&
+      (v.recorrencia === "NENHUMA" || v.recorrencia === "DIARIA" || v.recorrencia === "SEMANAL" || v.recorrencia === "MENSAL") &&
+      (v.prazo === null || (typeof v.prazo === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.prazo))) &&
+      (v.diaDaSemana === null || (typeof v.diaDaSemana === "number" && v.diaDaSemana >= 0 && v.diaDaSemana <= 6)) &&
+      (v.diaDoMes === null || (typeof v.diaDoMes === "number" && v.diaDoMes >= 1 && v.diaDoMes <= 31)) &&
+      (v.recorrencia !== "SEMANAL" || v.diaDaSemana !== null) &&
+      (v.recorrencia !== "MENSAL" || v.diaDoMes !== null);
+    return certa ? { acao: v as AcaoDeTarefa, venceu } : { acao: null, venceu: false };
   }
 
   if (bruto?.tipo === "comercial") {

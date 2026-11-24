@@ -376,6 +376,40 @@ Qualquer comando acima (e qualquer pergunta) vale por **áudio**: o robô transc
 se tivesse sido digitado. Número de fora, ou sem acesso a clientes, é ignorado **sem baixar o áudio**. Até 2 minutos.
 Precisa de `OPENAI_API_KEY` (a mesma do áudio do financeiro).
 
+## Tarefas (únicas e recorrentes) — WhatsApp, Meu Dia e o robô das 8h30 e 17h
+
+Lista de tarefas de cada pessoa da casa (tabelas `tarefas`, `tarefas_feitas`; **não** é a `tasks` das Operações, que é
+presa a um cliente). Código: `src/lib/tarefas/` (regras, dados, robô) e `src/lib/whatsapp/tarefas-no-privado.ts`.
+
+**Pelo WhatsApp (privado do robô):**
+
+| Você manda | O que acontece |
+|---|---|
+| `me lembra de ligar pra Vilela sexta` | Cria a tarefa pra você, na hora (prazo "sexta" = 13/11, por exemplo) |
+| `toda segunda me lembra de conferir a verba` / `todo dia …` / `todo dia 5 …` | Tarefa que **repete** (diária seg–sáb, semanal, mensal; dia 31 em mês curto cai no último dia) |
+| `o que tenho hoje?` / `minhas tarefas` | A lista de hoje, **numerada** (atrasadas primeiro) |
+| `feito 2` / `feito 1 e 3` / `feito tudo` / `feito: ligar pra Vilela` | Dá baixa. Quem **atribuiu** a tarefa é avisado ("Tatiana concluiu…") |
+| `cancela a tarefa 2` | Tira da lista (a que repete, **para**: não volta mais) |
+| `pede pra Tatiana conferir a verba até sexta` / `toda segunda a Tatiana confere o relatório` | **Só dono e gerência.** O robô mostra a tarefa e pergunta; no "sim" cria e **avisa a pessoa pelo WhatsApp** |
+| `tarefas da Tatiana` | **Só dono e gerência:** a lista de hoje dela |
+
+Regras: tarefa pra si não pede "sim"; tarefa pra **outra pessoa** pede (manda WhatsApp pra ela). Gestora não passa tarefa
+pra outra (o robô explica e oferece criar pra ela mesma). O número do "feito 2" é o da lista **de hoje**, a mesma que o robô
+manda de manhã e às 17h; a tarefa concluída fica riscada na lista, então os números não pulam no meio do dia.
+Perguntas que não são exatamente estes formatos (`tarefas atrasadas das lojas?`) seguem pro Copiloto.
+
+**O robô** (`/api/tarefas/rodar?hora=manha|tarde`, no `vercel.json`: 11:30 UTC = **8h30** e 20:00 UTC = **17h**, seg–sáb):
+- 8h30: cada pessoa com algo aberto hoje recebe a lista. Nada pra fazer = nenhuma mensagem. (Os gestores de tráfego também
+  recebem o resumo da carteira na mesma mensagem — ver "Resumo da manhã".)
+- 17h: quem ainda tem tarefa aberta recebe "como estão as tarefas de hoje?" com a lista e o "feito 2". O que não for feito
+  fica na lista do dia seguinte. **Atrasadas** (prazo que passou) aparecem com ⚠️ pra pessoa, e o **dono e a Andrielli**
+  recebem uma mensagem só com o quadro das atrasadas da equipe.
+- Cada aviso sai **uma vez** por pessoa/dia/tipo (`avisos_de_tarefa_enviados`); falha de envio libera a próxima passada.
+  Domingo e fora da janela (manhã 7–12h, tarde 15–20h) não manda nada.
+
+**No Meu Dia** há o bloco "Tarefas de hoje": marcar como feita (e desfazer), cancelar/parar, e um formulário (título, data,
+repete, e — só pro dono e a gerência — "pra quem"). Atribuir pela tela também avisa a pessoa por WhatsApp.
+
 ## O erro "A IA respondeu fora do formato esperado"
 
 Causa: o modelo **pensa** antes de responder e o pensamento conta dentro do teto de tokens (`max_tokens`). Chamadas com

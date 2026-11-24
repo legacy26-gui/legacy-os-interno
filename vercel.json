@@ -26,6 +26,14 @@
       "schedule": "20 11 * * *"
     },
     {
+      "path": "/api/tarefas/rodar?hora=manha",
+      "schedule": "30 11 * * 1-6"
+    },
+    {
+      "path": "/api/tarefas/rodar?hora=tarde",
+      "schedule": "0 20 * * 1-6"
+    },
+    {
       "path": "/api/relatorios/mandar",
       "schedule": "*/5 11-12 * * 1"
     }

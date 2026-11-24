@@ -22,6 +22,9 @@ import type { RevisaoDeHoje } from "../gestao-contas/[id]/daily-review-form";
 import { BlocoMetaDoDia } from "./bloco-meta";
 import { BlocoDoRobo } from "./bloco-robo";
 import { BlocoRelatorios } from "./bloco-relatorios";
+import { BlocoTarefas } from "./bloco-tarefas";
+import { listaDoDia } from "@/lib/tarefas/dados";
+import { descreverRecorrencia, falarDoPrazo } from "@/lib/tarefas/regras";
 import { oQueORoboFez } from "@/lib/meta/o-que-o-robo-fez";
 import { relatoriosQueFalharam } from "@/lib/whatsapp/robo-dos-relatorios";
 
@@ -270,6 +273,22 @@ export default async function MeuDiaPage({
       l.diasSemVender < DIAS_CRITICO,
   );
 
+  // ── As tarefas do dia de quem está na tela ───────────────────────────
+  const itensDeTarefa = await listaDoDia(donoId, hoje0);
+  const tarefasDoDia = itensDeTarefa.map((i) => ({
+    id: i.id,
+    titulo: i.titulo,
+    feita: i.feita,
+    atrasada: i.atrasada,
+    quando: i.atrasada && i.prazo ? falarDoPrazo(i.prazo, hoje0) : descreverRecorrencia(i) || (i.prazo ? falarDoPrazo(i.prazo, hoje0) : ""),
+    deQuem: i.criadaPor && i.criadaPor.id !== i.responsavelId ? i.criadaPor.nome.split(" ")[0] : null,
+  }));
+  // Só o dono e a gerência passam tarefa pra outra pessoa.
+  const equipeDaTarefa =
+    user.role === "ADMIN" || user.role === "GERENTE"
+      ? (await prisma.user.findMany({ where: { active: true, id: { not: user.id } }, select: { id: true, name: true }, orderBy: { name: "asc" } })).map((p) => ({ id: p.id, nome: p.name }))
+      : null;
+
   return (
     <div className="flex flex-col gap-4 max-w-3xl">
       <div>
@@ -327,6 +346,14 @@ export default async function MeuDiaPage({
 
       {/* O que não pode passar batido vem antes da lista. */}
       <BlocoMetaDoDia painel={painelMeta} />
+
+      {/* As tarefas do dia: as mesmas que o robô lembra de manhã e cobra às 17h pelo WhatsApp. */}
+      <BlocoTarefas
+        tarefas={tarefasDoDia}
+        nomeDoDia={ehOMeu ? null : dono.name.split(" ")[0]}
+        podeMexer={ehOMeu || user.role === "ADMIN"}
+        equipe={ehOMeu ? equipeDaTarefa : null}
+      />
 
       {/* O robô fala no grupo da loja, não com a gente. Sem isto aqui, a
           única forma de saber o que ele andou desligando seria entrar nos

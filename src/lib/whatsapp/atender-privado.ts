@@ -23,6 +23,7 @@ import {
 import { executarVendaNoPrivado, lerRespostaDaVenda, montarVendaNoPrivado } from "@/lib/vendas/venda-no-privado";
 import { tratarSubirAnuncio } from "./subir-anuncio";
 import { executarComercial, tratarComandoDoDia } from "./comandos-do-dia";
+import { executarAtribuicao, tratarTarefaNoPrivado } from "./tarefas-no-privado";
 
 // A IA atendendo no privado do WhatsApp.
 //
@@ -96,6 +97,12 @@ export type DesfechoPrivado =
   | { tipo: "avisou"; userId: string; enviados: number; falhas: number }
   /** Registro do dia a dia (visita, anotação, gravação, entrega, relatório, etapa): feito na hora, ou o robô perguntou o que faltou. */
   | { tipo: "registrou"; userId: string; comando: string }
+  /** Tarefas: lista, criou pra si, concluiu, cancelou — ou perguntou o que faltou. */
+  | { tipo: "tarefa"; userId: string; acao: string }
+  /** O dono/gerência pediu pra passar tarefa a outra pessoa: o robô mostrou e espera o "sim". */
+  | { tipo: "pediu-confirmacao-de-tarefa"; userId: string }
+  /** Confirmou: a tarefa foi criada (e a pessoa avisada). */
+  | { tipo: "atribuiu-tarefa"; userId: string }
   /** Comercial (só o dono): o robô mostrou o que vai pro funil e pra agenda, e espera o "sim". */
   | { tipo: "pediu-confirmacao-de-comercial"; userId: string }
   /** O dono confirmou e o robô mexeu no funil/agenda. */
@@ -389,6 +396,33 @@ export async function atenderMensagemPrivada(
       return { tipo: "cancelou", userId: pessoa.id };
     }
     // Outra mensagem: segue como conversa nova, já sem a pendência.
+  } else if (pendente.acao?.tipo === "atribuir-tarefa") {
+    // ── Uma tarefa pra outra pessoa esperando o "sim" ────────────────────
+    const resposta = confirmaAviso(m.texto);
+    if (resposta === "sim" && !pendente.venceu) {
+      if (!(await tomarPendente(pessoa.id))) {
+        await responder(m.telefone, "Esse pedido já foi tratado.", m.messageId);
+        return { tipo: "cancelou", userId: pessoa.id };
+      }
+      const feito = await executarAtribuicao(pessoa, pendente.acao, agora, m.messageId);
+      await responder(m.telefone, feito.resposta, m.messageId);
+      await guardarMemoria(pessoa.id, [
+        ...historico,
+        { de: "gestor", texto: m.texto.slice(0, 4000) },
+        { de: "copiloto", texto: feito.resposta.slice(0, 4000) },
+      ]);
+      return { tipo: "atribuiu-tarefa", userId: pessoa.id };
+    }
+    await descartarPendente(pessoa.id);
+    if (resposta === "sim") {
+      await responder(m.telefone, "Esse pedido venceu (passou de 10 minutos) e eu não criei a tarefa. Me pede de novo.", m.messageId);
+      return { tipo: "confirmacao-vencida", userId: pessoa.id };
+    }
+    if (resposta === "nao") {
+      await responder(m.telefone, "Tudo bem, não criei a tarefa.", m.messageId);
+      return { tipo: "cancelou", userId: pessoa.id };
+    }
+    // Outra mensagem: segue como conversa nova, já sem a pendência.
   } else if (pendente.acao?.tipo === "comercial") {
     // ── Reunião/fechamento esperando o "sim" (só o dono) ──────────────────
     const resposta = confirmaAviso(m.texto);
@@ -475,6 +509,22 @@ export async function atenderMensagemPrivada(
       { de: "copiloto", texto: aviso.resposta.slice(0, 4000) },
     ]);
     return aviso.pendente ? { tipo: "pediu-confirmacao-de-aviso", userId: pessoa.id } : { tipo: "pedido-sem-alvo", userId: pessoa.id };
+  }
+
+  // ── Tarefas: "me lembra de…", "o que tenho hoje?", "feito 2", "pede pra Tatiana…" ──────────────────────────
+  //
+  // Vem DEPOIS do aviso pra equipe ("avisa a Tatiana que…" é um recado, não uma tarefa) e ANTES dos registros do dia
+  // ("feito 2" não é um registro de loja). Ver tarefas-no-privado.ts.
+  const tarefa = await tratarTarefaNoPrivado(pessoa, m.texto, agora, m.messageId);
+  if (tarefa) {
+    if (tarefa.pendente) await guardarPendente(pessoa.id, tarefa.pendente, agora);
+    await responder(m.telefone, tarefa.resposta, m.messageId);
+    await guardarMemoria(pessoa.id, [
+      ...historico,
+      { de: "gestor", texto: m.texto.slice(0, 4000) },
+      { de: "copiloto", texto: tarefa.resposta.slice(0, 4000) },
+    ]);
+    return tarefa.pendente ? { tipo: "pediu-confirmacao-de-tarefa", userId: pessoa.id } : { tipo: "tarefa", userId: pessoa.id, acao: tarefa.tipo };
   }
 
   // ── "Visitei a Vilela", "anota na Vilela: …", "gravei…", "mandei o relatório…" ──────────────────────────────

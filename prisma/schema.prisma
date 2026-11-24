@@ -78,6 +78,8 @@ model User {
   resgatesFeitos       AcaoDeResgate[]        @relation("QuemResgatou")
   verbasPedidas        PedidoDeVerba[]        @relation("VerbaPedidaPor")
   metaAcoes            MetaAcao[]             @relation("MetaAcaoFeitaPor")
+  tarefasDele          Tarefa[]               @relation("TarefaResponsavel")
+  tarefasQueCriou      Tarefa[]               @relation("TarefaCriadaPor")
 
   @@map("users")
 }
@@ -2295,4 +2297,69 @@ model FipeCache {
   buscadoEm DateTime @default(now())
 
   @@map("fipe_cache")
+}
+
+// ─── Tarefas pessoais ──────────────────────────────────────────────────────
+//
+// Lista de tarefas de cada pessoa da casa, criada pelo WhatsApp ("me lembra de ligar pra Vilela sexta", "toda segunda a
+// Tatiana confere a verba") ou pelo Meu Dia. NÃO é a tabela `tasks` (essa é a das Operações, presa a um cliente).
+//
+// Concluir é uma LINHA em TarefaFeita (tarefa + dia), não uma coluna: assim a tarefa que repete todo dia pode ser
+// concluída hoje sem apagar o que foi feito ontem, e o histórico (quem concluiu, quando) fica de graça.
+
+enum RecorrenciaDaTarefa {
+  NENHUMA
+  DIARIA
+  SEMANAL
+  MENSAL
+}
+
+model Tarefa {
+  id            String              @id @default(cuid())
+  titulo        String
+  responsavelId String
+  responsavel   User                @relation("TarefaResponsavel", fields: [responsavelId], references: [id], onDelete: Cascade)
+  /// Quem atribuiu. Diferente do responsável = avisa quem atribuiu quando for concluída.
+  criadaPorId   String?
+  criadaPor     User?               @relation("TarefaCriadaPor", fields: [criadaPorId], references: [id], onDelete: SetNull)
+  recorrencia   RecorrenciaDaTarefa @default(NENHUMA)
+  /// Única: o dia do prazo (vazio = sem prazo). Recorrente: o dia em que começa a valer.
+  prazo         DateTime?           @db.Date
+  /// SEMANAL: 0 = domingo … 6 = sábado.
+  diaDaSemana   Int?
+  /// MENSAL: 1 a 31 (mês mais curto cai no último dia).
+  diaDoMes      Int?
+  /// Tarefa cancelada (ou recorrente parada) fica guardada, mas sai das listas.
+  ativa         Boolean             @default(true)
+  /// "whatsapp" ou "sistema": de onde nasceu.
+  origem        String              @default("sistema")
+  criadaEm      DateTime            @default(now())
+  feitas        TarefaFeita[]
+
+  @@index([responsavelId, ativa])
+  @@map("tarefas")
+}
+
+model TarefaFeita {
+  id         String   @id @default(cuid())
+  tarefaId   String
+  tarefa     Tarefa   @relation(fields: [tarefaId], references: [id], onDelete: Cascade)
+  /// O dia (da casa) em que foi concluída.
+  dia        DateTime @db.Date
+  feitaEm    DateTime @default(now())
+  feitaPorId String?
+
+  @@unique([tarefaId, dia])
+  @@map("tarefas_feitas")
+}
+
+/// Os avisos de tarefa que o robô já mandou (de manhã, às 17h, atrasadas): um por pessoa, dia e tipo.
+model AvisoDeTarefaEnviado {
+  userId    String
+  dia       DateTime @db.Date
+  tipo      String
+  enviadoEm DateTime @default(now())
+
+  @@id([userId, dia, tipo])
+  @@map("avisos_de_tarefa_enviados")
 }

@@ -93,7 +93,20 @@ export interface AcaoDeVenda {
   pedido: string;
 }
 
-export type AcaoPendente = AcaoDePausa | AcaoDeVenda;
+/**
+ * "Envie um aviso à Tatiana e à Giovana": o texto exato e os números, guardados enquanto se espera o "sim". Só o dono
+ * (ADMIN) usa — ver aviso-para-equipe.ts.
+ */
+export interface AcaoDeAviso {
+  tipo: "avisar-equipe";
+  destinatarios: { id: string; nome: string; telefone: string }[];
+  /** Quem foi citado e não tem WhatsApp cadastrado: dito na confirmação e no resultado. */
+  semNumero: string[];
+  texto: string;
+  pedido: string;
+}
+
+export type AcaoPendente = AcaoDePausa | AcaoDeVenda | AcaoDeAviso;
 
 // ───────────────────────── Ler a resposta do "sim" ─────────────────────────
 
@@ -591,6 +604,22 @@ export async function lerPendente(
 
   // O que vem do banco é JSON livre: validado, não assumido. Pendência torta
   // vira pendência nenhuma — nunca uma pausa feita em cima de dado estranho.
+  if (bruto?.tipo === "avisar-equipe") {
+    const v = bruto as Partial<AcaoDeAviso>;
+    const certa =
+      typeof v.texto === "string" &&
+      v.texto.length > 0 &&
+      typeof v.pedido === "string" &&
+      Array.isArray(v.semNumero) &&
+      v.semNumero.every((x) => typeof x === "string") &&
+      Array.isArray(v.destinatarios) &&
+      v.destinatarios.length > 0 &&
+      v.destinatarios.every(
+        (d) => d && typeof d.id === "string" && typeof d.nome === "string" && typeof d.telefone === "string" && /^\d{10,15}$/.test(d.telefone),
+      );
+    return certa ? { acao: v as AcaoDeAviso, venceu } : { acao: null, venceu: false };
+  }
+
   if (bruto?.tipo === "registrar-venda") {
     const v = bruto as Partial<AcaoDeVenda>;
     const certa =

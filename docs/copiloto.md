@@ -325,3 +325,26 @@ muda nada), por isso responde também na loja que não autorizou o robô a desli
 - **Muitos carros:** divide em várias mensagens (até ~3.000 caracteres cada), sem cortar um carro no meio, com a
   numeração contínua e o total na última.
 - Frase que manda mexer ("pausa os anúncios ativos do gol", "vendeu o virtus") **não** vira lista: segue o fluxo de sempre.
+
+## Avisar a equipe pelo robô (`src/lib/whatsapp/aviso-para-equipe.ts`)
+
+No privado do robô, **só o dono (ADMIN)**: `envie um aviso à Tatiana e à Giovana: a reunião mudou pra 15h`,
+`avisa a Andrielli que o relatório saiu`, `manda um recado pra equipe: …`, `envie um aviso às três, como um teste`.
+
+- O robô responde com o **texto exato** e **quem vai receber**, e só manda depois de um "sim" (também vale "pode",
+  "manda", "envie no número delas"). A confirmação vale 10 minutos e uma vez; outra mensagem no meio descarta o pedido.
+- Só gente da casa: usuário ativo, com WhatsApp cadastrado. Nunca um número digitado na conversa, nunca cliente.
+- O texto é o que o dono escreveu (entre aspas, depois de ":" ou de "que…"). Sem texto, ele pergunta qual é o recado;
+  só a palavra "teste" liga o aviso-padrão de teste. O robô não inventa recado.
+- Primeiro nome que bate com duas pessoas: pergunta qual (pede o nome completo). "A equipe" = gestoras e gerência.
+- O recado sai como `*Recado do <nome de quem mandou>:*`. Quem não tem WhatsApp cadastrado é dito na confirmação e no
+  resultado ("não mandei pra X"). Falha de envio de um não impede os outros, e o resultado diz quem recebeu e quem não.
+- Antes disto o Copiloto respondia "Aviso de teste para…" como se tivesse mandado. Agora o prompt dele proíbe fingir
+  envio.
+
+## O erro "A IA respondeu fora do formato esperado"
+
+Causa: o modelo **pensa** antes de responder e o pensamento conta dentro do teto de tokens (`max_tokens`). Chamadas com
+teto baixo (1.000, 1.500, 3.000, 4.000) tinham a resposta cortada no meio e o robô desistia. Os adaptadores
+(`src/lib/ai/provedores/`) agora nunca mandam teto abaixo do padrão do sistema (`AI_MAX_TOKENS`, 8.000): o teto é só
+um limite, não custa nada quando não é usado.

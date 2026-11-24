@@ -5,6 +5,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import { enviarTexto } from "./zapi";
 import { lidDoRobo } from "./identidade-do-robo";
 import { anotar } from "./trilha";
+import { confirmaAviso, executarAviso, montarAvisoParaEquipe } from "./aviso-para-equipe";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
 import { canAccessModule } from "@/lib/permissions";
 import { ehPerguntaDeGasto, pedeListaDeGastos } from "@/lib/financeiro-ia/interpretar-pergunta";
@@ -88,6 +89,10 @@ export type DesfechoPrivado =
   | { tipo: "vendeu"; userId: string; registrou: boolean; pausados: number; falhas: number }
   /** A conversa de subir anúncio pelo WhatsApp respondeu (ver subir-anuncio.ts). */
   | { tipo: "subir-anuncio"; userId: string }
+  /** O dono pediu pra avisar alguém da casa: o robô mostrou o texto e quem recebe, e espera o "sim". */
+  | { tipo: "pediu-confirmacao-de-aviso"; userId: string }
+  /** O dono confirmou: o robô mandou o recado pelo WhatsApp. */
+  | { tipo: "avisou"; userId: string; enviados: number; falhas: number }
   /** Disse "não", ou mandou outra coisa: a confirmação foi descartada. */
   | { tipo: "cancelou"; userId: string }
   /** Disse "sim" tarde demais. Nada foi pausado. */
@@ -350,6 +355,33 @@ export async function atenderMensagemPrivada(
       }
       // "outra-coisa": segue como conversa nova, já sem a pendência.
     }
+  } else if (pendente.acao?.tipo === "avisar-equipe") {
+    // ── Um recado pra equipe esperando o "sim" (só o dono) ───────────────
+    const resposta = confirmaAviso(m.texto);
+    if (resposta === "sim" && !pendente.venceu) {
+      if (!(await tomarPendente(pessoa.id))) {
+        await responder(m.telefone, "Esse pedido já foi tratado.", m.messageId);
+        return { tipo: "cancelou", userId: pessoa.id };
+      }
+      const feito = await executarAviso(pessoa, pendente.acao, m.messageId);
+      await responder(m.telefone, feito.resposta, m.messageId);
+      await guardarMemoria(pessoa.id, [
+        ...historico,
+        { de: "gestor", texto: m.texto.slice(0, 4000) },
+        { de: "copiloto", texto: feito.resposta.slice(0, 4000) },
+      ]);
+      return { tipo: "avisou", userId: pessoa.id, enviados: feito.enviados, falhas: feito.falhas };
+    }
+    await descartarPendente(pessoa.id);
+    if (resposta === "sim") {
+      await responder(m.telefone, "Esse pedido venceu (passou de 10 minutos) e eu não mandei nada. Me pede de novo.", m.messageId);
+      return { tipo: "confirmacao-vencida", userId: pessoa.id };
+    }
+    if (resposta === "nao") {
+      await responder(m.telefone, "Tudo bem, não mandei nada.", m.messageId);
+      return { tipo: "cancelou", userId: pessoa.id };
+    }
+    // Outra mensagem: segue como conversa nova, já sem a pendência.
   } else if (pendente.acao?.tipo === "pausar-anuncios") {
     const resposta = respostaDeConfirmacao(m.texto);
 
@@ -393,6 +425,22 @@ export async function atenderMensagemPrivada(
       return { tipo: "cancelou", userId: pessoa.id };
     }
     // Outra mensagem: segue como conversa nova, já sem a pendência.
+  }
+
+  // ── "Envie um aviso à Tatiana…" (só o dono) ───────────────────────────
+  //
+  // Mostra o texto exato e quem recebe, e só manda depois do "sim". Antes disto o Copiloto escrevia o aviso na
+  // conversa como se tivesse mandado — e não mandava nada.
+  const aviso = await montarAvisoParaEquipe(pessoa, m.texto);
+  if (aviso) {
+    if (aviso.pendente) await guardarPendente(pessoa.id, aviso.pendente, agora);
+    await responder(m.telefone, aviso.resposta, m.messageId);
+    await guardarMemoria(pessoa.id, [
+      ...historico,
+      { de: "gestor", texto: m.texto.slice(0, 4000) },
+      { de: "copiloto", texto: aviso.resposta.slice(0, 4000) },
+    ]);
+    return aviso.pendente ? { tipo: "pediu-confirmacao-de-aviso", userId: pessoa.id } : { tipo: "pedido-sem-alvo", userId: pessoa.id };
   }
 
   // ── "Vilela vendeu o Versa" (só o dono) ───────────────────────────────

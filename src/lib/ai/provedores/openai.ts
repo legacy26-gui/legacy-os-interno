@@ -31,7 +31,7 @@ export async function chamarOpenAi<S extends z.ZodType>({
   const resposta = await cliente(apiKey)
     .chat.completions.parse({
       model: AI_CONFIG.model,
-      max_completion_tokens: maxTokens,
+      max_completion_tokens: Math.max(maxTokens, AI_CONFIG.maxTokens), // o raciocínio também conta no teto
       reasoning_effort: esforcoDeRaciocinio(),
       messages: [
         { role: "system", content: system },
@@ -81,7 +81,7 @@ export async function iniciarJobOpenAi<S extends z.ZodType>({
     model: AI_CONFIG.model,
     background: true,
     store: true,
-    max_output_tokens: maxTokens,
+    max_output_tokens: Math.max(maxTokens, AI_CONFIG.maxTokens), // o raciocínio também conta no teto
     reasoning: { effort: esforcoDeRaciocinio() },
     instructions: system,
     input: user,

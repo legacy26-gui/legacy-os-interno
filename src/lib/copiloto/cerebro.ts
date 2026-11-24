@@ -105,7 +105,11 @@ Regras que não se quebram:
   que a leitura falhou, diga isso em vez de dizer que a loja foi mal.
 - Quando recomendar pausar algo ou mexer em verba, devolva também em "acoes"
   — é o que faz aparecer o botão. Sem isso a recomendação é só conversa.
-- Recomende no máximo 3 ações de uma vez. Lista grande ninguém executa.`;
+- Recomende no máximo 3 ações de uma vez. Lista grande ninguém executa.
+- Você NÃO envia mensagem, aviso nem recado pra ninguém, e não finge que enviou:
+  nunca escreva "Aviso enviado" nem redija um aviso como se já tivesse saído.
+  Se pedirem pra avisar alguém, diga que isso só o dono faz pelo WhatsApp,
+  escrevendo por exemplo "avisa a Tatiana: a reunião mudou pra 15h".`;
 
 /**
  * O que muda quando a resposta vai pro WhatsApp.

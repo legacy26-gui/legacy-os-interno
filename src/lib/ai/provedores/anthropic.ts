@@ -16,10 +16,16 @@ export async function chamarAnthropic<S extends z.ZodType>({
 }: ChamadaIa<S>): Promise<RespostaBruta<z.infer<S>>> {
   const client = new Anthropic({ apiKey, timeout: AI_CONFIG.timeoutMs, maxRetries: 0 });
 
+  // O modelo PENSA antes de responder (`thinking: adaptive`) e o pensamento conta dentro de `max_tokens`. Quem pedia um
+  // teto baixo (1.000, 1.500…) pensando só no tamanho da resposta tinha a resposta cortada no meio: a IA "respondia fora do
+  // formato esperado" e o robô desistia (foi o erro das perguntas no WhatsApp). O teto é só um limite, não custa nada
+  // quando não é usado — então nenhuma chamada fica abaixo do padrão do sistema.
+  const teto = Math.max(maxTokens, AI_CONFIG.maxTokens);
+
   const resposta = await client.messages
     .parse({
       model: AI_CONFIG.model,
-      max_tokens: maxTokens,
+      max_tokens: teto,
       system,
       thinking: { type: "adaptive" },
       output_config: { effort: AI_CONFIG.effort, format: zodOutputFormat(schema) },

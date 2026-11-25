@@ -236,7 +236,48 @@ export async function tratarVendaNoGrupo(a: {
   const carro = certos[0];
   const ids = carro.mesmoCarro.map((c) => c.adId);
   const nome = nomeLimpo(carro.mesmoCarro);
+  const preco = precoNoAnuncio(carro.mesmoCarro.flatMap((c) => conhecidos.find((k) => k.adId === c.adId)?.textos ?? []));
+  return { fim: false, ...(await registrarCarro({ a, pend, ids, nome, preco, agora })) };
+}
 
+/**
+ * Aviso de venda que a leitura daqui não conseguiu ligar a UM carro (ex.: a loja tem anúncios antigos do mesmo modelo, ou o
+ * carro só está no nome do conjunto), mas que o fluxo de pausar resolveu e tirou do ar. A venda é registrada com o carro que
+ * foi tirado — o mesmo que o robô acabou de dizer no grupo. Sem isto, o "desativar o X, vendido pelo patrocinado" pausava e
+ * não registrava nem dava parabéns (grupo da Redline, 25/11).
+ */
+export async function venderOQueFoiTirado(a: {
+  loja: LojaParaVenda;
+  grupoId: string;
+  texto: string;
+  quem: string | null;
+  messageId?: string | null;
+  ids: string[];
+  nome: string;
+  agora?: Date;
+}): Promise<{ recado: string; passo: string } | null> {
+  const agora = a.agora ?? new Date();
+  if (!a.loja.controlaVendas || a.ids.length === 0 || !pedeVenda(a.texto)) return null;
+  let pend = await prisma.vendaAguardandoDados.findUnique({ where: { grupoId: a.grupoId } });
+  if (pend && pend.venceEm <= agora) {
+    await prisma.vendaAguardandoDados.deleteMany({ where: { grupoId: a.grupoId } });
+    pend = null;
+  }
+  const textos = await prisma.metaAdCreative.findMany({ where: { adId: { in: a.ids } }, select: { titulo: true, legenda: true } });
+  const preco = precoNoAnuncio(textos.flatMap((t) => [t.titulo, t.legenda].filter((x): x is string => !!x)));
+  return registrarCarro({ a, pend, ids: a.ids, nome: a.nome, preco, agora });
+}
+
+async function registrarCarro(r: {
+  a: { loja: LojaParaVenda; grupoId: string; texto: string; quem: string | null; messageId?: string | null };
+  pend: Awaited<ReturnType<typeof prisma.vendaAguardandoDados.findUnique>>;
+  ids: string[];
+  nome: string;
+  preco: number | null;
+  agora: Date;
+}): Promise<{ recado: string; passo: string }> {
+  const { a, pend, ids, nome, agora } = r;
+  const { loja, grupoId, texto } = a;
   // Já existe uma pergunta aberta sobre OUTRO carro: duas abertas e a resposta
   // "68 mil" não saberia a qual pertence.
   if (pend && !mesmoConjunto(desmarcar(pend.anuncioIds), ids)) {
@@ -246,7 +287,6 @@ export async function tratarVendaNoGrupo(a: {
       precoDoAnuncioCents: pend.precoDoAnuncioCents,
     });
     return {
-      fim: false,
       passo: "venda-pendente-outra",
       recado: `Antes de registrar outra venda, preciso fechar a do *${pend.carro}*.\n${pergunta}`,
     };
@@ -258,15 +298,10 @@ export async function tratarVendaNoGrupo(a: {
     await prisma.vendaAguardandoDados.deleteMany({ where: { grupoId } });
     await anotar(a.messageId, grupoId, "venda-ja-registrada", nome);
     return {
-      fim: false,
       passo: "venda-ja-registrada",
       recado: `A venda do *${nome}* já está registrada no controle. 👍`,
     };
   }
-
-  const preco = precoNoAnuncio(
-    carro.mesmoCarro.flatMap((c) => conhecidos.find((k) => k.adId === c.adId)?.textos ?? []),
-  );
 
   const fechado = await concluirOuPerguntar({
     loja,
@@ -276,13 +311,13 @@ export async function tratarVendaNoGrupo(a: {
     // O que a frase nova traz vale mais; o que já se sabia fica se ela não trouxer.
     valorCents: extrairValorDaVenda(texto) ?? pend?.valorCents ?? null,
     origemLead: lerOrigemDaVenda(texto) ?? pend?.origemLead ?? null,
-    precoDoAnuncioCents: preco,
+    precoDoAnuncioCents: r.preco,
     textoOriginal: texto,
     quem: a.quem,
     agora,
     messageId: a.messageId,
   });
-  return { fim: false, ...fechado };
+  return fechado;
 }
 
 /** Fecha a venda se já dá, ou guarda o que se sabe e pergunta o que falta. */

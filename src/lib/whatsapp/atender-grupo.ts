@@ -22,7 +22,7 @@ import { tratarListaNoPrivado } from "./anuncios-ativos-no-privado";
 import { donosDosAnuncios, nomeEhGenerico, nomeIdentificavel } from "./nome-do-anuncio";
 import { apagarPergunta, lerPergunta, lerResposta } from "./pergunta-no-grupo";
 import { pedeSugestao, semRecomendacao } from "@/lib/copiloto/pede-sugestao";
-import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
+import { tratarVendaNoGrupo, venderOQueFoiTirado } from "@/lib/vendas/venda-por-lead";
 import { atenderGrupoFinanceiro, type DesfechoFinanceiro } from "@/lib/financeiro-ia/atender-financeiro";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
 import {
@@ -565,6 +565,9 @@ export async function atenderMensagemDoGrupo(
   const semCarro: string[] = [];
   const conjuntosTirados: string[] = [];
   const conjuntosJaPausados = new Set<string>();
+  // Os anúncios do carro que saiu do ar (inclusive os de dentro de um conjunto pausado): é com eles que a venda é registrada
+  // quando o aviso de venda não foi entendido sozinho (ver venderOQueFoiTirado).
+  const idsDaVenda: string[] = [];
   for (const alvo of pedido.alvos) {
     if (!alvo.semDuvida) {
       const juntos = alvo.empatados ?? [];
@@ -586,13 +589,17 @@ export async function atenderMensagemDoGrupo(
       // Carro que só existe no nome do conjunto: pausa o conjunto (uma vez), não anúncio por anúncio.
       const doConjunto = conjuntoDoAd.get(candidato.adId);
       if (doConjunto && conjuntosSoDoCarro.has(doConjunto)) {
-        if (conjuntosJaPausados.has(doConjunto)) continue;
+        if (conjuntosJaPausados.has(doConjunto)) {
+          idsDaVenda.push(candidato.adId);
+          continue;
+        }
         conjuntosJaPausados.add(doConjunto);
         const conj = await acharObjetoDaLoja(loja.id, "conjunto", doConjunto);
         if (conj) {
           const r = await mudarStatus({ clientId: loja.id, quemId: null, nivel: "conjunto", objeto: conj, ligar: false, origem: "whatsapp", pedidoPor: quem, pedidoTexto: m.texto });
           if (r.ok) {
             conjuntosTirados.push(conj.nome);
+            idsDaVenda.push(candidato.adId);
             await anotar(m.messageId, m.grupoId, "pausou-conjunto-do-carro", conj.nome);
           } else {
             falhas.push(`o conjunto ${conj.nome} (${r.erro})`);
@@ -631,6 +638,7 @@ export async function atenderMensagemDoGrupo(
         // O nome que diz o carro ("FIAT PULSE AUDACE — Stories"), não o do anúncio sozinho ("Stories").
         tirados.push(candidato.nome);
         idsTirados.push(candidato.adId);
+        idsDaVenda.push(candidato.adId);
         await anotar(m.messageId, m.grupoId, "pausou", objeto.nome);
       } else {
         falhas.push(`${objeto.nome} (${r.erro})`);
@@ -656,6 +664,23 @@ export async function atenderMensagemDoGrupo(
   for (const n of vazios.pausados) await anotar(m.messageId, m.grupoId, "pausou-conjunto-vazio", n);
   falhas.push(...vazios.falhas);
 
+  // ── A venda que só o fluxo de pausar conseguiu ligar a um carro ─────────
+  // "desativar Ford Ecosport 2011, vendido pelo patrocinado": a leitura da venda olha TODOS os anúncios (antigos pausados
+  // também) e ficou em dúvida; a pausa achou o carro. Um carro só tirado do ar + frase de venda = registra com ele.
+  let recadoDaVenda = venda.recado;
+  if (!recadoDaVenda && !resposta && pedido.alvos.length === 1 && semCarro.length === 0 && idsDaVenda.length > 0) {
+    const v = await venderOQueFoiTirado({
+      loja: { id: loja.id, companyName: loja.companyName, controlaVendas: loja.controlaVendas, contas: loja.metaAdAccounts.map((c) => c.id) },
+      grupoId: m.grupoId,
+      texto: semAMarcacao(m.texto),
+      quem: m.quem,
+      messageId: m.messageId,
+      ids: [...new Set(idsDaVenda)],
+      nome: tirados[0] ?? conjuntosTirados[0],
+    });
+    if (v) recadoDaVenda = v.recado;
+  }
+
   // ── Uma resposta só, com tudo que aconteceu ───────────────────────────
   const partes: string[] = [];
   if (conjuntosTirados.length === 1) partes.push(`Pronto, pausei o conjunto *${conjuntosTirados[0]}*.`);
@@ -674,7 +699,7 @@ export async function atenderMensagemDoGrupo(
   if (conjuntoNaoAchado && tirados.length > 0) {
     partes.unshift("Não achei um conjunto com esse nome, então fiz pelos anúncios do carro.");
   }
-  if (venda.recado) partes.push(venda.recado);
+  if (recadoDaVenda) partes.push(recadoDaVenda);
   if (falhas.length > 0) {
     partes.push(
       `Não consegui tirar ${falhas.join("; ")}. Já avisei a equipe — ` +
@@ -701,7 +726,7 @@ export async function atenderMensagemDoGrupo(
     pedido.sugestoes.length === 0 &&
     // "Se não era esse, a gente liga de volta" depois de "Parabéns pela venda"
     // seria o robô pedindo desculpa por uma venda que acabou de comemorar.
-    !venda.recado
+    !recadoDaVenda
   ) {
     partes.push("Se não era esse, me avisa aqui que a gente liga de volta na hora.");
   }

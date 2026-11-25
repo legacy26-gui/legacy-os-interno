@@ -24,6 +24,8 @@ const IDADES = Array.from({ length: IDADE_MAXIMA - IDADE_MINIMA + 1 }, (_, i) =>
 export function FormularioDoZero(p: {
   clientId: string;
   loja: string;
+  rodape: string;
+  rodapeDoSite: boolean;
   contas: { id: string; nome: string; metaAccountId: string }[];
   carros: CarroDoZero[];
   paginasIniciais: { id: string; nome: string }[];
@@ -35,6 +37,7 @@ export function FormularioDoZero(p: {
   const [paginaId, setPaginaId] = useState(p.paginasIniciais[0]?.id ?? "");
   const [nome, setNome] = useState(`${p.loja} — WhatsApp`);
   const [objetivo, setObjetivo] = useState<"leads" | "engajamento">("leads");
+  const [rodape, setRodape] = useState(p.rodape);
   const [boasVindas, setBoasVindas] = useState("Oi! Como podemos ajudar?");
   const [mensagemPronta, setMensagemPronta] = useState("Olá! Posso ter mais informações sobre o {carro}?");
   const [estrutura, setEstrutura] = useState<"por-carro" | "um-conjunto" | "montada">("por-carro");
@@ -103,7 +106,7 @@ export function FormularioDoZero(p: {
         const l = linhas[i];
         if (!l.marcado || l.legenda.trim()) continue;
         mudar(i, { msg: "escrevendo legenda…" });
-        const r = await legendaDoZero(p.clientId, l.carro.id);
+        const r = await legendaDoZero(p.clientId, l.carro.id, rodape);
         mudar(i, r.ok ? { legenda: r.legenda, msg: "" } : { msg: `legenda: ${r.erro}` });
       }
     });
@@ -158,7 +161,7 @@ export function FormularioDoZero(p: {
         mudar(i, { estado: "criando", msg: "legenda…" });
         let legenda = l.legenda.trim();
         if (!legenda) {
-          const lg = await legendaDoZero(p.clientId, l.carro.id);
+          const lg = await legendaDoZero(p.clientId, l.carro.id, rodape);
           if (!lg.ok) {
             mudar(i, { estado: "erro", msg: `legenda: ${lg.erro}` });
             continue;
@@ -452,6 +455,14 @@ export function FormularioDoZero(p: {
             </button>
           </div>
         </div>
+        <label className="flex flex-col gap-1 text-sm">
+          Rodapé da legenda (endereço e WhatsApp da loja)
+          <textarea disabled={travado} value={rodape} onChange={(e) => setRodape(e.target.value)} rows={3} placeholder={"📍 Rua ..., 123 - Bairro - Cidade\n📲 WhatsApp: (42) 9xxxx-xxxx"} className={campo} />
+          <span className="text-xs text-foreground-muted">
+            {p.rodapeDoSite && p.rodape ? "Puxado do site da loja — confira. " : !p.rodape ? "O site não mostrou endereço/WhatsApp: escreva aqui. " : ""}
+            A IA termina cada legenda com este rodapé, e ele fica salvo pra loja.
+          </span>
+        </label>
         <p className="text-xs text-foreground-muted">
           {p.carros.filter((c) => c.arteId).length} de {p.carros.length} carros com arte (vai como 1ª foto, e as fotos do site são cortadas na proporção dela).{" "}
           <a href={`/inteligencia-comercial/estoque/${p.clientId}/artes`} target="_blank" className="underline">Abrir o banco de artes</a>

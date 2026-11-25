@@ -43,3 +43,11 @@ de ligar. Se a Meta recusar algum campo, a mensagem dela aparece na linha do car
 - Meta de desempenho do conjunto: `CONVERSATIONS`. Se a Meta recusar essa meta numa campanha de Leads, o sistema tenta `LEAD_GENERATION` uma vez, usa a que funcionou nos próximos conjuntos e avisa.
 - **Modelo de conversa** (no criativo, `link_data.page_welcome_message`): mensagem de boas-vindas (padrão "Oi! Como podemos ajudar?") e mensagem pronta (padrão "Olá! Posso ter mais informações sobre o {carro}?"). `{carro}` vira o nome de cada carro. Se a Meta recusar o modelo, o anúncio é criado sem ele e a tela avisa pra pôr no Gerenciador.
 - Testado só contra uma Meta falsa: o formato exato que a Meta aceita precisa ser confirmado no primeiro teste real.
+
+## Rodapé da legenda (endereço e WhatsApp)
+
+Loja nova não tem legendas antigas pra IA copiar, e a legenda saía genérica. Agora:
+- A tela mostra **"Rodapé da legenda"**, já preenchido com o que o site da loja mostra (link wa.me, dados estruturados, link tel:, endereço com número na página). Ver `src/lib/estoque/contato-puro.ts`.
+- A pessoa confere/edita; ao escrever as legendas, o rodapé fica **salvo pra loja** (`estoque_da_loja.rodapeDaLegenda`) e passa a valer também no "anunciar agora".
+- A IA termina cada legenda com esse rodapé, exatamente com aqueles dados. Sem rodapé e sem exemplos, ela não inventa endereço nem telefone.
+- Testado nos sites: R2 (achou endereço e telefone fixo, sem WhatsApp no site), 7 Point, Bom Jesus (tem 2 endereços: pegou o 1º), DS.

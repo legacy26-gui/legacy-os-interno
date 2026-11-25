@@ -1,5 +1,6 @@
 "use server";
 
+import { rodapeDaLoja, salvarRodape } from "@/lib/estoque/contato";
 import { requireModuleAccess } from "@/lib/dal";
 import { clienteEDaCarteira } from "@/lib/carteira";
 import { prisma } from "@/lib/prisma";
@@ -50,7 +51,7 @@ export interface CarroDoZero {
 }
 
 export async function prepararCampanhaDoZero(clientId: string): Promise<
-  { ok: true; loja: string; cidade: string | null; contas: { id: string; nome: string; metaAccountId: string }[]; carros: CarroDoZero[] } | { ok: false; erro: string }
+  { ok: true; loja: string; cidade: string | null; rodape: string; rodapeDoSite: boolean; contas: { id: string; nome: string; metaAccountId: string }[]; carros: CarroDoZero[] } | { ok: false; erro: string }
 > {
   return semQuebrar(async () => {
     if (!(await pode(clientId))) return { ok: false as const, erro: "Esta loja não está na sua carteira." };
@@ -61,8 +62,11 @@ export async function prepararCampanhaDoZero(clientId: string): Promise<
       orderBy: { titulo: "asc" },
       select: { id: true, titulo: true, anoModelo: true, km: true, cor: true, precoCents: true, foto: true, rascunhoAdId: true, arte: { select: { id: true } } },
     });
+    const rod = await rodapeDaLoja(clientId);
     return {
       ok: true as const,
+      rodape: rod.rodape,
+      rodapeDoSite: rod.doSite,
       loja: loja?.companyName ?? "",
       cidade: loja?.city ?? null,
       contas: contas.map((c) => ({ id: c.id, nome: c.name ?? c.metaAccountId, metaAccountId: c.metaAccountId })),
@@ -78,12 +82,15 @@ export async function listarPaginas(clientId: string, contaId: string) {
   }, { ok: false as const, erro: "Deu erro no servidor. Tenta de novo." });
 }
 
-export async function legendaDoZero(clientId: string, carroId: string): Promise<{ ok: true; legenda: string } | { ok: false; erro: string }> {
+export async function legendaDoZero(clientId: string, carroId: string, rodape?: string): Promise<{ ok: true; legenda: string } | { ok: false; erro: string }> {
   return semQuebrar(async () => {
     if (!(await pode(clientId))) return { ok: false as const, erro: "Esta loja não está na sua carteira." };
     const carro = await prisma.estoqueCarro.findFirst({ where: { id: String(carroId ?? ""), clientId }, select: { titulo: true, anoModelo: true, km: true, cor: true, precoCents: true } });
     if (!carro) return { ok: false as const, erro: "Carro não é desta loja." };
-    const r = await gerarLegendaDoCarro({ clientId, dadosDoCarro: dadosDoCarroEmTexto(carro), legendaDoBase: "" });
+    // O rodapé que a pessoa conferiu na tela vale pra esta e pras próximas legendas da loja.
+    const rod = typeof rodape === "string" ? rodape.slice(0, 600) : undefined;
+    if (rod !== undefined) await salvarRodape(clientId, rod);
+    const r = await gerarLegendaDoCarro({ clientId, dadosDoCarro: dadosDoCarroEmTexto(carro), legendaDoBase: "", rodape: rod });
     return r.ok ? { ok: true as const, legenda: r.dados.legenda } : { ok: false as const, erro: r.erro };
   }, { ok: false as const, erro: "Deu erro no servidor. Tenta de novo." });
 }

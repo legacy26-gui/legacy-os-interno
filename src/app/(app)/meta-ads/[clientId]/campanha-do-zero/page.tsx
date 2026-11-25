@@ -42,6 +42,8 @@ export default async function CampanhaDoZeroPage({ params }: { params: Promise<{
         <FormularioDoZero
           clientId={clientId}
           loja={dados.loja}
+          rodape={dados.rodape}
+          rodapeDoSite={dados.rodapeDoSite}
           contas={dados.contas}
           carros={dados.carros}
           paginasIniciais={primeiras && primeiras.ok ? primeiras.paginas : []}

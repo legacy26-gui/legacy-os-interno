@@ -2153,6 +2153,8 @@ model EstoqueDaLoja {
   ultimoTotal    Int?
   /// O que deu errado na última leitura (null = deu certo).
   ultimoErro     String?
+  /// O rodapé das legendas (endereço, WhatsApp) — sugerido pelo site e conferido pela pessoa. Ver src/lib/estoque/contato.ts.
+  rodapeDaLegenda String?
   criadoEm       DateTime  @default(now())
 
   @@map("estoque_da_loja")

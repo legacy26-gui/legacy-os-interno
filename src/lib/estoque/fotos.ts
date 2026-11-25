@@ -6,6 +6,7 @@ import { baixarEstoqueAutoconf, urlDeSiteSegura } from "./ler-estoque";
 import { fotosDaPaginaDoCatalogo } from "./site-catalogo";
 import { apiDoCarro, fotosDoJson } from "./site-api";
 import { fotosDoCarroAutoconf, idDaPaginaAutoconf } from "./site-autoconf";
+import { fotosRevendaMais } from "./site-revendamais";
 
 // As fotos de um carro do estoque, lidas da página dele no site da loja.
 //
@@ -54,6 +55,8 @@ export function lerFotosDaPagina(html: string, paginaUrl: string): string[] {
   }
   // Site de catálogo (ex.: 7pointmotors): as fotos estão embutidas na página, na pasta do carro.
   if (achadas.length === 0) achadas.push(...fotosDaPaginaDoCatalogo(html, paginaUrl));
+  // Site da RevendaMais: as fotos na galeria (data-src, tamanho grande).
+  if (achadas.length === 0) achadas.push(...fotosRevendaMais(html));
   if (achadas.length === 0) {
     const og = html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i);
     if (og) achadas.push(og[1]);

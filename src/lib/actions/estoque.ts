@@ -10,6 +10,7 @@ import { lerLista, pareceAutoCerto } from "@/lib/estoque/autocerto";
 import { lerCatalogo, pareceCatalogo } from "@/lib/estoque/site-catalogo";
 import { lerApiDeVeiculos, pareceApiDeVeiculos } from "@/lib/estoque/site-api";
 import { lerCarrosAutoconf, lerPaginaAutoconf } from "@/lib/estoque/site-autoconf";
+import { listaDoSitemap, pareceRevendaMais } from "@/lib/estoque/site-revendamais";
 
 export type EstoqueState = { ok?: string; erro?: string };
 
@@ -45,7 +46,7 @@ export async function conectarSiteDaLoja(clientId: string, endereco: string): Pr
       return null;
     }
   };
-  let sistema: "autocerto" | "catalogo" | "api" | "autoconf" | null = null;
+  let sistema: "autocerto" | "catalogo" | "api" | "autoconf" | "revendamais" | null = null;
   const doAutoCerto = await abrir("/Veiculos");
   if (doAutoCerto && pareceAutoCerto(doAutoCerto)) {
     if (lerLista(doAutoCerto).itens.length === 0) return { erro: "Achei o AutoCerto, mas a lista de veículos veio vazia." };
@@ -81,6 +82,13 @@ export async function conectarSiteDaLoja(clientId: string, endereco: string): Pr
     if (pagina) {
       if (lerCarrosAutoconf(pagina.itens).length === 0) return { erro: "Achei o estoque da Autoconf no site, mas ele veio vazio." };
       sistema = "autoconf";
+    }
+  }
+  if (!sistema) {
+    const sitemap = await abrir("/sitemap.xml");
+    if (sitemap && pareceRevendaMais(sitemap)) {
+      if (listaDoSitemap(sitemap).itens.length === 0) return { erro: "Achei o site da RevendaMais, mas o sitemap veio sem carros." };
+      sistema = "revendamais";
     }
   }
   if (!sistema) {

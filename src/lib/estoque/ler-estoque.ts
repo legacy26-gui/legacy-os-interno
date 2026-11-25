@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { lerCarro, lerLista, type CarroLido } from "./autocerto";
 import { lerCatalogo, pareceCatalogo } from "./site-catalogo";
 import { lerApiDeVeiculos, pareceApiDeVeiculos } from "./site-api";
+import { lerCarroRevendaMais, listaDoSitemap } from "./site-revendamais";
 import { lerCarrosAutoconf, lerPaginaAutoconf } from "./site-autoconf";
 
 // A leitura do estoque de uma loja: lê o site, atualiza o banco.
@@ -88,7 +89,9 @@ async function baixar(url: string): Promise<{ ok: true; html: string } | { ok: f
       cache: "no-store",
     });
     if (!r.ok) return { ok: false, erro: `o site respondeu ${r.status}` };
-    const html = await r.text();
+    // Site em ISO-8859-1 (ex.: RevendaMais): o .text() leria como UTF-8 e estragaria os acentos.
+    const latin1 = /charset=(iso-8859-1|latin1|windows-1252)/i.test(r.headers.get("content-type") ?? "");
+    const html = latin1 ? new TextDecoder("latin1").decode(await r.arrayBuffer()) : await r.text();
     if (html.length > 3_000_000) return { ok: false, erro: "a página veio grande demais" };
     return { ok: true, html };
   } catch {
@@ -141,10 +144,13 @@ export async function lerEstoqueDaLoja(clientId: string, agora: Date = new Date(
   if (loja.sistema === "autoconf") return fim(await lerSiteAutoconf(clientId, origem, agora));
 
   // ── 1. A lista ───────────────────────────────────────────────────────
-  const paginaLista = await baixar(`${origem}/Veiculos`);
+  // AutoCerto: a página /Veiculos. RevendaMais: o sitemap (a página de estoque deles tem verificação anti-robô; o sitemap,
+  // feito pra buscadores, lista todos os carros). Daqui pra baixo o caminho é o mesmo: abrir a página dos novos + rodízio.
+  const revendaMais = loja.sistema === "revendamais";
+  const paginaLista = await baixar(revendaMais ? `${origem}/sitemap.xml` : `${origem}/Veiculos`);
   if (!paginaLista.ok) return fim({ ...VAZIO, erro: paginaLista.erro });
-  const lista = lerLista(paginaLista.html);
-  if (!lista.ehAutoCerto) return fim({ ...VAZIO, erro: "este site não parece ser do AutoCerto" });
+  const lista = revendaMais ? listaDoSitemap(paginaLista.html) : lerLista(paginaLista.html);
+  if (!lista.ehAutoCerto) return fim({ ...VAZIO, erro: revendaMais ? "o sitemap do site não parece ser da RevendaMais" : "este site não parece ser do AutoCerto" });
   if (lista.itens.length === 0) return fim({ ...VAZIO, erro: "a lista de veículos veio vazia" });
 
   const noAr = new Set(lista.itens.map((i) => i.codigo));
@@ -168,7 +174,7 @@ export async function lerEstoqueDaLoja(clientId: string, agora: Date = new Date(
     await dormir(PAUSA_MS);
     const pagina = await baixar(`${origem}${item.caminho}`);
     if (!pagina.ok) continue; // um carro que não carregou fica pra próxima
-    const carro = lerCarro(pagina.html);
+    const carro = revendaMais ? lerCarroRevendaMais(pagina.html, item.codigo, item.caminho) : lerCarro(pagina.html);
     if (!carro) continue;
     detalhesLidos++;
     const eraNovo = !porCodigo.has(item.codigo);

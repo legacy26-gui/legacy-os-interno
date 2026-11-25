@@ -54,6 +54,8 @@ export interface Achado {
    * tirar um e deixar o outro é deixar o carro vendido no ar.
    */
   mesmoCarro: AnuncioConhecido[];
+  /** Quando não há folga: os anúncios dos carros empatados no topo (casados pelo nome). Ver acharAnuncios. */
+  empatados?: AnuncioConhecido[];
 }
 
 export interface Pedido extends Achado {
@@ -511,6 +513,9 @@ function acharAnuncios(
       // verdade em comum, o anúncio não é candidato. "mobi 2018" volta a ser
       // "esse carro não está no ar" — que é a verdade e é o que interessa.
       if (soNumero(p)) continue;
+      // Palavra de FORMATO ("stories", "video", "feed") não identifica carro: todo carro tem anúncio assim. Pontua, mas não
+      // qualifica ninguém — "pausa stories video feed" sem carro não pode pausar os anúncios de formato da loja inteira.
+      if (PALAVRAS_DE_FORMATO.has(p)) continue;
       if (estaNoNome) forteNoNome = true;
       else forteNaLegenda = true;
     }
@@ -561,6 +566,9 @@ function acharAnuncios(
     candidatos: [...mesmoCarro, ...concorrentes].map((n) => n.anuncio),
     semDuvida: folga && primeiro.forteNoNome,
     mesmoCarro: mesmoCarro.map((n) => n.anuncio),
+    // Sem folga: os carros EMPATADOS no topo (nenhum vale o dobro do outro), todos pelo nome. Quem pede pra pausar "o Virtus"
+    // numa loja com dois Virtus quer os dois fora — o robô pausa e avisa, não pergunta.
+    empatados: comNota.filter((n) => n.forteNoNome && n.nota * 2 > primeiro.nota).map((n) => n.anuncio),
   };
 }
 

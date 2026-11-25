@@ -6,6 +6,7 @@ import {
   achatar,
   entenderPedidoComVarios,
   nomeNormalizado,
+  PALAVRAS_DE_FORMATO,
   type AnuncioConhecido,
   type PedidoComVarios,
   type Sugestao,
@@ -19,7 +20,7 @@ import { anotar } from "./trilha";
 import { listaDosAnunciosAtivos, pedeListaDeAnuncios } from "./anuncios-ativos";
 import { tratarListaNoPrivado } from "./anuncios-ativos-no-privado";
 import { donosDosAnuncios, nomeIdentificavel } from "./nome-do-anuncio";
-import { apagarPergunta, guardarPergunta, lerPergunta, lerResposta } from "./pergunta-no-grupo";
+import { apagarPergunta, lerPergunta, lerResposta } from "./pergunta-no-grupo";
 import { pedeSugestao, semRecomendacao } from "@/lib/copiloto/pede-sugestao";
 import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
 import { atenderGrupoFinanceiro, type DesfechoFinanceiro } from "@/lib/financeiro-ia/atender-financeiro";
@@ -126,8 +127,6 @@ export type Desfecho =
  * que foi pedido, o pedido estava vago demais pra valer uma lista.
  */
 const MAXIMO_NA_PERGUNTA = 10;
-/** Acima disto, um pedido só tira do ar depois de um "sim" (trava contra entender errado). */
-const LIMITE_SEM_CONFIRMAR = 8;
 
 /**
  * Falaram comigo? — pelo telefone OU pelo "@lid".
@@ -401,7 +400,6 @@ export async function atenderMensagemDoGrupo(
   // raridade de palavras e poderia, sozinho, empurrar a escolha pro anúncio
   // errado. Ver semAMarcacao.
   let pedido: PedidoComVarios;
-  let confirmado = false;
   if (resposta?.tipo === "escolheu") {
     await apagarPergunta(m.grupoId);
     // Só o que AINDA está no ar, e só da lista que foi perguntada.
@@ -413,7 +411,6 @@ export async function atenderMensagemDoGrupo(
       return { tipo: "perguntou", clientId: loja.id, quantos: 0 };
     }
     pedido = { intencao: "desligar", alvos: [{ trecho: "", candidatos: escolhidos, semDuvida: true, mesmoCarro: escolhidos }], sugestoes: [] };
-    confirmado = true;
   } else {
     pedido = entenderPedidoComVarios(semAMarcacao(m.texto), anuncios);
     // "Pausa TODOS os anúncios do Pulse": se a dúvida é só entre anúncios do MESMO carro, "todos" resolve — são todos eles.
@@ -481,6 +478,13 @@ export async function atenderMensagemDoGrupo(
     };
   }
 
+  // Pedido sem carro nenhum ("pausa stories, vídeo, feed"): não é carro fora do ar, é falta do nome. Nada sai, e pede o nome.
+  if (pedido.alvos.length === 0 && semNomeDeCarro(semAMarcacao(m.texto))) {
+    await anotar(m.messageId, m.grupoId, "pedido-sem-carro", loja.companyName);
+    await responder(m.grupoId, "Não tirei nada: faltou o carro. Me fala o nome do carro (como está no anúncio ou no conjunto).", m.messageId);
+    return { tipo: "perguntou", clientId: loja.id, quantos: 0 };
+  }
+
   if (pedido.alvos.length === 0) {
     await anotar(
       m.messageId,
@@ -529,30 +533,9 @@ export async function atenderMensagemDoGrupo(
 
   const quem = [m.quem, m.telefone].filter(Boolean).join(" · ") || null;
 
-  // ── Trava de quantidade ───────────────────────────────────────────────
-  //
-  // Um pedido que tiraria muitos anúncios de uma vez PERGUNTA antes. É a rede de segurança pro caso de o robô ter entendido
-  // errado: um "sim" a mais custa uma mensagem; uma loja inteira fora do ar custa o dia.
-  const aTirar = pedido.alvos.filter((a) => a.semDuvida).flatMap((a) => a.mesmoCarro);
-  if (!confirmado && aTirar.length > LIMITE_SEM_CONFIRMAR) {
-    const carros = [...new Set(aTirar.map((a) => (a.nome.includes(" — ") ? a.nome.split(" — ")[0] : a.nome)))];
-    await guardarPergunta({ grupoId: m.grupoId, clientId: loja.id, quem: m.telefone ?? null, tipo: "confirmar", candidatos: aTirar.map((a) => ({ adId: a.adId, nome: a.nome })) });
-    await anotar(m.messageId, m.grupoId, "pediu-confirmacao", `${aTirar.length} anúncios`);
-    await responder(
-      m.grupoId,
-      `Isso tira *${aTirar.length} anúncios* do ar, de ${carros.length === 1 ? "um carro" : `${carros.length} carros`}:\n` +
-        carros.slice(0, 10).map((c) => `• ${c}`).join("\n") +
-        (carros.length > 10 ? `\n…e mais ${carros.length - 10}.` : "") +
-        "\n\nConfirma? Me marca e responde *sim*. Pra não tirar: *não*.",
-      m.messageId,
-    );
-    return { tipo: "perguntou", clientId: loja.id, quantos: aTirar.length };
-  }
-
   const tirados: string[] = [];
   const idsTirados: string[] = [];
   const falhas: string[] = [];
-  const emDuvida: AnuncioConhecido[] = [];
 
   await anotar(
     m.messageId,
@@ -566,10 +549,20 @@ export async function atenderMensagemDoGrupo(
       .join(" | "),
   );
 
+  // ── Sem perguntar "qual desses" (decisão do Guilherme, 25/11/2026) ───────
+  //
+  // Pediu pra pausar, pausa e AVISA o que tirou. Quando dois carros empatam ("pausa o Virtus" com Virtus 2020 e 2021), os
+  // dois saem — é o que quem pediu quer. Só não pausa quando nenhum carro casou PELO NOME (só por legenda, ou só por palavra
+  // de formato como "stories"/"video"): aí responde que não achou o carro.
+  const semCarro: string[] = [];
   for (const alvo of pedido.alvos) {
     if (!alvo.semDuvida) {
-      for (const c of alvo.candidatos) emDuvida.push(c);
-      continue;
+      const juntos = alvo.empatados ?? [];
+      if (juntos.length === 0) {
+        semCarro.push(alvo.trecho);
+        continue;
+      }
+      alvo.mesmoCarro = juntos;
     }
 
     // ── Todos os anúncios do carro, não só o primeiro ───────────────────
@@ -657,11 +650,12 @@ export async function atenderMensagemDoGrupo(
         `alguém vai fazer na mão.`,
     );
   }
-  if (emDuvida.length > 0) {
-    // A lista fica guardada: a próxima resposta de quem pediu escolhe SÓ dentro dela (números, "todos" ou os nomes).
-    const unicos = [...new Map(emDuvida.map((a) => [a.adId, a])).values()].slice(0, MAXIMO_NA_PERGUNTA);
-    await guardarPergunta({ grupoId: m.grupoId, clientId: loja.id, quem: m.telefone ?? null, tipo: "qual", candidatos: unicos.map((a) => ({ adId: a.adId, nome: a.nome })) });
-    partes.push(textoDaPergunta(unicos));
+  if (semCarro.length > 0) {
+    partes.push(
+      tirados.length > 0
+        ? "Não achei o carro do resto do pedido nos anúncios no ar. Me fala o nome do carro (como está no anúncio ou no conjunto)."
+        : "Não achei qual carro é esse nos anúncios no ar. Me fala o nome do carro (como está no anúncio ou no conjunto).",
+    );
   }
   // Uma palavra que não casou mas lembra um carro, numa mensagem em que o
   // resto foi atendido: "pausar virtual e o gol" tirou o gol e ainda deve
@@ -672,7 +666,7 @@ export async function atenderMensagemDoGrupo(
   if (
     tirados.length > 0 &&
     falhas.length === 0 &&
-    emDuvida.length === 0 &&
+    semCarro.length === 0 &&
     pedido.sugestoes.length === 0 &&
     // "Se não era esse, a gente liga de volta" depois de "Parabéns pela venda"
     // seria o robô pedindo desculpa por uma venda que acabou de comemorar.
@@ -691,7 +685,7 @@ export async function atenderMensagemDoGrupo(
     return {
       tipo: "perguntou",
       clientId: loja.id,
-      quantos: emDuvida.length + pedido.sugestoes.length,
+      quantos: semCarro.length + pedido.sugestoes.length,
     };
   }
   if (tirados.length === 1) {
@@ -1006,23 +1000,6 @@ async function atenderNoGrupoInterno(m: MensagemDoGrupo): Promise<Desfecho> {
   return { tipo: "respondeu-interno", userId: pessoa.id };
 }
 
-/**
- * A pergunta de quando não dá pra ter certeza.
- *
- * Ela PEDE que marquem de novo, e isso não é formalidade: a regra do @ vale
- * pra toda mensagem, inclusive pra resposta desta pergunta. Um robô que
- * perguntasse "qual desses?" e ignorasse calado a resposta pareceria quebrado
- * — então a pergunta tem que ensinar como responder.
- */
-function textoDaPergunta(candidatos: AnuncioConhecido[]): string {
-  // Numerada e com o nome que diz o carro ("FIAT PULSE AUDACE — Stories"): a resposta pode ser só o número.
-  if (candidatos.length === 0) return "Me marca com @ de novo junto com o nome e eu desligo.";
-  const lista = candidatos.slice(0, MAXIMO_NA_PERGUNTA).map((c, i) => `${i + 1}. ${c.nome}`).join("\n");
-  return (
-    `Qual desses eu tiro do ar?\n\n${lista}\n\n` +
-    "Me marca e responde com o número (ex.: *1 e 3*) ou *todos*. Pra não tirar nenhum: *nenhum*."
-  );
-}
 
 /**
  * "Virtual não existe nos anúncios. Quis dizer Virtus?"
@@ -1095,4 +1072,16 @@ async function responder(
       e instanceof Error ? e.message : String(e),
     );
   }
+}
+
+/** A frase só tem verbo de pausar, formato ("stories", "video") e palavra de ligação — nenhum nome de carro? Pura. */
+export function semNomeDeCarro(texto: string): boolean {
+  const SOBRA_SEM_CARRO = new Set([
+    "pause", "pausa", "pausar", "pausem", "tira", "tire", "tirar", "desliga", "desligue", "desligar", "desativa", "desative",
+    "desativar", "para", "pare", "parar", "todos", "todas", "tudo", "os", "as", "o", "a", "do", "da", "dos", "das", "de", "e",
+    "esse", "essa", "esses", "essas", "este", "esta", "por", "favor", "pf", "pfv", "ai", "aí", "agora", "pode", "me", "também",
+    "tambem", "tbm", "ja", "já", "anuncio", "anuncios", "anúncio", "anúncios",
+  ]);
+  const palavras = achatar(texto).split(" ").filter(Boolean);
+  return palavras.length > 0 && palavras.every((p) => SOBRA_SEM_CARRO.has(p) || PALAVRAS_DE_FORMATO.has(p) || PALAVRAS_DE_FORMATO.has(p.replace(/s$/, "")) || /^\d{1,2}$/.test(p));
 }

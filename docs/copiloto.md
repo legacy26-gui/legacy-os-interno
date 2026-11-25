@@ -521,16 +521,15 @@ nome em todos).
   achar, agrupar, perguntar, responder "tirei do ar", lista de carros ativos (aí aparece só o carro, uma vez) e Meu Dia.
   `nomeNormalizado` ignora as palavras de formato e a parte depois do "—" quando ela é só formato/número: todos os anúncios do
   conjunto são o mesmo carro.
-- **Continuidade** (`pergunta-no-grupo.ts`, tabela `perguntas_no_grupo`): a pergunta "Qual desses?" agora é **numerada** e fica
-  guardada 15 min, pra QUEM pediu. A resposta escolhe **só dentro da lista**: números ("1 e 3"), "todos", os nomes, ou "nenhum"
-  (cancela). Outra pessoa respondendo não usa a pergunta de quem pediu.
-- **"Todos os anúncios do X"**: se a dúvida é só entre anúncios do MESMO carro, "todos" resolve sem perguntar.
-- **Trava de quantidade**: um pedido que tiraria **mais de 8 anúncios** pergunta antes ("Isso tira N anúncios de M carros… Confirma?
-  responde *sim*").
+- **Sem perguntar "qual desses?"** (decisão do Guilherme, mesmo dia): pediu pra pausar, o robô **pausa e avisa** o que tirou
+  (com o nome do carro). Carros **empatados** no topo saem juntos ("pausa o Virtus" com Virtus 2020 e 2021 → os dois; "Virtus 2021"
+  → só ele). Não pausa só quando nenhum carro casou **pelo nome** (só legenda, ou só palavra de formato): aí responde "faltou o
+  carro, me fala o nome" e não tira nada. Palavra de formato (stories, video, feed…) nunca identifica carro. Sem confirmação por
+  quantidade. (A tabela `perguntas_no_grupo` e a leitura de resposta ficaram no código, inertes: nada mais cria pergunta.)
 - **Desfazer pelo Meu Dia**: o bloco do robô mostra **hoje e ontem** (contando da meia-noite de Brasília — antes o "hoje" começava
   às 9h e escondia o que acontecia cedo), com **Religar** em cada anúncio e **Religar os N deste pedido**. Quem religa é uma pessoa
   clicando (o robô continua nunca ligando nada sozinho).
 
-Teste com o caso exato (`t-pulse`): o pedido do print pausa só os 4 do Pulse; a resposta do print, com a pergunta aberta, também;
-sem pergunta aberta ela não pausa nada (pergunta, mostrando o carro de cada anúncio); "1 e 3", "nenhum", outra pessoa, a trava
-com 9 anúncios + "sim".
+Teste com o caso exato (`t-pulse`): o pedido do print pausa só os 4 do Pulse; "pausa o pulse" idem, sem perguntar; "pausa o virtus"
+tira os dois Virtus, "virtus 2021" só ele; 9 anúncios do Gol saem direto; a mensagem do print sem carro não pausa nada e pede o
+nome do carro.

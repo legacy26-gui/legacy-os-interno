@@ -478,8 +478,10 @@ No grupo de uma **loja**, quando a mensagem marca o robô e não é pedido de pa
 (`responderSobreALoja`, em `atender-grupo.ts`). Ela mandou a lista de carros "dos últimos 7 dias" com **leads e gastos** no grupo
 da Área 42. Agora a regra é de código, nos dois lados (`falaDeGastoOuResultado`):
 
-- **Pergunta** com gasto/investimento/verba/saldo/custo/leads/resultado/alcance/R$…: a IA **nem é chamada**.
-- **Resposta** da IA com R$, gasto, leads etc.: **não sai** no grupo.
+- **Pergunta** com gasto/investimento/verba/saldo/custo/leads/resultado/alcance/R$… vinda do **cliente** (número que não é da
+  equipe): a IA **nem é chamada**. Vinda de **alguém da equipe** (número cadastrado no Legacy OS — ex.: a Tati pedindo "me envie o
+  valor investido no anúncio do Prisma"): **responde** normalmente (ajuste de 25/11/2026).
+- **Resposta** da IA com R$, gasto, leads etc. **que ninguém pediu**: **não sai** no grupo (o caso da Área 42).
 - Nos dois casos o robô fica **calado no grupo** e o **gestor da loja recebe um aviso no privado** com a pergunta ("não respondi:
   gasto e leads não saem no grupo do cliente"). Na trilha aparece `gasto-ou-leads-nao-vai-pro-grupo`.
 - Resposta sem dinheiro (ex.: "o que você faz?") segue saindo normalmente.

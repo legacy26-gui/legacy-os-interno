@@ -899,8 +899,13 @@ async function responderSobreALoja(
   nomeDaLoja: string,
 ): Promise<Desfecho> {
   // Pergunta de gasto/leads/resultado no grupo do cliente: não chega nem na IA.
-  if (falaDeGastoOuResultado(semAMarcacao(m.texto))) {
-    return deixarDeResponderPorGastoOuLeads(m, clientId, nomeDaLoja, "a pergunta fala de gasto/leads/resultado");
+  // Gasto e leads saem no grupo SÓ quando alguém DA EQUIPE pede (número cadastrado no Legacy OS) — "me envie o valor investido
+  // no anúncio do Prisma" da Tati é pra responder. Pergunta de gasto vinda do CLIENTE, ou resposta com valor que ninguém pediu,
+  // continua barrada (o caso da Área 42).
+  const pediuGasto = falaDeGastoOuResultado(semAMarcacao(m.texto));
+  const daEquipe = m.telefone ? await acharPessoaPeloNumero(m.telefone) : null;
+  if (pediuGasto && !daEquipe) {
+    return deixarDeResponderPorGastoOuLeads(m, clientId, nomeDaLoja, "o cliente perguntou de gasto/leads/resultado");
   }
 
   const dono = await prisma.client.findUnique({
@@ -939,10 +944,11 @@ async function responderSobreALoja(
   // grupo do cliente é a agência sugerindo serviço na frente dele, sem
   // ninguém da casa ter olhado. Quem decide isso é a equipe, no sistema.
   // A resposta também passa pela trava: se a IA escreveu valor, gasto ou leads, NÃO sai no grupo do cliente.
-  if (falaDeGastoOuResultado(r.resposta)) {
-    return deixarDeResponderPorGastoOuLeads(m, clientId, nomeDaLoja, "a resposta da IA trazia valores/leads");
+  if (falaDeGastoOuResultado(r.resposta) && !(pediuGasto && daEquipe)) {
+    return deixarDeResponderPorGastoOuLeads(m, clientId, nomeDaLoja, "a resposta da IA trazia valores/leads que ninguém pediu");
   }
-  await responder(m.grupoId, r.resposta, m.messageId);
+  // Só o que foi perguntado: sem "sugestão", "pontos de atenção" nem "daria pra…" que ninguém pediu.
+  await responder(m.grupoId, pedeSugestao(m.texto) ? r.resposta : semRecomendacao(r.resposta), m.messageId);
   return { tipo: "respondeu-da-loja", clientId };
 }
 

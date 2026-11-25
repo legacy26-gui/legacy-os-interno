@@ -344,14 +344,31 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
   const campanhaId = camp.dados.id;
 
   const aCriar = conjuntosACriar(p);
+  const comoMandar = new Map<string, string | null>();
   let metaDoConjunto = "CONVERSATIONS";
   const conjuntos: { chave: string; carroId: string | null; adsetId: string; nome: string }[] = [];
   const avisos: string[] = [...avisosDaPagina];
   for (const c of aCriar) {
     const orc: Orcamento = p.orcamento.onde === "conjunto" && c.centavosPorDia ? { onde: "conjunto", centavosPorDia: c.centavosPorDia } : p.orcamento;
+    // O número já resolvido antes (outro conjunto com o mesmo número): vai direto do jeito que a Meta aceitou.
+    let numero: string | null = c.whatsapp ? (comoMandar.has(c.whatsapp) ? comoMandar.get(c.whatsapp)! : c.whatsapp) : null;
     const criar = (meta: string) =>
-      escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/adsets`, camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: orc, meta, whatsapp: c.whatsapp }));
+      escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/adsets`, camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: orc, meta, whatsapp: numero }));
     let r = await criar(metaDoConjunto);
+    // "This WhatsApp phone number is not linked to your account": a Meta recusa o número no conjunto mesmo ele estando
+    // conectado à página (Auto PG, 25/11). Tenta com "+" na frente; se ainda recusar, cria SEM o número — aí vale o WhatsApp
+    // conectado à página — e avisa. As próximas com o mesmo número já vão do jeito que funcionou.
+    if (!r.ok && numero && c.whatsapp && /whatsapp|phone/i.test(r.erro)) {
+      const original = c.whatsapp;
+      numero = `+${original}`;
+      r = await criar(metaDoConjunto);
+      if (!r.ok && /whatsapp|phone/i.test(r.erro)) {
+        numero = null;
+        r = await criar(metaDoConjunto);
+        if (r.ok) avisos.push(`A Meta não aceitou escolher o número ${original} no conjunto: usei o WhatsApp conectado à página (confira no Gerenciador).`);
+      }
+      if (r.ok) comoMandar.set(original, numero);
+    }
     // Objetivo Leads + WhatsApp: a meta "conversas" é a do Gerenciador, mas há contas em que a Meta só aceita "leads"
     // (LEAD_GENERATION). Recusou a meta: tenta a outra uma vez, e as próximas já vão com a que funcionou.
     if (!r.ok && objetivo === "leads" && /optimization_goal|otimiza/i.test(r.erro)) {
@@ -366,7 +383,11 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
     if (r.ok && r.dados.id) conjuntos.push({ chave: c.chave, carroId: c.carroId, adsetId: r.dados.id, nome: c.nome });
     else avisos.push(`Conjunto "${c.nome}" não foi criado: ${r.ok ? "a Meta não devolveu o id" : r.erro}`);
   }
-  if (conjuntos.length === 0) return { ok: false, erro: `A campanha foi criada (pausada), mas nenhum conjunto: ${avisos[0] ?? ""}`, campanhaId };
+  if (conjuntos.length === 0) {
+    // Campanha vazia não serve pra nada e só bagunça o Gerenciador: sai.
+    const apagou = await escreverNaGraph(campanhaId, { status: "DELETED" });
+    return { ok: false, erro: `Nenhum conjunto foi criado, ${apagou.ok ? "então apaguei a campanha vazia" : "e a campanha vazia ficou no Gerenciador (apague lá)"}: ${avisos.filter((a) => !a.startsWith("A página") && !a.startsWith("Sem página"))[0] ?? avisos[0] ?? ""}` };
+  }
   return { ok: true, campanhaId, contaMeta: conta.metaAccountId, conjuntos, avisos };
 }
 

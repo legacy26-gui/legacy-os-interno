@@ -151,6 +151,13 @@ export function grausDesligados(lista: string[] = APRIMORAMENTOS_DESLIGADOS): Ob
 }
 
 /** Confere o pedido antes de mandar qualquer coisa pra Meta. Devolve o erro, ou null. Pura. */
+/** O que fazer quando a Meta diz que a página/WhatsApp "não está ligado à sua conta". */
+export const COMO_LIBERAR_O_WHATSAPP =
+  "o acesso que o sistema usa pra criar campanhas (o usuário do sistema da Legacy no Gerenciador de Negócios) precisa ter a PÁGINA da loja " +
+  "(e a conta do WhatsApp, se o número for de WhatsApp Business). No Gerenciador de Negócios: Configurações do negócio → Usuários → " +
+  "Usuários do sistema → o da Legacy → Atribuir ativos → Páginas → a página da loja → Controle total (e, se tiver, Contas do WhatsApp → o número). " +
+  "Se a página é do negócio do cliente, antes ele precisa dar acesso de parceiro à Legacy.";
+
 export function conferirPedido(p: { nome: string; paginaId: string; publico: EdicaoDoPublico; orcamento: Orcamento; carros: number }): string | null {
   if (!p.nome.trim()) return "Dê um nome pra campanha.";
   // Página vazia vale ("sem página": o gestor completa no Gerenciador); preenchida, tem que ser um ID.
@@ -338,6 +345,14 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
     if (!paginas.ok || !paginas.paginas.some((x) => x.id === p.paginaId)) avisosDaPagina.push("A página não aparece entre as liberadas pra esta conta; se a Meta recusar, ligue a página à conta no Gerenciador de Negócios.");
   }
 
+  // Escolheu número de WhatsApp: confere ANTES de criar qualquer coisa que o acesso de criar campanhas enxerga a página.
+  // Sem isto, a Meta recusa todos os conjuntos ("not linked to your account") e sobra uma campanha vazia.
+  const algumNumero = !!p.paginaId && (!!p.whatsapp || p.carros.some((c) => c.whatsapp) || (p.conjuntos ?? []).some((c) => c.whatsapp));
+  if (algumNumero) {
+    const vista = await lerComTokenDeEscrita<{ id?: string; name?: string }>(p.paginaId, { fields: "id,name" });
+    if (!vista.ok) return { ok: false, erro: `Não criei nada: o acesso do sistema não enxerga a página ${p.paginaId} (Meta: ${vista.erro}). Pra escolher o WhatsApp, ${COMO_LIBERAR_O_WHATSAPP}` };
+  }
+
   const objetivo: Objetivo = p.objetivo === "engajamento" ? "engajamento" : "leads";
   const camp = await escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/campaigns`, camposDaCampanha({ nome: p.nome, orcamento: p.orcamento, objetivo }));
   if (!camp.ok || !camp.dados.id) return { ok: false, erro: `A Meta não criou a campanha: ${camp.ok ? "não devolveu o id" : camp.erro}` };
@@ -355,19 +370,16 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
     const criar = (meta: string) =>
       escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/adsets`, camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: orc, meta, whatsapp: numero }));
     let r = await criar(metaDoConjunto);
-    // "This WhatsApp phone number is not linked to your account": a Meta recusa o número no conjunto mesmo ele estando
-    // conectado à página (Auto PG, 25/11). Tenta com "+" na frente; se ainda recusar, cria SEM o número — aí vale o WhatsApp
-    // conectado à página — e avisa. As próximas com o mesmo número já vão do jeito que funcionou.
+    // "This WhatsApp phone number is not linked to your account": tenta uma vez com "+" na frente (formato). NÃO cria sem o
+    // número: conjunto criado sem o WhatsApp não deixa escolher o número depois no Gerenciador (Guilherme, Auto PG 25/11).
     if (!r.ok && numero && c.whatsapp && /whatsapp|phone/i.test(r.erro)) {
       const original = c.whatsapp;
       numero = `+${original}`;
       r = await criar(metaDoConjunto);
-      if (!r.ok && /whatsapp|phone/i.test(r.erro)) {
-        numero = null;
-        r = await criar(metaDoConjunto);
-        if (r.ok) avisos.push(`A Meta não aceitou escolher o número ${original} no conjunto: usei o WhatsApp conectado à página (confira no Gerenciador).`);
-      }
       if (r.ok) comoMandar.set(original, numero);
+      else if (/whatsapp|phone/i.test(r.erro)) {
+        r = { ok: false, erro: `a Meta não deixou usar o WhatsApp ${original}: ${COMO_LIBERAR_O_WHATSAPP}` };
+      }
     }
     // Objetivo Leads + WhatsApp: a meta "conversas" é a do Gerenciador, mas há contas em que a Meta só aceita "leads"
     // (LEAD_GENERATION). Recusou a meta: tenta a outra uma vez, e as próximas já vão com a que funcionou.
@@ -382,6 +394,8 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
     }
     if (r.ok && r.dados.id) conjuntos.push({ chave: c.chave, carroId: c.carroId, adsetId: r.dados.id, nome: c.nome });
     else avisos.push(`Conjunto "${c.nome}" não foi criado: ${r.ok ? "a Meta não devolveu o id" : r.erro}`);
+    // O WhatsApp não está liberado pro acesso: os outros conjuntos vão bater no mesmo erro. Para aqui.
+    if (!r.ok && r.erro.includes(COMO_LIBERAR_O_WHATSAPP)) break;
   }
   if (conjuntos.length === 0) {
     // Campanha vazia não serve pra nada e só bagunça o Gerenciador: sai.

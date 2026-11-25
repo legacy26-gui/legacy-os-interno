@@ -75,3 +75,8 @@ Loja nova não tem legendas antigas pra IA copiar, e a legenda saía genérica. 
 
 ## Página: o que se sabe + o portfólio inteiro
 - A lista mostra "Desta loja" (liberada pra conta, dos anúncios, do site, ou do portfólio com o nome da loja — a primeira já escolhida) e "Todas do portfólio" (páginas do negócio dono da conta e dos negócios que o acesso enxerga, próprias e de clientes, e as do acesso). Se não sabe qual é, nada vem escolhido e a pessoa escolhe.
+
+## WhatsApp que recebe os leads (por conjunto)
+- Parte 2: "WhatsApp que recebe os leads" — o padrão da campanha ("O número ligado à página" = não manda nada e vale o da página). Em "Montar os conjuntos", cada conjunto tem o seu seletor; em "Um conjunto por carro", cada carro (parte 4).
+- Os números listados vêm da Meta: `whatsapp_number` da página escolhida e as contas de WhatsApp Business do portfólio (`owned/client_whatsapp_business_accounts{phone_numbers}`), com os dois tokens. "Outro número…" deixa digitar (DDD + número; o 55 entra sozinho).
+- Vai no conjunto em `promoted_object.whatsapp_phone_number` (junto com o `page_id`). Testado só contra uma Meta falsa: o primeiro teste real confirma se a Meta aceita o número escolhido (ele precisa estar ligado à página/negócio).

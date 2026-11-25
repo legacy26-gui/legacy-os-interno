@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Loader2, Search, Trash2, Check, AlertTriangle, ExternalLink, Sparkles, Upload, X } from "lucide-react";
 import { atribuirArte, subirArte } from "@/lib/actions/artes";
 import { legendaDoModelo, MODELO_PADRAO } from "@/lib/meta/legenda-modelo";
-import { criarAnuncioNoZero, criarEstruturaDoZero, legendaDoZero, listarPaginas, type CarroDoZero } from "@/lib/actions/campanha-do-zero";
+import { criarAnuncioNoZero, criarEstruturaDoZero, legendaDoZero, listarNumeros, listarPaginas, type CarroDoZero } from "@/lib/actions/campanha-do-zero";
 import { procurarLocais } from "@/lib/actions/publico-do-conjunto";
 import { IDADE_MAXIMA, IDADE_MINIMA, RAIOS_DA_CIDADE, type GeneroDoPublico, type LocalDoPublico } from "@/lib/meta/publico-puro";
 
@@ -18,6 +18,58 @@ interface LinhaDoCarro {
   legenda: string;
   estado: Estado;
   msg: string;
+  /** Em "um conjunto por carro": o WhatsApp do conjunto deste carro ("" = o padrão da campanha). */
+  whatsapp: string;
+}
+
+/**
+ * Escolher o número do WhatsApp que recebe as conversas: os achados na Meta (página e portfólio), ou digitar outro.
+ * "" = o padrão (da campanha, ou o da página).
+ */
+function SeletorDeNumero(p: { valor: string; mudar: (v: string) => void; numeros: { numero: string; nome: string }[]; vazio: string; rotulo: string; travado: boolean; pequeno?: boolean }) {
+  const conhecido = p.valor === "" || p.numeros.some((n) => n.numero === p.valor);
+  const [outro, setOutro] = useState(!conhecido);
+  const fmt = (n: string) => (n.startsWith("55") && n.length >= 12 ? `(${n.slice(2, 4)}) ${n.slice(4, -4)}-${n.slice(-4)}` : `+${n}`);
+  const cls = `rounded-lg border border-border bg-surface ${p.pequeno ? "px-2 py-1 text-xs" : "px-3 py-2 text-sm"}`;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <select
+        aria-label={p.rotulo}
+        disabled={p.travado}
+        value={outro ? "__outro" : p.valor}
+        onChange={(e) => {
+          if (e.target.value === "__outro") {
+            setOutro(true);
+            p.mudar("");
+          } else {
+            setOutro(false);
+            p.mudar(e.target.value);
+          }
+        }}
+        className={cls}
+      >
+        <option value="">{p.vazio}</option>
+        {p.numeros.map((n) => (
+          <option key={n.numero} value={n.numero}>
+            {fmt(n.numero)}
+            {n.nome ? ` — ${n.nome}` : ""}
+          </option>
+        ))}
+        <option value="__outro">Outro número…</option>
+      </select>
+      {outro && (
+        <input
+          aria-label={`${p.rotulo} (digitar)`}
+          disabled={p.travado}
+          value={p.valor}
+          onChange={(e) => p.mudar(e.target.value.replace(/[^\d]/g, ""))}
+          placeholder="DDD + número, ex.: 42999998888"
+          inputMode="numeric"
+          className={`${cls} w-48`}
+        />
+      )}
+    </span>
+  );
 }
 
 const reais = (c: number | null) => (c === null ? "—" : (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
@@ -60,7 +112,10 @@ export function FormularioDoZero(p: {
   const [mensagemPronta, setMensagemPronta] = useState("Olá! Posso ter mais informações sobre o {carro}?");
   const [estrutura, setEstrutura] = useState<"por-carro" | "um-conjunto" | "montada">("por-carro");
   // "Montar os conjuntos": quantos o gestor quiser, cada um com nome e (se o orçamento é por conjunto) o seu valor por dia.
-  const [conjuntos, setConjuntos] = useState<{ chave: string; nome: string; valor: string }[]>([{ chave: "c1", nome: "Conjunto 1", valor: "" }]);
+  const [conjuntos, setConjuntos] = useState<{ chave: string; nome: string; valor: string; whatsapp?: string }[]>([{ chave: "c1", nome: "Conjunto 1", valor: "" }]);
+  // O WhatsApp que recebe os leads: o padrão da campanha ("" = o número da página) e, em cada conjunto, o seu.
+  const [whatsappPadrao, setWhatsappPadrao] = useState("");
+  const [numeros, setNumeros] = useState<{ numero: string; nome: string }[]>([]);
   const [proximaChave, setProximaChave] = useState(2);
   const [ondeOrcamento, setOndeOrcamento] = useState<"conjunto" | "campanha">("conjunto");
   const [valor, setValor] = useState("15");
@@ -73,7 +128,7 @@ export function FormularioDoZero(p: {
   const [maxFotos, setMaxFotos] = useState(6);
   const [linhas, setLinhas] = useState<LinhaDoCarro[]>(
     // Com arte na loja, já vêm marcados SÓ os carros com arte (são os que vão subir); sem nenhuma arte, todos.
-    p.carros.map((c) => ({ carro: c, marcado: p.carros.some((x) => x.arteId) ? !!c.arteId : true, conjunto: "c1", nome: c.titulo, legenda: "", estado: "esperando", msg: c.jaAnunciado ? "já tem anúncio (vai criar outro)" : "" })),
+    p.carros.map((c) => ({ carro: c, marcado: p.carros.some((x) => x.arteId) ? !!c.arteId : true, conjunto: "c1", nome: c.titulo, legenda: "", whatsapp: "", estado: "esperando", msg: c.jaAnunciado ? "já tem anúncio (vai criar outro)" : "" })),
   );
   const [erro, setErro] = useState<string | null>(null);
   const [fase, setFase] = useState<"montando" | "criando" | "pronto">("montando");
@@ -162,10 +217,11 @@ export function FormularioDoZero(p: {
         estrutura,
         orcamento: { onde: ondeOrcamento, centavosPorDia: centavos },
         publico: { idadeMin, idadeMax, genero, locais },
-        carros: marcados.map((l) => ({ carroId: l.carro.id, nome: l.nome, conjunto: estrutura === "montada" ? l.conjunto : undefined })),
+        carros: marcados.map((l) => ({ carroId: l.carro.id, nome: l.nome, conjunto: estrutura === "montada" ? l.conjunto : undefined, whatsapp: estrutura === "por-carro" ? l.whatsapp || null : null })),
+        whatsapp: whatsappPadrao || null,
         conjuntos:
           estrutura === "montada"
-            ? conjuntos.map((c) => ({ chave: c.chave, nome: c.nome, centavosPorDia: ondeOrcamento === "conjunto" && c.valor.trim() ? emCentavos(c.valor) : null }))
+            ? conjuntos.map((c) => ({ chave: c.chave, nome: c.nome, centavosPorDia: ondeOrcamento === "conjunto" && c.valor.trim() ? emCentavos(c.valor) : null, whatsapp: c.whatsapp || null }))
             : undefined,
       });
       if (!est.ok) {
@@ -209,6 +265,15 @@ export function FormularioDoZero(p: {
   }
 
   const travado = fase !== "montando";
+
+  // Os números do WhatsApp mudam com a conta e a página escolhidas.
+  useEffect(() => {
+    let vivo = true;
+    void listarNumeros(p.clientId, contaId, paginaEscolhida).then((n) => vivo && setNumeros(n));
+    return () => {
+      vivo = false;
+    };
+  }, [p.clientId, contaId, paginaEscolhida]);
 
   /** Põe a arte no carro (na tela). A que o carro tinha volta pra "sem carro", como no servidor. */
   function colocarNoCarro(arteId: string, carroId: string | null) {
@@ -370,6 +435,17 @@ export function FormularioDoZero(p: {
             </button>
           ))}
         </div>
+        <div className="flex flex-col gap-1 text-sm">
+          WhatsApp que recebe os leads
+          <SeletorDeNumero valor={whatsappPadrao} mudar={setWhatsappPadrao} numeros={numeros} vazio="O número ligado à página" rotulo="WhatsApp da campanha" travado={travado || !paginaEscolhida} />
+          <span className="text-xs text-foreground-muted">
+            {!paginaEscolhida
+              ? "Escolha a página primeiro (o número vai junto com a página)."
+              : estrutura === "um-conjunto"
+                ? "Vale pro conjunto."
+                : `Vale pra todos os conjuntos; ${estrutura === "montada" ? "cada conjunto abaixo" : "cada carro (parte 4)"} pode ter o seu.`}
+          </span>
+        </div>
         {estrutura === "montada" && (
           <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
             <p className="text-xs text-foreground-muted">
@@ -401,6 +477,15 @@ export function FormularioDoZero(p: {
                     /dia
                   </label>
                 )}
+                <SeletorDeNumero
+                  valor={c.whatsapp ?? ""}
+                  mudar={(v) => setConjuntos((cs) => cs.map((x) => (x.chave === c.chave ? { ...x, whatsapp: v } : x)))}
+                  numeros={numeros}
+                  vazio="WhatsApp: o padrão"
+                  rotulo={`WhatsApp do conjunto ${i + 1}`}
+                  travado={travado || !paginaEscolhida}
+                  pequeno
+                />
                 <span className="text-xs text-foreground-muted">{marcados.filter((l) => l.conjunto === c.chave).length} carro(s)</span>
                 {conjuntos.length > 1 && (
                   <button
@@ -750,6 +835,12 @@ export function FormularioDoZero(p: {
                 )}
                 <div className="flex-1 min-w-0 flex flex-col gap-1">
                   <input disabled={travado || !l.marcado} value={l.nome} onChange={(e) => mudar(i, { nome: e.target.value })} className={`${campo} font-medium`} />
+                  {estrutura === "por-carro" && l.marcado && paginaEscolhida && (
+                    <label className="flex items-center gap-2 text-xs">
+                      WhatsApp do conjunto:
+                      <SeletorDeNumero valor={l.whatsapp} mudar={(v) => mudar(i, { whatsapp: v })} numeros={numeros} vazio="o padrão" rotulo={`WhatsApp de ${l.carro.titulo}`} travado={travado} pequeno />
+                    </label>
+                  )}
                   {estrutura === "montada" && l.marcado && (
                     <label className="flex items-center gap-2 text-xs">
                       Conjunto:

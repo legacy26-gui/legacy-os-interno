@@ -7,6 +7,8 @@ import { prisma } from "@/lib/prisma";
 import {
   criarAnuncioDoCarro,
   criarEstrutura,
+  numeroDoWhatsapp,
+  numerosDoWhatsapp,
   paginasDaConta,
   type Estrutura,
   type Orcamento,
@@ -84,6 +86,10 @@ export async function listarPaginas(clientId: string, contaId: string) {
   }, { ok: false as const, erro: "Deu erro no servidor. Tenta de novo." });
 }
 
+export async function listarNumeros(clientId: string, contaId: string, paginaId: string): Promise<{ numero: string; nome: string }[]> {
+  return semQuebrar(async () => ((await pode(clientId)) ? numerosDoWhatsapp(clientId, String(contaId ?? ""), String(paginaId ?? "")) : []), []);
+}
+
 export async function legendaDoZero(clientId: string, carroId: string, rodape?: string): Promise<{ ok: true; legenda: string } | { ok: false; erro: string }> {
   return semQuebrar(async () => {
     if (!(await pode(clientId))) return { ok: false as const, erro: "Esta loja não está na sua carteira." };
@@ -106,22 +112,24 @@ export async function criarEstruturaDoZero(p: {
   estrutura: Estrutura;
   orcamento: Orcamento;
   publico: EdicaoDoPublico;
-  carros: { carroId: string; nome: string; conjunto?: string }[];
-  conjuntos?: { chave: string; nome: string; centavosPorDia?: number | null }[];
+  carros: { carroId: string; nome: string; conjunto?: string; whatsapp?: string | null }[];
+  conjuntos?: { chave: string; nome: string; centavosPorDia?: number | null; whatsapp?: string | null }[];
+  whatsapp?: string | null;
 }): Promise<ResultadoDaEstrutura> {
   return semQuebrar(async () => {
     if (!(await pode(p.clientId))) return { ok: false as const, erro: "Esta loja não está na sua carteira." };
     const ids = new Set((await prisma.estoqueCarro.findMany({ where: { clientId: p.clientId, id: { in: (p.carros ?? []).map((c) => String(c.carroId)) } }, select: { id: true } })).map((c) => c.id));
     const carros = (p.carros ?? [])
       .filter((c) => ids.has(String(c.carroId)))
-      .map((c) => ({ carroId: String(c.carroId), nome: String(c.nome ?? "").slice(0, 200), conjunto: c.conjunto ? String(c.conjunto).slice(0, 40) : undefined }));
+      .map((c) => ({ carroId: String(c.carroId), nome: String(c.nome ?? "").slice(0, 200), conjunto: c.conjunto ? String(c.conjunto).slice(0, 40) : undefined, whatsapp: numeroDoWhatsapp(c.whatsapp) }));
     const conjuntos = (p.conjuntos ?? []).slice(0, 50).map((c) => ({
       chave: String(c.chave).slice(0, 40),
       nome: String(c.nome ?? "").slice(0, 200),
       centavosPorDia: typeof c.centavosPorDia === "number" && Number.isFinite(c.centavosPorDia) ? Math.round(c.centavosPorDia) : null,
+      whatsapp: numeroDoWhatsapp(c.whatsapp),
     }));
     const estrutura = p.estrutura === "um-conjunto" || p.estrutura === "montada" ? p.estrutura : "por-carro";
-    return criarEstrutura({ ...p, carros, conjuntos, estrutura, objetivo: p.objetivo === "engajamento" ? "engajamento" : "leads" });
+    return criarEstrutura({ ...p, carros, conjuntos, estrutura, whatsapp: numeroDoWhatsapp(p.whatsapp), objetivo: p.objetivo === "engajamento" ? "engajamento" : "leads" });
   }, { ok: false as const, erro: "Deu erro no servidor. Tenta de novo." });
 }
 

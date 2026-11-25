@@ -85,6 +85,8 @@ export function camposDoConjunto(p: {
   orcamento: Orcamento;
   /** "CONVERSATIONS" (padrão) ou "LEAD_GENERATION" (a Meta pede este em algumas contas com objetivo Leads). */
   meta?: string;
+  /** O número do WhatsApp que recebe as conversas deste conjunto (só dígitos, com DDI). Vazio = o número da página. */
+  whatsapp?: string | null;
 }): Record<string, string> {
   const c: Record<string, string> = {
     name: p.nome.slice(0, 200),
@@ -94,7 +96,9 @@ export function camposDoConjunto(p: {
     optimization_goal: p.meta ?? "CONVERSATIONS",
     destination_type: "WHATSAPP",
     // Sem página (o gestor completa no Gerenciador): vai sem o objeto promovido.
-    ...(p.paginaId ? { promoted_object: JSON.stringify({ page_id: p.paginaId }) } : {}),
+    ...(p.paginaId
+      ? { promoted_object: JSON.stringify({ page_id: p.paginaId, ...(p.whatsapp ? { whatsapp_phone_number: p.whatsapp } : {}) }) }
+      : {}),
     // Público do zero, com o Advantage+ público explicitamente desligado (montarTargeting).
     targeting: JSON.stringify(montarTargeting({}, p.publico)),
   };
@@ -308,9 +312,11 @@ export interface PedidoDaEstrutura {
   orcamento: Orcamento;
   publico: EdicaoDoPublico;
   /** Os carros (id do estoque + nome do conjunto quando é um por carro; `conjunto` = chave do conjunto quando é "montada"). */
-  carros: { carroId: string; nome: string; conjunto?: string }[];
+  carros: { carroId: string; nome: string; conjunto?: string; whatsapp?: string | null }[];
   /** Só em "montada": os conjuntos que o gestor montou (quantos quiser), cada um com o seu orçamento opcional. */
-  conjuntos?: { chave: string; nome: string; centavosPorDia?: number | null }[];
+  conjuntos?: { chave: string; nome: string; centavosPorDia?: number | null; whatsapp?: string | null }[];
+  /** O número do WhatsApp padrão da campanha (só dígitos, com DDI). Cada conjunto pode ter o seu. Vazio = o da página. */
+  whatsapp?: string | null;
 }
 
 export type ResultadoDaEstrutura =
@@ -344,7 +350,7 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
   for (const c of aCriar) {
     const orc: Orcamento = p.orcamento.onde === "conjunto" && c.centavosPorDia ? { onde: "conjunto", centavosPorDia: c.centavosPorDia } : p.orcamento;
     const criar = (meta: string) =>
-      escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/adsets`, camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: orc, meta }));
+      escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/adsets`, camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: orc, meta, whatsapp: c.whatsapp }));
     let r = await criar(metaDoConjunto);
     // Objetivo Leads + WhatsApp: a meta "conversas" é a do Gerenciador, mas há contas em que a Meta só aceita "leads"
     // (LEAD_GENERATION). Recusou a meta: tenta a outra uma vez, e as próximas já vão com a que funcionou.
@@ -365,11 +371,53 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
 }
 
 /** Os conjuntos a criar, conforme a estrutura escolhida. Em "montada", só os que têm pelo menos um carro. Pura. */
-export function conjuntosACriar(p: Pick<PedidoDaEstrutura, "estrutura" | "nome" | "carros" | "conjuntos">): { chave: string; carroId: string | null; nome: string; centavosPorDia: number | null }[] {
-  if (p.estrutura === "por-carro") return p.carros.map((c) => ({ chave: c.carroId, carroId: c.carroId, nome: c.nome, centavosPorDia: null }));
-  if (p.estrutura === "um-conjunto") return [{ chave: "todos", carroId: null, nome: `${p.nome} — carros`, centavosPorDia: null }];
+export function conjuntosACriar(
+  p: Pick<PedidoDaEstrutura, "estrutura" | "nome" | "carros" | "conjuntos" | "whatsapp">,
+): { chave: string; carroId: string | null; nome: string; centavosPorDia: number | null; whatsapp: string | null }[] {
+  const padrao = p.whatsapp || null;
+  if (p.estrutura === "por-carro") return p.carros.map((c) => ({ chave: c.carroId, carroId: c.carroId, nome: c.nome, centavosPorDia: null, whatsapp: c.whatsapp || padrao }));
+  if (p.estrutura === "um-conjunto") return [{ chave: "todos", carroId: null, nome: `${p.nome} — carros`, centavosPorDia: null, whatsapp: padrao }];
   const usados = new Set(p.carros.map((c) => c.conjunto));
-  return (p.conjuntos ?? []).filter((c) => usados.has(c.chave)).map((c) => ({ chave: c.chave, carroId: null, nome: c.nome.trim(), centavosPorDia: c.centavosPorDia ?? null }));
+  return (p.conjuntos ?? [])
+    .filter((c) => usados.has(c.chave))
+    .map((c) => ({ chave: c.chave, carroId: null, nome: c.nome.trim(), centavosPorDia: c.centavosPorDia ?? null, whatsapp: c.whatsapp || padrao }));
+}
+
+/** Número de WhatsApp válido pra Meta: só dígitos, com DDI (10 a 15). Põe o 55 se vier só DDD+número. Pura. */
+export function numeroDoWhatsapp(v: unknown): string | null {
+  const d = String(v ?? "").replace(/\D/g, "");
+  if (!d) return null;
+  const com = d.length === 10 || d.length === 11 ? `55${d}` : d;
+  return com.length >= 12 && com.length <= 15 ? com : null;
+}
+
+/**
+ * Os números de WhatsApp que dá pra usar nos conjuntos: o ligado à página escolhida e os das contas de WhatsApp Business do
+ * portfólio (negócio dono da conta e os que o acesso enxerga). Lê com os dois tokens. A pessoa também pode digitar um número.
+ */
+export async function numerosDoWhatsapp(clientId: string, contaId: string, paginaId: string): Promise<{ numero: string; nome: string }[]> {
+  const conta = await contaDaLoja(clientId, contaId);
+  if (!conta) return [];
+  const achados = new Map<string, string>();
+  const por = (bruto: unknown, nome: string) => {
+    const n = numeroDoWhatsapp(bruto);
+    if (n && !achados.has(n)) achados.set(n, nome);
+  };
+  if (/^\d{5,25}$/.test(paginaId)) {
+    const pg = await lerComOsDois<{ whatsapp_number?: string; name?: string }>(paginaId, { fields: "whatsapp_number,name" });
+    for (const d of pg.dados) por(d.whatsapp_number, `da página${d.name ? ` ${d.name}` : ""}`);
+  }
+  const dono = await lerComOsDois<{ business?: { id?: string } }>(conta.metaAccountId, { fields: "business{id}" });
+  const negocios = await lerComOsDois<Lista>("me/businesses", { fields: "id,name", limit: "50" });
+  const bms = [...new Set([...dono.dados.map((d) => d.business?.id), ...negocios.dados.flatMap((d) => daLista(d).map((x) => x.id))].filter((x): x is string => !!x))].slice(0, 10);
+  type Wabas = { data?: { id: string; name?: string; phone_numbers?: { data?: { display_phone_number?: string; verified_name?: string }[] } }[] };
+  for (const bm of bms) {
+    for (const lado of ["owned_whatsapp_business_accounts", "client_whatsapp_business_accounts"]) {
+      const r = await lerComOsDois<Wabas>(`${bm}/${lado}`, { fields: "id,name,phone_numbers{display_phone_number,verified_name}", limit: "50" });
+      for (const d of r.dados) for (const w of d.data ?? []) for (const n of w.phone_numbers?.data ?? []) por(n.display_phone_number, n.verified_name ?? w.name ?? "");
+    }
+  }
+  return [...achados.entries()].map(([numero, nome]) => ({ numero, nome }));
 }
 
 /** Confere a estrutura "montada": cada carro num conjunto que existe, nomes preenchidos, orçamentos válidos. Pura. */

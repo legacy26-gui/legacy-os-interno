@@ -2408,3 +2408,17 @@ model UsoDaIa {
   @@index([quando])
   @@map("uso_da_ia")
 }
+
+/// A pergunta que o robô deixou aberta no grupo de uma loja: "qual desses eu tiro do ar?" (tipo "qual") ou "isso tira N
+/// anúncios, confirma?" (tipo "confirmar"). A resposta seguinte de QUEM pediu escolhe só dentro de `candidatos`
+/// ([{ adId, nome }]). Vale 15 minutos. Ver src/lib/whatsapp/pergunta-no-grupo.ts.
+model PerguntaNoGrupo {
+  grupoId    String   @id
+  clientId   String
+  quem       String?
+  tipo       String
+  candidatos Json
+  feitaEm    DateTime @default(now())
+
+  @@map("perguntas_no_grupo")
+}

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { donosDosAnuncios, nomeIdentificavel } from "./nome-do-anuncio";
+
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { CARTEIRA_NO_META, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
@@ -416,15 +418,16 @@ export async function montarPedidoDePausa(
 
   const criativos = await prisma.metaAdCreative.findMany({
     where: { adAccountId: { in: [...donoDaConta.keys()] }, effectiveStatus: "ACTIVE" },
-    select: { adId: true, adName: true, titulo: true, legenda: true, adAccountId: true },
+    select: { adId: true, adName: true, titulo: true, legenda: true, adAccountId: true, adsetId: true, campaignId: true },
   });
+  const donoDe = await donosDosAnuncios(criativos);
   const anuncios: AnuncioDaLoja[] = criativos.flatMap((c) => {
     const clientId = donoDaConta.get(c.adAccountId);
     if (!clientId) return [];
     return [
       {
         adId: c.adId,
-        nome: c.adName,
+        nome: nomeIdentificavel(c.adName, donoDe(c).conjunto, donoDe(c).campanha).nome,
         textos: [c.titulo, c.legenda].filter((x): x is string => !!x),
         clientId,
       },

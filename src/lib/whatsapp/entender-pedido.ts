@@ -256,12 +256,28 @@ function soNumero(p: string): boolean {
  * exclusiva, e quando o robô age ele tira os dois do ar juntos.
  */
 export function nomeNormalizado(nome: string): string {
-  return achatar(nome)
+  // "CONJUNTO — Foto 3" (nome montado pra anúncio de nome genérico, ver nome-do-anuncio.ts): o carro é o conjunto, e a parte
+  // depois do "—" (formato e número da variação) não separa carro nenhum.
+  const corte = nome.lastIndexOf(" — ");
+  if (corte > 0) {
+    const depois = achatar(nome.slice(corte + 3)).split(" ").filter(Boolean);
+    if (depois.length > 0 && depois.every((p) => PALAVRAS_DE_FORMATO.has(p) || /^v?\d{1,2}$/.test(p))) return nomeNormalizado(nome.slice(0, corte));
+  }
+  // Sem as palavras de FORMATO: "PULSE AUDACE Stories" e "PULSE AUDACE Video" são o mesmo carro.
+  const sobra = achatar(nome)
     .split(" ")
-    .filter((p) => p !== "copia" && p !== "video")
+    .filter((p) => p && !PALAVRAS_DE_FORMATO.has(p))
     .join(" ")
     .trim();
+  return sobra || achatar(nome);
 }
+
+/** Palavras que dizem o formato/variação do anúncio, não o carro. */
+export const PALAVRAS_DE_FORMATO = new Set([
+  "stories", "story", "storie", "feed", "reels", "reel", "video", "videos", "foto", "fotos", "imagem", "imagens", "img",
+  "carrossel", "carousel", "copia", "copy", "anuncio", "anuncios", "ad", "ads", "criativo", "criativos",
+  "estatico", "estatica", "vertical", "horizontal", "quadrado", "quadrada",
+]);
 
 
 // ─────────────── O nome do anúncio colado inteiro na mensagem ───────────────

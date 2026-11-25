@@ -505,3 +505,32 @@ performando e onde mexer", pontos de atenção, sugestões e "Daria pra mudar a 
   "Onde mexer…" da resposta, e o bloco "Daria pra pausar/mudar verba" **não sai**.
 - Ação de verba sem valor de verdade (`valorReais` nulo/zero) **nunca sai** ("R$ null").
 - "Os ativos" sem dizer "carros" ("me manda os ativos da Área 42", "envia os que estão no ar") também vira a lista.
+
+
+## O erro da Clube Mais (25/11/2026): continuidade, nome do carro e trava de quantidade
+
+**O que aconteceu.** "@robô pause todos os anúncios do fiat pulse audace" → o robô perguntou "Qual desses eu tiro do ar?" listando
+só "Stories / Video / Video / Feed - Stories" (os anúncios da loja têm nome de FORMATO; o carro fica no nome do CONJUNTO). O
+Guilherme respondeu "@robô pause todos Stories vídeo vídeos feed - stories", e o robô leu como pedido NOVO: pausou todo anúncio
+chamado Stories/Video/Feed da loja inteira, de todos os carros (o "mesmo carro" juntava anúncios pelo nome, e "Video" era o mesmo
+nome em todos).
+
+**O que mudou.**
+- **Nome com o carro** (`nome-do-anuncio.ts`): anúncio de nome genérico (só formato: stories, video, feed, reels, foto, carrossel,
+  cópia, números de variação) passa a se chamar "CONJUNTO — anúncio" (ou campanha, se o conjunto também for genérico). Vale pra
+  achar, agrupar, perguntar, responder "tirei do ar", lista de carros ativos (aí aparece só o carro, uma vez) e Meu Dia.
+  `nomeNormalizado` ignora as palavras de formato e a parte depois do "—" quando ela é só formato/número: todos os anúncios do
+  conjunto são o mesmo carro.
+- **Continuidade** (`pergunta-no-grupo.ts`, tabela `perguntas_no_grupo`): a pergunta "Qual desses?" agora é **numerada** e fica
+  guardada 15 min, pra QUEM pediu. A resposta escolhe **só dentro da lista**: números ("1 e 3"), "todos", os nomes, ou "nenhum"
+  (cancela). Outra pessoa respondendo não usa a pergunta de quem pediu.
+- **"Todos os anúncios do X"**: se a dúvida é só entre anúncios do MESMO carro, "todos" resolve sem perguntar.
+- **Trava de quantidade**: um pedido que tiraria **mais de 8 anúncios** pergunta antes ("Isso tira N anúncios de M carros… Confirma?
+  responde *sim*").
+- **Desfazer pelo Meu Dia**: o bloco do robô mostra **hoje e ontem** (contando da meia-noite de Brasília — antes o "hoje" começava
+  às 9h e escondia o que acontecia cedo), com **Religar** em cada anúncio e **Religar os N deste pedido**. Quem religa é uma pessoa
+  clicando (o robô continua nunca ligando nada sozinho).
+
+Teste com o caso exato (`t-pulse`): o pedido do print pausa só os 4 do Pulse; a resposta do print, com a pergunta aberta, também;
+sem pergunta aberta ela não pausa nada (pergunta, mostrando o carro de cada anúncio); "1 e 3", "nenhum", outra pessoa, a trava
+com 9 anúncios + "sim".

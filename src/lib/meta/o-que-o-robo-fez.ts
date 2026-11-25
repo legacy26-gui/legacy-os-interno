@@ -2,6 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { hojeUTC } from "./insights";
+import { donosDosAnuncios, nomeEhGenerico, nomeIdentificavel } from "@/lib/whatsapp/nome-do-anuncio";
 
 // O que o robô do WhatsApp andou fazendo — pra aparecer no Meu Dia.
 //
@@ -40,10 +41,15 @@ export interface AcaoDoRobo {
   quando: Date;
   ok: boolean;
   erro: string | null;
+  /** Pra religar pela tela. */
+  nivel: string;
+  objetoId: string;
+  /** Alguém já religou depois (pela tela ou no Gerenciador, quando a leitura viu). */
+  religado: boolean;
 }
 
 export interface OQueORoboFez {
-  /** Desligados hoje. Some amanhã. */
+  /** Desligados nos últimos 2 dias (hoje e ontem), com o botão de religar. */
   feitos: AcaoDoRobo[];
   /** Tentou e não conseguiu, nos últimos dias. Fica até alguém resolver. */
   falhas: AcaoDoRobo[];
@@ -70,6 +76,8 @@ export async function oQueORoboFez(
     select: {
       id: true,
       clientId: true,
+      nivel: true,
+      objetoId: true,
       nome: true,
       pedidoPor: true,
       pedidoTexto: true,
@@ -80,11 +88,34 @@ export async function oQueORoboFez(
     },
   });
 
+  // Religado depois? Uma ação de LIGAR com sucesso no mesmo objeto, mais nova que a pausa.
+  const ligados = await prisma.metaAcao.findMany({
+    where: { objetoId: { in: [...new Set(linhas.map((l) => l.objetoId))] }, statusPedido: "ACTIVE", ok: true, criadoEm: { gte: limiteDasFalhas } },
+    select: { objetoId: true, criadoEm: true },
+  });
+  const religadoDepois = (l: (typeof linhas)[number]) => ligados.some((x) => x.objetoId === l.objetoId && x.criadoEm > l.criadoEm);
+
+  // Anúncio de nome só de formato ("Stories", "Video"): mostra com o conjunto na frente, pra saber de QUAL carro era — inclusive
+  // nas pausas gravadas antes de o robô passar a guardar o nome completo.
+  const genericos = linhas.filter((l) => l.nivel === "anuncio" && nomeEhGenerico(l.nome));
+  const criativos = genericos.length
+    ? await prisma.metaAdCreative.findMany({ where: { adId: { in: [...new Set(genericos.map((l) => l.objetoId))] } }, select: { adId: true, adsetId: true, campaignId: true } })
+    : [];
+  const donoDe = await donosDosAnuncios(criativos);
+  const porAd = new Map(criativos.map((c) => [c.adId, c]));
+  const nomeMostrado = (l: (typeof linhas)[number]) => {
+    const c = l.nivel === "anuncio" && nomeEhGenerico(l.nome) ? porAd.get(l.objetoId) : undefined;
+    return c ? nomeIdentificavel(l.nome, donoDe(c).conjunto, donoDe(c).campanha).nome : l.nome;
+  };
+
   const comoAcao = (l: (typeof linhas)[number]): AcaoDoRobo => ({
+    nivel: l.nivel,
+    objetoId: l.objetoId,
+    religado: religadoDepois(l),
     id: l.id,
     clientId: l.clientId,
     loja: l.client.companyName,
-    anuncio: l.nome,
+    anuncio: nomeMostrado(l),
     pedidoPor: l.pedidoPor,
     frase: l.pedidoTexto,
     quando: l.criadoEm,
@@ -97,8 +128,19 @@ export async function oQueORoboFez(
     // nove da manhã pergunta "o que aconteceu hoje", não "o que aconteceu
     // desde ontem às nove".
     feitos: linhas
-      .filter((l) => l.ok && l.criadoEm >= inicioDeHoje)
+      // Hoje E ontem: um erro do robô de ontem (ex.: pausou o carro errado) tem que continuar à vista pra ser desfeito.
+      .filter((l) => l.ok && l.criadoEm >= meiaNoiteDeOntemEmBrasilia(agora))
       .map(comoAcao),
     falhas: linhas.filter((l) => !l.ok).map(comoAcao),
   };
+}
+
+/**
+ * 00:00 de ONTEM no horário de Brasília. (O `hojeUTC` das leituras da Meta é o MEIO-DIA do dia, um marcador de data — usado
+ * como "início de hoje", ele escondia o que o robô fez antes das 9h.)
+ */
+function meiaNoiteDeOntemEmBrasilia(agora: Date): Date {
+  const [a, m, d] = agora.toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" }).split("-").map(Number);
+  // Brasília é UTC−3 o ano todo (sem horário de verão desde 2019): 00:00 lá = 03:00 UTC.
+  return new Date(Date.UTC(a, m - 1, d - 1, 3, 0, 0));
 }

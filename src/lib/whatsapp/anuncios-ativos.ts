@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { donosDosAnuncios, nomeEhGenerico, nomeIdentificavel } from "./nome-do-anuncio";
 
 // "Quais anúncios ativos?" no grupo da loja: a lista dos carros que estão no ar, organizada.
 //
@@ -177,8 +178,10 @@ export async function listaDosAnunciosAtivos(loja: { nome: string; contas: strin
   }
   const ativos = await prisma.metaAdCreative.findMany({
     where: { adAccountId: { in: loja.contas }, effectiveStatus: "ACTIVE" },
-    select: { adId: true, adName: true },
+    select: { adId: true, adName: true, adsetId: true, campaignId: true },
   });
+  // Anúncio de nome só de formato ("Stories", "Video"): o carro é o nome do conjunto, e é ele que vai pra lista (uma vez só).
+  const donoDe = await donosDosAnuncios(ativos);
   const vida = ativos.length
     ? await prisma.metaLifetime.findMany({
         where: { adAccountId: { in: loja.contas }, adId: { in: ativos.map((a) => a.adId) } },
@@ -190,7 +193,7 @@ export async function listaDosAnunciosAtivos(loja: { nome: string; contas: strin
     const v = dosNumeros.get(a.adId);
     return {
       adId: a.adId,
-      nome: a.adName,
+      nome: nomeEhGenerico(a.adName) ? nomeIdentificavel(a.adName, donoDe(a).conjunto, donoDe(a).campanha).carro : a.adName,
       spendCents: v?.spendCents ?? 0,
       leads: v?.leads ?? 0,
       desde: v?.desde ?? null,

@@ -3,12 +3,14 @@ import "server-only";
 import { prisma } from "@/lib/prisma";
 import { enviarTexto } from "./zapi";
 import {
+  achatar,
   entenderPedidoComVarios,
+  nomeNormalizado,
   type AnuncioConhecido,
   type PedidoComVarios,
   type Sugestao,
 } from "./entender-pedido";
-import { foiMencionado, marcacoesDoTexto, semAMarcacao } from "./mencao";
+import { foiMencionado, marcacoesDoTexto, mesmoNumero, semAMarcacao } from "./mencao";
 import { lidDoRobo } from "./identidade-do-robo";
 import { acharPessoaPeloNumero } from "./atender-privado";
 import { responderComoPessoa } from "@/lib/copiloto/responder";
@@ -16,6 +18,8 @@ import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { anotar } from "./trilha";
 import { listaDosAnunciosAtivos, pedeListaDeAnuncios } from "./anuncios-ativos";
 import { tratarListaNoPrivado } from "./anuncios-ativos-no-privado";
+import { donosDosAnuncios, nomeIdentificavel } from "./nome-do-anuncio";
+import { apagarPergunta, guardarPergunta, lerPergunta, lerResposta } from "./pergunta-no-grupo";
 import { pedeSugestao, semRecomendacao } from "@/lib/copiloto/pede-sugestao";
 import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
 import { atenderGrupoFinanceiro, type DesfechoFinanceiro } from "@/lib/financeiro-ia/atender-financeiro";
@@ -121,7 +125,9 @@ export type Desfecho =
  * Lista comprida no WhatsApp não é lida. Se há mais que isto parecendo com o
  * que foi pedido, o pedido estava vago demais pra valer uma lista.
  */
-const MAXIMO_NA_PERGUNTA = 5;
+const MAXIMO_NA_PERGUNTA = 10;
+/** Acima disto, um pedido só tira do ar depois de um "sim" (trava contra entender errado). */
+const LIMITE_SEM_CONFIRMAR = 8;
 
 /**
  * Falaram comigo? — pelo telefone OU pelo "@lid".
@@ -320,7 +326,24 @@ export async function atenderMensagemDoGrupo(
   // pedido de nada, e lida como pedido cairia em "esse carro não está nos
   // anúncios". Dois: quando é um aviso de venda, o robô desliga o anúncio do
   // mesmo jeito que sempre fez — aqui só se decide o que MAIS dizer.
-  const venda = await tratarVendaNoGrupo({
+  // ── A resposta a uma pergunta que o robô deixou aberta ──────────────────
+  //
+  // "Qual desses eu tiro do ar? 1… 2… 3…" → "1 e 3" / "todos" / os nomes. A resposta de QUEM pediu escolhe SÓ dentro da lista
+  // guardada (ver pergunta-no-grupo.ts): sem isto, os nomes da resposta eram lidos como pedido novo e casavam com anúncios de
+  // outros carros. Vem antes da venda: "1 e 3" não é aviso de venda.
+  const aberta = await lerPergunta(m.grupoId);
+  const daPessoa = !!aberta && aberta.clientId === loja.id && (!aberta.quem || !m.telefone || mesmoNumero(aberta.quem, m.telefone));
+  const resposta = aberta && daPessoa ? lerResposta(semAMarcacao(m.texto), aberta.tipo, aberta.candidatos) : null;
+  if (resposta?.tipo === "cancelou") {
+    await apagarPergunta(m.grupoId);
+    await anotar(m.messageId, m.grupoId, "pergunta-cancelada", loja.companyName);
+    await responder(m.grupoId, "Ok, não tirei nenhum.", m.messageId);
+    return { tipo: "perguntou", clientId: loja.id, quantos: 0 };
+  }
+
+  const venda = resposta
+    ? ({ fim: false, recado: null, passo: null } as unknown as Awaited<ReturnType<typeof tratarVendaNoGrupo>>)
+    : await tratarVendaNoGrupo({
     loja: {
       id: loja.id,
       companyName: loja.companyName,
@@ -347,7 +370,7 @@ export async function atenderMensagemDoGrupo(
   // tem esse nome, o robô cai no pedido de sempre (tirar os anúncios do carro) e
   // diz isso na resposta — quem pediu quer o carro parado, e não um "não achei".
   let conjuntoNaoAchado = false;
-  if (pedeConjunto(semAMarcacao(m.texto))) {
+  if (!resposta && pedeConjunto(semAMarcacao(m.texto))) {
     const conjuntos = await conjuntosNoAr(contas);
     const lidoC = entenderPedidoComVarios(semPalavraConjunto(semAMarcacao(m.texto)), conjuntos);
     if (lidoC.intencao === "desligar" && lidoC.alvos.length > 0) {
@@ -362,20 +385,49 @@ export async function atenderMensagemDoGrupo(
         // pedido que se atende sozinho, e um anúncio pausado na lista só
         // aumentaria a chance de o robô escolher o errado.
         where: { adAccountId: { in: contas }, effectiveStatus: "ACTIVE" },
-        select: { adId: true, adName: true, titulo: true, legenda: true },
+        select: { adId: true, adName: true, titulo: true, legenda: true, adsetId: true, campaignId: true },
       })
     : [];
 
+  // Anúncio de nome só de formato ("Stories", "Video") ganha o nome do conjunto: é ele que diz o carro. Ver nome-do-anuncio.ts.
+  const donoDe = await donosDosAnuncios(criativos);
   const anuncios: AnuncioConhecido[] = criativos.map((c) => ({
     adId: c.adId,
-    nome: c.adName,
+    nome: nomeIdentificavel(c.adName, donoDe(c).conjunto, donoDe(c).campanha).nome,
     textos: [c.titulo, c.legenda].filter((t): t is string => !!t),
   }));
 
   // Sem a marcação: o número do robô dentro do texto entraria na conta de
   // raridade de palavras e poderia, sozinho, empurrar a escolha pro anúncio
   // errado. Ver semAMarcacao.
-  const pedido = entenderPedidoComVarios(semAMarcacao(m.texto), anuncios);
+  let pedido: PedidoComVarios;
+  let confirmado = false;
+  if (resposta?.tipo === "escolheu") {
+    await apagarPergunta(m.grupoId);
+    // Só o que AINDA está no ar, e só da lista que foi perguntada.
+    const noAr = new Map(anuncios.map((a) => [a.adId, a]));
+    const escolhidos = resposta.adIds.map((id) => noAr.get(id)).filter((a): a is AnuncioConhecido => !!a);
+    await anotar(m.messageId, m.grupoId, "resposta-da-pergunta", `${aberta!.tipo} · ${escolhidos.length} de ${aberta!.candidatos.length}`);
+    if (escolhidos.length === 0) {
+      await responder(m.grupoId, "Esses já não estão mais no ar.", m.messageId);
+      return { tipo: "perguntou", clientId: loja.id, quantos: 0 };
+    }
+    pedido = { intencao: "desligar", alvos: [{ trecho: "", candidatos: escolhidos, semDuvida: true, mesmoCarro: escolhidos }], sugestoes: [] };
+    confirmado = true;
+  } else {
+    pedido = entenderPedidoComVarios(semAMarcacao(m.texto), anuncios);
+    // "Pausa TODOS os anúncios do Pulse": se a dúvida é só entre anúncios do MESMO carro, "todos" resolve — são todos eles.
+    if (/\b(todos|todas)\b/.test(achatar(semAMarcacao(m.texto)))) {
+      pedido = {
+        ...pedido,
+        alvos: pedido.alvos.map((a) =>
+          !a.semDuvida && a.candidatos.length > 0 && new Set(a.candidatos.map((c) => nomeNormalizado(c.nome))).size === 1
+            ? { ...a, semDuvida: true, mesmoCarro: a.candidatos }
+            : a,
+        ),
+      };
+    }
+  }
   // O carro vendido já estava pausado (ou nem tinha anúncio no ar): não há o que
   // desligar, e dizer "esse carro não está no ar" seria a resposta errada a um
   // aviso de venda. O que o robô tem a dizer é sobre a venda.
@@ -477,6 +529,26 @@ export async function atenderMensagemDoGrupo(
 
   const quem = [m.quem, m.telefone].filter(Boolean).join(" · ") || null;
 
+  // ── Trava de quantidade ───────────────────────────────────────────────
+  //
+  // Um pedido que tiraria muitos anúncios de uma vez PERGUNTA antes. É a rede de segurança pro caso de o robô ter entendido
+  // errado: um "sim" a mais custa uma mensagem; uma loja inteira fora do ar custa o dia.
+  const aTirar = pedido.alvos.filter((a) => a.semDuvida).flatMap((a) => a.mesmoCarro);
+  if (!confirmado && aTirar.length > LIMITE_SEM_CONFIRMAR) {
+    const carros = [...new Set(aTirar.map((a) => (a.nome.includes(" — ") ? a.nome.split(" — ")[0] : a.nome)))];
+    await guardarPergunta({ grupoId: m.grupoId, clientId: loja.id, quem: m.telefone ?? null, tipo: "confirmar", candidatos: aTirar.map((a) => ({ adId: a.adId, nome: a.nome })) });
+    await anotar(m.messageId, m.grupoId, "pediu-confirmacao", `${aTirar.length} anúncios`);
+    await responder(
+      m.grupoId,
+      `Isso tira *${aTirar.length} anúncios* do ar, de ${carros.length === 1 ? "um carro" : `${carros.length} carros`}:\n` +
+        carros.slice(0, 10).map((c) => `• ${c}`).join("\n") +
+        (carros.length > 10 ? `\n…e mais ${carros.length - 10}.` : "") +
+        "\n\nConfirma? Me marca e responde *sim*. Pra não tirar: *não*.",
+      m.messageId,
+    );
+    return { tipo: "perguntou", clientId: loja.id, quantos: aTirar.length };
+  }
+
   const tirados: string[] = [];
   const idsTirados: string[] = [];
   const falhas: string[] = [];
@@ -534,7 +606,8 @@ export async function atenderMensagemDoGrupo(
       });
 
       if (r.ok) {
-        tirados.push(objeto.nome);
+        // O nome que diz o carro ("FIAT PULSE AUDACE — Stories"), não o do anúncio sozinho ("Stories").
+        tirados.push(candidato.nome);
         idsTirados.push(candidato.adId);
         await anotar(m.messageId, m.grupoId, "pausou", objeto.nome);
       } else {
@@ -585,7 +658,10 @@ export async function atenderMensagemDoGrupo(
     );
   }
   if (emDuvida.length > 0) {
-    partes.push(textoDaPergunta(emDuvida));
+    // A lista fica guardada: a próxima resposta de quem pediu escolhe SÓ dentro dela (números, "todos" ou os nomes).
+    const unicos = [...new Map(emDuvida.map((a) => [a.adId, a])).values()].slice(0, MAXIMO_NA_PERGUNTA);
+    await guardarPergunta({ grupoId: m.grupoId, clientId: loja.id, quem: m.telefone ?? null, tipo: "qual", candidatos: unicos.map((a) => ({ adId: a.adId, nome: a.nome })) });
+    partes.push(textoDaPergunta(unicos));
   }
   // Uma palavra que não casou mas lembra um carro, numa mensagem em que o
   // resto foi atendido: "pausar virtual e o gol" tirou o gol e ainda deve
@@ -939,23 +1015,12 @@ async function atenderNoGrupoInterno(m: MensagemDoGrupo): Promise<Desfecho> {
  * — então a pergunta tem que ensinar como responder.
  */
 function textoDaPergunta(candidatos: AnuncioConhecido[]): string {
-  const comoResponder =
-    "Me marca com @ de novo junto com o nome e eu desligo.";
-
-  // A lista vazia não chega mais aqui: ela virou o caminho do "não está
-  // anunciado", que avisa a equipe no privado em vez de discutir no grupo do
-  // cliente. Ficou a guarda, porque função que confia em quem a chama é
-  // função que quebra no dia em que alguém a chamar de outro lugar.
-  if (candidatos.length === 0) return comoResponder;
-  const lista = candidatos
-    .slice(0, MAXIMO_NA_PERGUNTA)
-    .map((c) => `• ${c.nome}`)
-    .join("\n");
-  const sobrando = candidatos.length - MAXIMO_NA_PERGUNTA;
+  // Numerada e com o nome que diz o carro ("FIAT PULSE AUDACE — Stories"): a resposta pode ser só o número.
+  if (candidatos.length === 0) return "Me marca com @ de novo junto com o nome e eu desligo.";
+  const lista = candidatos.slice(0, MAXIMO_NA_PERGUNTA).map((c, i) => `${i + 1}. ${c.nome}`).join("\n");
   return (
-    `Qual desses eu tiro do ar?\n\n${lista}` +
-    (sobrando > 0 ? `\n…e mais ${sobrando}.` : "") +
-    `\n\n${comoResponder}`
+    `Qual desses eu tiro do ar?\n\n${lista}\n\n` +
+    "Me marca e responde com o número (ex.: *1 e 3*) ou *todos*. Pra não tirar nenhum: *nenhum*."
   );
 }
 

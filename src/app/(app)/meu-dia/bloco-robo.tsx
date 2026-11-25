@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Bot, AlertTriangle, MessageSquareQuote } from "lucide-react";
 import type { OQueORoboFez, AcaoDoRobo } from "@/lib/meta/o-que-o-robo-fez";
+import { Religar } from "./religar";
 
 // O que o robô do WhatsApp fez, no Meu Dia.
 //
@@ -48,17 +49,30 @@ export function BlocoDoRobo({ oQueFez }: { oQueFez: OQueORoboFez }) {
           <p className="text-sm font-semibold flex items-center gap-2">
             <Bot size={15} className="text-accent shrink-0" />
             {feitos.length === 1
-              ? "O robô tirou 1 carro do ar hoje"
-              : `O robô tirou ${feitos.length} carros do ar hoje`}
+              ? "O robô tirou 1 anúncio do ar (hoje e ontem)"
+              : `O robô tirou ${feitos.length} anúncios do ar (hoje e ontem)`}
           </p>
-          <ul className="flex flex-col gap-2">
-            {feitos.map((a) => (
-              <Linha key={a.id} acao={a} />
-            ))}
-          </ul>
+          {/* Agrupado por PEDIDO (a mesma frase, na mesma loja): se o robô entendeu errado, religa o pedido inteiro de uma vez. */}
+          {porPedido(feitos).map((g) => {
+            const pendentes = g.acoes.filter((a) => !a.religado);
+            return (
+              <div key={g.chave} className="flex flex-col gap-1.5 border-t border-border/60 pt-2 first:border-0 first:pt-0">
+                <ul className="flex flex-col gap-2">
+                  {g.acoes.map((a) => (
+                    <Linha key={a.id} acao={a} />
+                  ))}
+                </ul>
+                {pendentes.length > 1 && (
+                  <Religar
+                    rotulo={`Religar os ${pendentes.length} deste pedido`}
+                    itens={pendentes.map((a) => ({ clientId: a.clientId, nivel: a.nivel, objetoId: a.objetoId }))}
+                  />
+                )}
+              </div>
+            );
+          })}
           <p className="text-xs text-foreground-muted">
-            Pedido no grupo da loja. Se algum estiver errado, é só religar na
-            tela da loja — o anúncio foi pausado, não apagado.
+            Pedido no grupo da loja. Se o robô entendeu errado, é só religar aqui — o anúncio foi pausado, não apagado.
           </p>
         </section>
       )}
@@ -79,12 +93,20 @@ function Linha({ acao }: { acao: AcaoDoRobo }) {
         <span className="text-foreground-muted">·</span>
         <span>{acao.anuncio}</span>
         <span className="text-xs text-foreground-muted">
-          {acao.quando.toLocaleTimeString("pt-BR", {
+          {acao.quando.toLocaleString("pt-BR", {
+            day: "2-digit",
+            month: "2-digit",
             hour: "2-digit",
             minute: "2-digit",
             timeZone: "America/Sao_Paulo",
           })}
         </span>
+        {acao.ok &&
+          (acao.religado ? (
+            <span className="text-xs text-emerald-600 dark:text-emerald-400">religado</span>
+          ) : (
+            <Religar rotulo="Religar" itens={[{ clientId: acao.clientId, nivel: acao.nivel, objetoId: acao.objetoId }]} />
+          ))}
       </span>
 
       {acao.frase && (
@@ -102,4 +124,16 @@ function Linha({ acao }: { acao: AcaoDoRobo }) {
       )}
     </li>
   );
+}
+
+/** Agrupa as pausas pelo pedido que as causou (loja + frase + minuto). */
+function porPedido(acoes: AcaoDoRobo[]) {
+  const grupos = new Map<string, { chave: string; acoes: AcaoDoRobo[] }>();
+  for (const a of acoes) {
+    const chave = `${a.clientId}|${a.frase ?? ""}|${Math.floor(new Date(a.quando).getTime() / 120_000)}`;
+    const g = grupos.get(chave) ?? { chave, acoes: [] };
+    g.acoes.push(a);
+    grupos.set(chave, g);
+  }
+  return [...grupos.values()];
 }

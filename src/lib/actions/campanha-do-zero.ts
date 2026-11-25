@@ -51,7 +51,7 @@ export interface CarroDoZero {
 }
 
 export async function prepararCampanhaDoZero(clientId: string): Promise<
-  { ok: true; loja: string; cidade: string | null; rodape: string; rodapeDoSite: boolean; contas: { id: string; nome: string; metaAccountId: string }[]; carros: CarroDoZero[] } | { ok: false; erro: string }
+  { ok: true; loja: string; cidade: string | null; artesSoltas: { id: string; nome: string }[]; rodape: string; rodapeDoSite: boolean; contas: { id: string; nome: string; metaAccountId: string }[]; carros: CarroDoZero[] } | { ok: false; erro: string }
 > {
   return semQuebrar(async () => {
     if (!(await pode(clientId))) return { ok: false as const, erro: "Esta loja não está na sua carteira." };
@@ -63,8 +63,10 @@ export async function prepararCampanhaDoZero(clientId: string): Promise<
       select: { id: true, titulo: true, anoModelo: true, km: true, cor: true, precoCents: true, foto: true, rascunhoAdId: true, arte: { select: { id: true } } },
     });
     const rod = await rodapeDaLoja(clientId);
+    const artesSoltas = await prisma.arteDoCarro.findMany({ where: { clientId, carroId: null }, select: { id: true, nome: true }, orderBy: { criadoEm: "desc" }, take: 60 });
     return {
       ok: true as const,
+      artesSoltas,
       rodape: rod.rodape,
       rodapeDoSite: rod.doSite,
       loja: loja?.companyName ?? "",

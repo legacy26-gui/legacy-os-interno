@@ -43,6 +43,7 @@ export default async function CampanhaDoZeroPage({ params }: { params: Promise<{
           clientId={clientId}
           loja={dados.loja}
           rodape={dados.rodape}
+          artesSoltas={dados.artesSoltas}
           rodapeDoSite={dados.rodapeDoSite}
           contas={dados.contas}
           carros={dados.carros}

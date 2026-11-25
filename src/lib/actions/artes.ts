@@ -2,14 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
-import { requireModuleAccess } from "@/lib/dal";
+import { getCurrentUser } from "@/lib/dal";
+import { canAccessModule } from "@/lib/permissions";
 import { escopoDaCarteira } from "@/lib/carteira";
 import { carrosParaArte, escolherCarroPeloArquivo, prepararArte } from "@/lib/estoque/artes";
 
 // O banco de artes de uma loja: subir, trocar o carro, apagar. Só quem tem a loja na carteira.
 
+// Usado na tela do Estoque (gestao-contas) e na Campanha do zero (clientes): vale quem entra em qualquer uma das duas.
 async function lojaDaPessoa(clientId: string) {
-  const user = await requireModuleAccess("gestao-contas");
+  const user = await getCurrentUser();
+  if (!canAccessModule(user.role, "gestao-contas", user.email) && !canAccessModule(user.role, "clientes", user.email)) return null;
+  if (typeof clientId !== "string" || !clientId) return null;
   return prisma.client.findFirst({ where: { id: clientId, ...escopoDaCarteira(user) }, select: { id: true } });
 }
 

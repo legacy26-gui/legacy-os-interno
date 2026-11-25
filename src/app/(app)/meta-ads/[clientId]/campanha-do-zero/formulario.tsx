@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, Search, Trash2, Check, AlertTriangle, ExternalLink, Sparkles } from "lucide-react";
+import { Loader2, Search, Trash2, Check, AlertTriangle, ExternalLink, Sparkles, Upload, X } from "lucide-react";
+import { atribuirArte, subirArte } from "@/lib/actions/artes";
 import { criarAnuncioNoZero, criarEstruturaDoZero, legendaDoZero, listarPaginas, type CarroDoZero } from "@/lib/actions/campanha-do-zero";
 import { procurarLocais } from "@/lib/actions/publico-do-conjunto";
 import { IDADE_MAXIMA, IDADE_MINIMA, RAIOS_DA_CIDADE, type GeneroDoPublico, type LocalDoPublico } from "@/lib/meta/publico-puro";
@@ -26,6 +27,7 @@ export function FormularioDoZero(p: {
   loja: string;
   rodape: string;
   rodapeDoSite: boolean;
+  artesSoltas: { id: string; nome: string }[];
   contas: { id: string; nome: string; metaAccountId: string }[];
   carros: CarroDoZero[];
   paginasIniciais: { id: string; nome: string }[];
@@ -38,6 +40,13 @@ export function FormularioDoZero(p: {
   const [nome, setNome] = useState(`${p.loja} — WhatsApp`);
   const [objetivo, setObjetivo] = useState<"leads" | "engajamento">("leads");
   const [rodape, setRodape] = useState(p.rodape);
+  // As artes: a de cada carro (vai como 1ª foto) e as que subiram sem carro definido (arrastar pro carro ou escolher).
+  const [arteDoCarro, setArteDoCarro] = useState<Record<string, string>>(() => Object.fromEntries(p.carros.filter((c) => c.arteId).map((c) => [c.id, c.arteId as string])));
+  const [soltas, setSoltas] = useState(p.artesSoltas);
+  const [nomeDaArte, setNomeDaArte] = useState<Record<string, string>>(() => Object.fromEntries(p.artesSoltas.map((a) => [a.id, a.nome])));
+  const [subindoArte, setSubindoArte] = useState<string | null>(null);
+  const [msgArte, setMsgArte] = useState<string[]>([]);
+  const [alvo, setAlvo] = useState<string | null>(null);
   const [boasVindas, setBoasVindas] = useState("Oi! Como podemos ajudar?");
   const [mensagemPronta, setMensagemPronta] = useState("Olá! Posso ter mais informações sobre o {carro}?");
   const [estrutura, setEstrutura] = useState<"por-carro" | "um-conjunto" | "montada">("por-carro");
@@ -182,6 +191,66 @@ export function FormularioDoZero(p: {
   }
 
   const travado = fase !== "montando";
+
+  /** Põe a arte no carro (na tela). A que o carro tinha volta pra "sem carro", como no servidor. */
+  function colocarNoCarro(arteId: string, carroId: string | null) {
+    setArteDoCarro((antes) => {
+      const depois = { ...antes };
+      const soltar: string[] = [];
+      for (const [c, a] of Object.entries(depois)) if (a === arteId) delete depois[c];
+      if (carroId) {
+        if (depois[carroId] && depois[carroId] !== arteId) soltar.push(depois[carroId]);
+        depois[carroId] = arteId;
+      } else soltar.push(arteId);
+      setSoltas((s) => [...soltar.map((id) => ({ id, nome: nomeDaArte[id] ?? "arte" })), ...s.filter((x) => x.id !== arteId && !soltar.includes(x.id))]);
+      return depois;
+    });
+  }
+
+  async function subirArtes(arquivos: File[], carroId?: string) {
+    const lista = carroId ? arquivos.slice(0, 1) : arquivos;
+    if (lista.length === 0) return;
+    const saida: string[] = [];
+    for (const [i, f] of lista.entries()) {
+      setSubindoArte(`Subindo ${i + 1} de ${lista.length}: ${f.name}`);
+      const form = new FormData();
+      form.set("clientId", p.clientId);
+      form.set("arquivo", f);
+      if (carroId) form.set("carroId", carroId);
+      try {
+        const r = await subirArte(form);
+        if (!r.ok) {
+          saida.push(`✗ ${r.erro}`);
+          continue;
+        }
+        setNomeDaArte((n) => ({ ...n, [r.id]: f.name }));
+        if (r.carroId) colocarNoCarro(r.id, r.carroId);
+        else setSoltas((s) => [{ id: r.id, nome: f.name }, ...s]);
+        saida.push(r.carro ? `✓ ${f.name} → ${r.carro}` : `• ${f.name}: arraste pro carro ou escolha abaixo`);
+      } catch {
+        saida.push(`✗ ${f.name}: não subiu (arquivo maior que 6 MB?)`);
+      }
+    }
+    setSubindoArte(null);
+    setMsgArte(saida);
+  }
+
+  async function ligarArte(arteId: string, carroId: string) {
+    const r = await atribuirArte(p.clientId, arteId, carroId);
+    if (r.erro) return setMsgArte([`✗ ${r.erro}`]);
+    colocarNoCarro(arteId, carroId || null);
+  }
+
+  /** Soltar em cima de um carro: arquivo do computador sobe pra ele; arte da bandeja é ligada a ele. */
+  function soltarNoCarro(e: React.DragEvent, carroId: string) {
+    e.preventDefault();
+    setAlvo(null);
+    if (travado) return;
+    const arteId = e.dataTransfer.getData("text/x-arte");
+    if (arteId) return void ligarArte(arteId, carroId);
+    const arquivos = [...e.dataTransfer.files].filter((f) => f.type.startsWith("image/"));
+    if (arquivos.length) void subirArtes(arquivos, carroId);
+  }
   const caixa = "rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3";
   const campo = "rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm";
 
@@ -463,22 +532,130 @@ export function FormularioDoZero(p: {
             A IA termina cada legenda com este rodapé, e ele fica salvo pra loja.
           </span>
         </label>
-        <p className="text-xs text-foreground-muted">
-          {p.carros.filter((c) => c.arteId).length} de {p.carros.length} carros com arte (vai como 1ª foto, e as fotos do site são cortadas na proporção dela).{" "}
-          <a href={`/inteligencia-comercial/estoque/${p.clientId}/artes`} target="_blank" className="underline">Abrir o banco de artes</a>
-        </p>
+        <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border p-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <label
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (!travado) void subirArtes([...e.dataTransfer.files].filter((f) => f.type.startsWith("image/")));
+              }}
+              className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-accent bg-accent/10 text-sm font-medium cursor-pointer ${travado || subindoArte ? "opacity-50 pointer-events-none" : ""}`}
+            >
+              <Upload size={14} />
+              {subindoArte ?? "Subir artes (várias de uma vez, ou arraste aqui)"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                multiple
+                className="hidden"
+                aria-label="Subir artes"
+                onChange={(e) => {
+                  void subirArtes([...(e.target.files ?? [])]);
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <span className="text-xs text-foreground-muted">
+              {Object.keys(arteDoCarro).length} de {p.carros.length} carros com arte. A arte vai como 1ª foto e as fotos do site são cortadas na proporção dela.
+              Nome do arquivo com o carro (ex.: <code>onix lt 2020.png</code>) liga sozinho; senão, arraste a arte até o carro.{" "}
+              <a href={`/inteligencia-comercial/estoque/${p.clientId}/artes`} target="_blank" className="underline">Banco de artes</a>
+            </span>
+          </div>
+          {msgArte.length > 0 && (
+            <ul className="text-xs flex flex-col gap-0.5">
+              {msgArte.map((m, i) => (
+                <li key={i}>{m}</li>
+              ))}
+            </ul>
+          )}
+          {soltas.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Artes sem carro — arraste até o carro ou escolha:</span>
+              <div className="flex flex-wrap gap-2">
+                {soltas.map((a) => (
+                  <div
+                    key={a.id}
+                    draggable={!travado}
+                    onDragStart={(e) => e.dataTransfer.setData("text/x-arte", a.id)}
+                    className="w-32 rounded-lg border border-amber-500 p-1.5 flex flex-col gap-1 cursor-grab bg-surface"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/api/estoque/arte/${a.id}`} alt={a.nome} className="w-full h-24 object-contain rounded bg-surface-muted pointer-events-none" />
+                    <span className="text-[10px] truncate" title={a.nome}>
+                      {a.nome}
+                    </span>
+                    <select
+                      aria-label={`Carro da arte ${a.nome}`}
+                      disabled={travado}
+                      value=""
+                      onChange={(e) => e.target.value && void ligarArte(a.id, e.target.value)}
+                      className="rounded border border-border bg-surface text-[11px] px-1 py-0.5"
+                    >
+                      <option value="">de qual carro?</option>
+                      {p.carros.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.titulo}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         <p className="text-xs text-foreground-muted">Legenda vazia é escrita pela IA na hora de criar. O nome vale pro anúncio{estrutura === "por-carro" ? " e pro conjunto do carro" : ""}.{estrutura === "montada" ? " Escolha o conjunto de cada carro." : ""}</p>
         <ul className="flex flex-col gap-3">
           {linhas.map((l, i) => (
-            <li key={l.carro.id} className={`rounded-xl border p-3 flex flex-col gap-2 ${l.estado === "ok" ? "border-emerald-500/50" : l.estado === "erro" ? "border-red-500/50" : "border-border"}`}>
+            <li
+              key={l.carro.id}
+              data-carro={l.carro.titulo}
+              onDragOver={(e) => {
+                if (travado) return;
+                e.preventDefault();
+                if (alvo !== l.carro.id) setAlvo(l.carro.id);
+              }}
+              onDragLeave={() => setAlvo((a) => (a === l.carro.id ? null : a))}
+              onDrop={(e) => soltarNoCarro(e, l.carro.id)}
+              className={`rounded-xl border p-3 flex flex-col gap-2 ${alvo === l.carro.id ? "border-accent bg-accent/10" : l.estado === "ok" ? "border-emerald-500/50" : l.estado === "erro" ? "border-red-500/50" : "border-border"}`}
+            >
               <div className="flex items-start gap-3">
                 <input type="checkbox" disabled={travado || l.carro.jaAnunciado} checked={l.marcado} onChange={(e) => mudar(i, { marcado: e.target.checked })} className="mt-1" />
-                {l.carro.arteId ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={`/api/estoque/arte/${l.carro.arteId}`} alt="Arte" title="Arte do banco: vai como 1ª foto" className="w-16 h-16 object-cover rounded ring-2 ring-accent" />
-                ) : l.carro.foto && /^https:\/\//.test(l.carro.foto) && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={l.carro.foto} alt="" className="w-16 h-12 object-cover rounded" />
+                {arteDoCarro[l.carro.id] ? (
+                  <span className="relative shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={`/api/estoque/arte/${arteDoCarro[l.carro.id]}`} alt={`Arte do ${l.carro.titulo}`} title="Arte: vai como 1ª foto" className="w-16 h-16 object-cover rounded ring-2 ring-accent" />
+                    {!travado && (
+                      <button
+                        type="button"
+                        aria-label={`Tirar a arte do ${l.carro.titulo}`}
+                        onClick={() => void ligarArte(arteDoCarro[l.carro.id], "")}
+                        className="absolute -top-1.5 -right-1.5 rounded-full bg-surface border border-border p-0.5"
+                      >
+                        <X size={10} />
+                      </button>
+                    )}
+                  </span>
+                ) : (
+                  <label
+                    title="Solte a arte aqui ou clique pra escolher"
+                    className={`shrink-0 w-16 h-16 rounded border border-dashed border-border flex flex-col items-center justify-center text-[10px] text-foreground-muted text-center ${travado ? "" : "cursor-pointer hover:border-accent"}`}
+                  >
+                    <Upload size={12} />
+                    arte
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      disabled={travado}
+                      className="hidden"
+                      aria-label={`Arte do ${l.carro.titulo}`}
+                      onChange={(e) => {
+                        void subirArtes([...(e.target.files ?? [])], l.carro.id);
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
                 )}
                 <div className="flex-1 min-w-0 flex flex-col gap-1">
                   <input disabled={travado || !l.marcado} value={l.nome} onChange={(e) => mudar(i, { nome: e.target.value })} className={`${campo} font-medium`} />

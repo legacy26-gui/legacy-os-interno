@@ -17,3 +17,10 @@ Onde: **Inteligência Comercial → Estoque → (loja) → Banco de artes**  (`/
 - Se o site não der foto mas houver arte, o anúncio sai só com a arte.
 
 Código: `src/lib/estoque/artes.ts` (preparar, cortar, `fotosComArte`), `artes-puro.ts` (adivinhar o carro), `src/lib/actions/artes.ts`, imagem em `/api/estoque/arte/[id]` (só para quem tem a loja na carteira). Tabela `artes_dos_carros`.
+
+## Na Campanha do zero
+Na seção "4. Carros" dá pra subir as artes sem sair da tela:
+- **Subir artes**: várias de uma vez (ou arrastar os arquivos pro botão). Nome com o carro liga sozinho; as outras ficam na bandeja "Artes sem carro".
+- Da bandeja: **arrastar** a arte até o carro, ou escolher em "de qual carro?".
+- Em cada carro: quadrinho "arte" (clicar pra escolher o arquivo, ou soltar o arquivo em cima do carro) e o "×" pra tirar a arte (volta pra bandeja).
+- As mesmas permissões valem pra quem entra em Meta Ads (clientes) ou no Estoque (gestão de contas), sempre só nas lojas da carteira.

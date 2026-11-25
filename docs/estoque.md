@@ -51,7 +51,15 @@ fotos ficam no servidor do AutoCerto (link fixo). `sistema` = `api`.
 **Só a lista pública é lida.** O site da Bom Jesus também expõe em `/api/config` o token de integração do AutoCerto da loja: o
 sistema **não usa** isso (é credencial da loja, exposta por engano no site dela) — vale avisar quem fez o site.
 
-O "Ligar site" testa, nesta ordem: AutoCerto (`/Veiculos`), catálogo (`/estoque`), API (`/api/vehicles`).
+## Quarto tipo: Autoconf (ex.: dsmultimarcaspg.com.br) — `src/lib/estoque/site-autoconf.ts`
+
+Lista pública em **GET /api/stock?pagina=N&registros_por_pagina=100** → `{ data, total, total_paginas }`, página por página (até 20).
+Cada carro: `id, marca_nome, modelo_nome, anomodelo, km, cor_nome, valorvenda` (ou `valorpromocao`, quando tem), `fotos[{url}]`
+(S3 da Autoconf, link fixo). Página do carro: `/carros/<marca>/<modelo>/<ano>/<id>/` — só traz a capa; as fotos do "anunciar
+agora" vêm da lista, pelo id. Se a soma das páginas der menos carros do que o `total` que o site diz, grava o que veio mas **não
+marca saída**. `sistema` = `autoconf`.
+
+O "Ligar site" testa, nesta ordem: AutoCerto (`/Veiculos`), catálogo (`/estoque`), API (`/api/vehicles`), Autoconf (`/api/stock`).
 
 ## Carro que some da lista: só anota
 

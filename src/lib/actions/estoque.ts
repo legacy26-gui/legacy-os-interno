@@ -9,6 +9,7 @@ import { lerEstoqueDaLoja, origemDoSite, urlDeSiteSegura } from "@/lib/estoque/l
 import { lerLista, pareceAutoCerto } from "@/lib/estoque/autocerto";
 import { lerCatalogo, pareceCatalogo } from "@/lib/estoque/site-catalogo";
 import { lerApiDeVeiculos, pareceApiDeVeiculos } from "@/lib/estoque/site-api";
+import { lerCarrosAutoconf, lerPaginaAutoconf } from "@/lib/estoque/site-autoconf";
 
 export type EstoqueState = { ok?: string; erro?: string };
 
@@ -44,7 +45,7 @@ export async function conectarSiteDaLoja(clientId: string, endereco: string): Pr
       return null;
     }
   };
-  let sistema: "autocerto" | "catalogo" | "api" | null = null;
+  let sistema: "autocerto" | "catalogo" | "api" | "autoconf" | null = null;
   const doAutoCerto = await abrir("/Veiculos");
   if (doAutoCerto && pareceAutoCerto(doAutoCerto)) {
     if (lerLista(doAutoCerto).itens.length === 0) return { erro: "Achei o AutoCerto, mas a lista de veículos veio vazia." };
@@ -70,7 +71,20 @@ export async function conectarSiteDaLoja(clientId: string, endereco: string): Pr
     }
   }
   if (!sistema) {
-    return { erro: "Ainda não sei ler o estoque desse site (não é AutoCerto, nem catálogo, nem tem a lista de veículos aberta). Me manda o endereço que eu vejo qual sistema ele usa." };
+    const daAutoconf = await abrir("/api/stock?pagina=1&registros_por_pagina=5");
+    let pagina = null;
+    try {
+      pagina = daAutoconf ? lerPaginaAutoconf(JSON.parse(daAutoconf)) : null;
+    } catch {
+      pagina = null;
+    }
+    if (pagina) {
+      if (lerCarrosAutoconf(pagina.itens).length === 0) return { erro: "Achei o estoque da Autoconf no site, mas ele veio vazio." };
+      sistema = "autoconf";
+    }
+  }
+  if (!sistema) {
+    return { erro: "Ainda não sei ler o estoque desse site (não é AutoCerto, Autoconf, catálogo, nem tem a lista de veículos aberta). Me manda o endereço que eu vejo qual sistema ele usa." };
   }
 
   await prisma.estoqueDaLoja.upsert({

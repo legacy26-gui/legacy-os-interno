@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { lerCarro, lerLista, type CarroLido } from "./autocerto";
 import { lerCatalogo, pareceCatalogo } from "./site-catalogo";
 import { lerApiDeVeiculos, pareceApiDeVeiculos } from "./site-api";
+import { lerCarrosAutoconf, lerPaginaAutoconf } from "./site-autoconf";
 
 // A leitura do estoque de uma loja: lê o site, atualiza o banco.
 //
@@ -137,6 +138,7 @@ export async function lerEstoqueDaLoja(clientId: string, agora: Date = new Date(
   if (!origem || !urlDeSiteSegura(origem)) return fim({ ...VAZIO, erro: "o endereço do site não é válido" });
   if (loja.sistema === "catalogo") return fim(await lerSiteDeCatalogo(clientId, origem, agora));
   if (loja.sistema === "api") return fim(await lerSiteComApi(clientId, origem, agora));
+  if (loja.sistema === "autoconf") return fim(await lerSiteAutoconf(clientId, origem, agora));
 
   // ── 1. A lista ───────────────────────────────────────────────────────
   const paginaLista = await baixar(`${origem}/Veiculos`);
@@ -235,11 +237,47 @@ async function lerSiteComApi(clientId: string, origem: string, agora: Date): Pro
   return gravarListaInteira(clientId, origem, lerApiDeVeiculos(dados), agora);
 }
 
+/** Itens de TODAS as páginas do estoque da Autoconf (100 por página, até 20 páginas). Exportada pro "anunciar agora" (fotos). */
+export async function baixarEstoqueAutoconf(origem: string): Promise<{ ok: true; itens: Record<string, unknown>[]; total: number | null } | { ok: false; erro: string }> {
+  const itens: Record<string, unknown>[] = [];
+  let total: number | null = null;
+  for (let pagina = 1; pagina <= 20; pagina++) {
+    if (pagina > 1) await dormir(PAUSA_MS);
+    const r = await baixar(`${origem}/api/stock?pagina=${pagina}&registros_por_pagina=100`);
+    if (!r.ok) return { ok: false, erro: r.erro };
+    let dados: unknown;
+    try {
+      dados = JSON.parse(r.html);
+    } catch {
+      return { ok: false, erro: "a lista de estoque do site não veio em JSON" };
+    }
+    const p = lerPaginaAutoconf(dados);
+    if (!p) return { ok: false, erro: "a lista de estoque do site não veio no formato esperado" };
+    itens.push(...p.itens);
+    total = p.total;
+    if (p.itens.length === 0 || !p.totalPaginas || pagina >= p.totalPaginas) break;
+  }
+  return { ok: true, itens, total };
+}
+
+/** Site da Autoconf (ex.: dsmultimarcaspg.com.br): GET /api/stock, página por página. */
+async function lerSiteAutoconf(clientId: string, origem: string, agora: Date): Promise<ResultadoDaLeitura> {
+  const r = await baixarEstoqueAutoconf(origem);
+  if (!r.ok) return { ...VAZIO, erro: r.erro };
+  const carros = lerCarrosAutoconf(r.itens);
+  // O site diz quantos tem: se trouxe menos (página que falhou no meio), não confia pra marcar saída.
+  if (r.total !== null && carros.length < r.total) {
+    const parcial = await gravarListaInteira(clientId, origem, carros, agora, true);
+    return { ...parcial, erro: `o site diz ${r.total} carros e a lista trouxe ${carros.length}: não marquei saídas`, semMarcarSaidas: "lista incompleta" };
+  }
+  return gravarListaInteira(clientId, origem, carros, agora);
+}
+
 /**
  * Grava uma lista que já veio INTEIRA e com todos os dados (catálogo e API): cada carro a cada leitura, sem abrir página de carro.
  * As mesmas travas do AutoCerto valem pra marcar saída.
  */
-async function gravarListaInteira(clientId: string, origem: string, carros: (CarroLido & { codigo: string; caminho: string })[], agora: Date): Promise<ResultadoDaLeitura> {
+async function gravarListaInteira(clientId: string, origem: string, carros: (CarroLido & { codigo: string; caminho: string })[], agora: Date, naoMarcarSaidas = false): Promise<ResultadoDaLeitura> {
   if (carros.length === 0) return { ...VAZIO, erro: "a lista de veículos veio vazia" };
 
   const conhecidos = await prisma.estoqueCarro.findMany({ where: { clientId }, select: { codigo: true, sumiuEm: true } });
@@ -256,7 +294,9 @@ async function gravarListaInteira(clientId: string, origem: string, carros: (Car
   let semMarcarSaidas: string | null = null;
   const ativosAntes = conhecidos.filter((c) => c.sumiuEm === null);
   const candidatos = ativosAntes.filter((c) => !noAr.has(c.codigo));
-  if (ativosAntes.length >= 10 && carros.length < ativosAntes.length / 2) {
+  if (naoMarcarSaidas) {
+    semMarcarSaidas = "lista incompleta";
+  } else if (ativosAntes.length >= 10 && carros.length < ativosAntes.length / 2) {
     semMarcarSaidas = `a lista encolheu de ${ativosAntes.length} para ${carros.length} de uma vez`;
   }
   let sairam = 0;

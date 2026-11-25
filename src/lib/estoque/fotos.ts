@@ -2,9 +2,10 @@ import "server-only";
 
 import { tipoDeImagem } from "@/lib/meta/rascunho-anuncio";
 import sharp from "sharp";
-import { urlDeSiteSegura } from "./ler-estoque";
+import { baixarEstoqueAutoconf, urlDeSiteSegura } from "./ler-estoque";
 import { fotosDaPaginaDoCatalogo } from "./site-catalogo";
 import { apiDoCarro, fotosDoJson } from "./site-api";
+import { fotosDoCarroAutoconf, idDaPaginaAutoconf } from "./site-autoconf";
 
 // As fotos de um carro do estoque, lidas da página dele no site da loja.
 //
@@ -128,6 +129,15 @@ export async function enderecosDasFotos(paginaUrl: string): Promise<{ ok: true; 
       }
     } catch {
       // fica com o que a página deu
+    }
+  }
+  // Site da Autoconf: a página do carro só traz a capa; as fotos todas vêm da lista de estoque (procurando o id do carro).
+  const idAutoconf = idDaPaginaAutoconf(paginaUrl);
+  if (urls.length <= 1 && idAutoconf) {
+    const lista = await baixarEstoqueAutoconf(new URL(paginaUrl).origin);
+    if (lista.ok) {
+      const daLista = fotosDoCarroAutoconf(lista.itens, idAutoconf).filter(urlDeSiteSegura);
+      if (daLista.length > 0) urls = daLista;
     }
   }
   return urls.length === 0 ? { ok: false, erro: "a página do carro não mostra foto" } : { ok: true, urls };

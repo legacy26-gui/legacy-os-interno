@@ -63,7 +63,7 @@ export function FormularioDoZero(p: {
   const [achados, setAchados] = useState<LocalDoPublico[]>([]);
   const [maxFotos, setMaxFotos] = useState(6);
   const [linhas, setLinhas] = useState<LinhaDoCarro[]>(
-    p.carros.map((c) => ({ carro: c, marcado: !c.jaAnunciado, conjunto: "c1", nome: c.titulo, legenda: "", estado: "esperando", msg: c.jaAnunciado ? "já tem anúncio" : "" })),
+    p.carros.map((c) => ({ carro: c, marcado: true, conjunto: "c1", nome: c.titulo, legenda: "", estado: "esperando", msg: c.jaAnunciado ? "já tem anúncio (vai criar outro)" : "" })),
   );
   const [erro, setErro] = useState<string | null>(null);
   const [fase, setFase] = useState<"montando" | "criando" | "pronto">("montando");
@@ -621,7 +621,7 @@ export function FormularioDoZero(p: {
               className={`rounded-xl border p-3 flex flex-col gap-2 ${alvo === l.carro.id ? "border-accent bg-accent/10" : l.estado === "ok" ? "border-emerald-500/50" : l.estado === "erro" ? "border-red-500/50" : "border-border"}`}
             >
               <div className="flex items-start gap-3">
-                <input type="checkbox" disabled={travado || l.carro.jaAnunciado} checked={l.marcado} onChange={(e) => mudar(i, { marcado: e.target.checked })} className="mt-1" />
+                <input type="checkbox" disabled={travado} checked={l.marcado} onChange={(e) => mudar(i, { marcado: e.target.checked })} className="mt-1" />
                 {arteDoCarro[l.carro.id] ? (
                   <span className="relative shrink-0">
                     {/* eslint-disable-next-line @next/next/no-img-element */}

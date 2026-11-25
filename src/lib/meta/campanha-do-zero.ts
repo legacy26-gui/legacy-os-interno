@@ -307,14 +307,15 @@ export async function criarAnuncioDoCarro(p: {
   if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
   const carro = await prisma.estoqueCarro.findFirst({ where: { id: p.carroId, clientId: p.clientId }, select: { id: true, titulo: true, url: true, rascunhoAdId: true } });
   if (!carro) return { ok: false, erro: "Esse carro não é do estoque desta loja." };
-  if (carro.rascunhoAdId && carro.rascunhoAdId !== "pendente") return { ok: false, erro: `Esse carro já tem anúncio criado (${carro.rascunhoAdId}).` };
   const legenda = p.legenda.trim();
   if (legenda.length < 10) return { ok: false, erro: "A legenda ficou vazia." };
 
-  // Trava contra clique duplo / duas abas: marca "pendente" só se ninguém marcou antes.
-  const trava = await prisma.estoqueCarro.updateMany({ where: { id: carro.id, OR: [{ rascunhoAdId: null }, { rascunhoAdId: "pendente" }] }, data: { rascunhoAdId: "pendente" } });
-  if (trava.count === 0) return { ok: false, erro: "Esse carro já está sendo anunciado." };
-  const soltar = () => prisma.estoqueCarro.update({ where: { id: carro.id }, data: { rascunhoAdId: null } });
+  // Carro que já tem anúncio PODE ganhar outro (decisão do Guilherme). A única trava é o clique duplo: enquanto um anúncio
+  // dele está subindo ("pendente"), não sobe outro ao mesmo tempo. Se der errado, volta o anúncio que ele tinha antes.
+  const anterior = carro.rascunhoAdId === "pendente" ? null : carro.rascunhoAdId;
+  const trava = await prisma.estoqueCarro.updateMany({ where: { id: carro.id, rascunhoAdId: carro.rascunhoAdId }, data: { rascunhoAdId: "pendente" } });
+  if (trava.count === 0) return { ok: false, erro: "Esse carro já está sendo anunciado agora." };
+  const soltar = () => prisma.estoqueCarro.update({ where: { id: carro.id }, data: { rascunhoAdId: anterior } });
 
   // A arte do banco de artes (se tiver) vai na frente, e as fotos do site são cortadas na proporção dela.
   const temArte = (await prisma.arteDoCarro.count({ where: { carroId: carro.id } })) > 0;

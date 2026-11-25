@@ -90,7 +90,7 @@ export function EstoqueDaLoja({ estoque }: { estoque: EstoqueDaFicha }) {
                   </div>
                 </div>
               </div>
-              {estoque.temConta && (c.anuncio.tipo === "sem" || c.anuncio.tipo === "incerto") && (
+              {estoque.temConta && (
                 <div className="shrink-0">
                   <AnunciarAgora carroId={c.id} carro={c.titulo} />
                 </div>

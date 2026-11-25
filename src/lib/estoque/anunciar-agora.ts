@@ -32,7 +32,8 @@ import type { EscolhaDoAnuncio, PlanoDoAnuncio } from "./anunciar-tipos";
 //   • A loja é da carteira de quem pede; campanha/conjunto/anúncio escolhidos têm que ser desta loja (conferido no servidor,
 //     o id vem do navegador).
 //   • As fotos só valem se estiverem mesmo na página do carro (ver fotos.ts) — endereço de foto vindo do navegador não basta.
-//   • Um rascunho por carro (`rascunhoAdId`; "pendente" enquanto sobe): clique duplo não duplica.
+//   • `rascunhoAdId` guarda o último rascunho do carro ("pendente" enquanto sobe): clique duplo não duplica, mas o carro pode
+//     ganhar outro anúncio depois (decisão do Guilherme: sem trava de "já tem anúncio").
 //   • Tudo que dá errado no meio vira frase, e libera o carro pra tentar de novo.
 
 const reais = (cents: number) => (cents / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }).replace(/ /g, " ");
@@ -78,7 +79,6 @@ export async function prepararAnuncio(p: { carroId: string; pessoa: PessoaDaCasa
   if (!(await clienteEDaCarteira(p.pessoa, carro.clientId))) return { ok: false, erro: "Esta loja não está na sua carteira." };
   const loja = carro.client.companyName;
   if (carro.sumiuEm) return { ok: false, erro: `O ${carro.titulo} já saiu do site da ${loja}.` };
-  if (carro.rascunhoAdId && carro.rascunhoAdId !== "pendente") return { ok: false, erro: `Esse carro já tem um rascunho criado (anúncio ${carro.rascunhoAdId}). Procura no Gerenciador.` };
 
   const contas = (await prisma.metaAdAccount.findMany({ where: { clientId: carro.clientId, active: true }, select: { id: true } })).map((c) => c.id);
   if (contas.length === 0) return { ok: false, erro: `A ${loja} não tem conta de anúncio ligada.` };
@@ -136,7 +136,6 @@ export async function anunciarCarroDoEstoque(p: {
   if (!(await clienteEDaCarteira(p.pessoa, carro.clientId))) return { ok: false, erro: "Esta loja não está na sua carteira." };
   const loja = carro.client.companyName;
   if (carro.sumiuEm) return { ok: false, erro: `O ${carro.titulo} já saiu do site da ${loja}. Não subi nada.` };
-  if (carro.rascunhoAdId && carro.rascunhoAdId !== "pendente") return { ok: true, jaTinha: true, carro: carro.titulo, loja, adId: carro.rascunhoAdId };
   if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
 
   // ── O que vai ser criado: a escolha da tela, ou o "mesmo de sempre" ──
@@ -200,9 +199,11 @@ export async function anunciarCarroDoEstoque(p: {
   }
 
   // Pega o carro pra si: o clique duplo (ou o "sim" repetido) não sobe dois rascunhos.
-  const tomou = await prisma.estoqueCarro.updateMany({ where: { id: carro.id, rascunhoAdId: null }, data: { rascunhoAdId: "pendente" } });
+  // Carro que já tem anúncio pode ganhar outro (decisão do Guilherme); só não sobem dois AO MESMO TEMPO.
+  const anterior = carro.rascunhoAdId === "pendente" ? null : carro.rascunhoAdId;
+  const tomou = await prisma.estoqueCarro.updateMany({ where: { id: carro.id, OR: [{ rascunhoAdId: null }, { rascunhoAdId: { not: "pendente" } }] }, data: { rascunhoAdId: "pendente" } });
   if (tomou.count !== 1) return invalido("Esse carro já está sendo subido agora. Espera um minuto e confere no Gerenciador.");
-  const soltar = () => prisma.estoqueCarro.updateMany({ where: { id: carro.id, rascunhoAdId: "pendente" }, data: { rascunhoAdId: null } });
+  const soltar = () => prisma.estoqueCarro.updateMany({ where: { id: carro.id, rascunhoAdId: "pendente" }, data: { rascunhoAdId: anterior } });
 
   try {
     const base = await lerBaseDoAnuncio(carro.clientId, e.baseAdId);

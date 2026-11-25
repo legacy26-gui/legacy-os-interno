@@ -37,7 +37,7 @@ export async function montarAnuncioDoEstoque(pessoa: { id: string; role: string 
   if (!resto) return null;
 
   const carros = await prisma.estoqueCarro.findMany({
-    where: { sumiuEm: null, rascunhoAdId: null, client: { ...CARTEIRA_NO_META, ...escopoDaCarteira({ id: pessoa.id, role: pessoa.role as "ADMIN" }) } },
+    where: { sumiuEm: null, client: { ...CARTEIRA_NO_META, ...escopoDaCarteira({ id: pessoa.id, role: pessoa.role as "ADMIN" }) } },
     select: { id: true, titulo: true, anoModelo: true, precoCents: true, clientId: true, client: { select: { companyName: true } } },
     orderBy: { primeiraVezEm: "desc" },
     take: 600,

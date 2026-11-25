@@ -5,7 +5,7 @@ import { atualizarFipe } from "@/lib/fipe/atualizar";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { escopoDaCarteira } from "@/lib/carteira";
-import { lerEstoqueDaLoja, origemDoSite, urlDeSiteSegura } from "@/lib/estoque/ler-estoque";
+import { lerEstoqueDaLoja, origemDoSite, urlDeSiteSegura, USER_AGENT_DO_ESTOQUE } from "@/lib/estoque/ler-estoque";
 import { lerLista, pareceAutoCerto } from "@/lib/estoque/autocerto";
 import { lerCatalogo, pareceCatalogo } from "@/lib/estoque/site-catalogo";
 import { lerApiDeVeiculos, pareceApiDeVeiculos } from "@/lib/estoque/site-api";
@@ -40,7 +40,7 @@ export async function conectarSiteDaLoja(clientId: string, endereco: string): Pr
   // AutoCerto (/Veiculos) e site de catálogo (/estoque com os carros embutidos, ex.: 7pointmotors.com).
   const abrir = async (caminho: string) => {
     try {
-      const r = await fetch(`${origem}${caminho}`, { signal: AbortSignal.timeout(20_000), headers: { "User-Agent": "LegacyOS-estoque/1.0" }, cache: "no-store" });
+      const r = await fetch(`${origem}${caminho}`, { signal: AbortSignal.timeout(20_000), headers: { "User-Agent": USER_AGENT_DO_ESTOQUE }, cache: "no-store" });
       return r.ok ? await r.text() : null;
     } catch {
       return null;

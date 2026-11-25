@@ -1,6 +1,6 @@
 import "server-only";
 import { prisma } from "@/lib/prisma";
-import { origemDoSite, urlDeSiteSegura } from "@/lib/estoque/ler-estoque";
+import { origemDoSite, urlDeSiteSegura, USER_AGENT_DO_ESTOQUE } from "@/lib/estoque/ler-estoque";
 import { lerContatoDoHtml, rodapeSugerido } from "@/lib/estoque/contato-puro";
 
 // O rodapé da legenda (endereço e WhatsApp da loja). Ordem: o que a pessoa já conferiu e salvou; senão, o que o site diz.
@@ -10,7 +10,7 @@ export async function rodapeDoSite(siteUrl: string): Promise<string> {
   const origem = origemDoSite(siteUrl);
   if (!origem || !urlDeSiteSegura(origem)) return "";
   try {
-    const r = await fetch(origem, { headers: { "User-Agent": "Mozilla/5.0 (compatible; LegacyOS/1.0)", Accept: "text/html" }, signal: AbortSignal.timeout(15_000), cache: "no-store" });
+    const r = await fetch(origem, { headers: { "User-Agent": USER_AGENT_DO_ESTOQUE, Accept: "text/html" }, signal: AbortSignal.timeout(15_000), cache: "no-store" });
     if (!r.ok) return "";
     const html = (await r.text()).slice(0, 3_000_000);
     return rodapeSugerido(lerContatoDoHtml(html));

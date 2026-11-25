@@ -91,3 +91,10 @@ mês: vendas por lead, loja que mais vendeu, carros no ar nos sites), **Estoque*
 **Ranking de lojas** e **Controle de vendas** (as telas de sempre, nos endereços de sempre, agora com
 as abas em cima). O **Marcar Venda** continua solto no menu: é tarefa do dia a dia. O menu enxuto do
 gestor de tráfego não mudou. A Visão geral mostra só contagens, sem valor em reais.
+
+## RevendaMais (ex.: autopgveiculos.com.br) — `sistema = "revendamais"`
+- A página de estoque deles (/multipla) tem verificação anti-robô. A lista vem do **sitemap** (`/sitemap.xml`, público, assinado "Desenvolvido por RevendaMais"): `/carros|motos/<Marca>/<Modelo>/<Versao>/...-<codigo>.html`.
+- Dados de cada carro na página dele (mesmo caminho do AutoCerto: novos + rodízio): atributos `data-price/data-km/data-year` do bloco de favorito do próprio carro e o quadro (Ano Fab., Ano Mod., Km, Cor). Fotos: galeria `img.lazy-slide[data-src]` (s3.carro57.com.br, tamanho `_W_` 1440×1080).
+- A página vem em ISO-8859-1: `baixar` decodifica como latin1 quando o servidor diz.
+- O CloudFront deles recusa leitor fora do formato padrão de robô: o User-Agent do estoque agora é `Mozilla/5.0 (compatible; LegacyOS-estoque/1.0; ...)` (autorizado pelo Guilherme; continua dizendo quem é). Conferido que R2, 7 Point, Bom Jesus e DS continuam lendo.
+- Testado na Auto PG real: 24 veículos, todos com preço, km, ano, cor e foto.

@@ -32,7 +32,11 @@ import { lerCarrosAutoconf, lerPaginaAutoconf } from "./site-autoconf";
 // com pausa entre elas, identificando o sistema, e a página de cada carro só é lida quando o
 // carro é NOVO, ou em rodízio (os mais antigos primeiro) pra renovar o preço.
 
-const USER_AGENT = "LegacyOS-estoque/1.0 (leitura do estoque pela agência da loja)";
+// No formato padrão de robô ("Mozilla/5.0 (compatible; ...)", como o do Google), dizendo quem é. O CloudFront dos sites da
+// RevendaMais recusa leitor fora desse formato; o Guilherme autorizou (são os dados públicos do site do próprio cliente).
+// Só ASCII: acento no cabeçalho vira lixo em alguns servidores.
+export const USER_AGENT_DO_ESTOQUE = "Mozilla/5.0 (compatible; LegacyOS-estoque/1.0; leitura do estoque pela agencia da loja)";
+const USER_AGENT = USER_AGENT_DO_ESTOQUE;
 const PRAZO_MS = 20_000;
 const PAUSA_MS = 350;
 /** Páginas de carro lidas por loja a cada passada, no máximo (novos + rodízio). */

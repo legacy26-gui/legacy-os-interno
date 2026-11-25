@@ -20,6 +20,9 @@ export default async function CampanhaDoZeroPage({ params }: { params: Promise<{
       <Link href={`/meta-ads/${clientId}`} className="text-sm text-foreground-muted inline-flex items-center gap-1.5 hover:text-foreground w-fit">
         <ArrowLeft size={14} /> Voltar pra loja
       </Link>
+      <Link href={`/meta-ads/${clientId}/campanha-do-zero/ajustar`} className="text-sm text-accent w-fit">
+        Ajustar uma campanha já criada →
+      </Link>
       <div>
         <h1 className="text-xl font-semibold flex items-center gap-2">
           <Rocket size={20} /> Campanha do zero{dados.ok ? ` — ${dados.loja}` : ""}

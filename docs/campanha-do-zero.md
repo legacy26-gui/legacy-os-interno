@@ -63,3 +63,15 @@ Loja nova não tem legendas antigas pra IA copiar, e a legenda saía genérica. 
 - Página fora da lista da conta: cria mesmo assim, com aviso (antes recusava).
 - Sem página: a Meta não cria anúncio (o criativo exige `page_id`). O sistema cria campanha + conjuntos (sem `promoted_object`) e sobe as fotos de cada carro (arte na frente) pra biblioteca de imagens da conta.
 - Ordem de busca da página (`paginasDaConta`), com o token de leitura e o de escrita: promote_pages → anúncios da conta → Gerenciador de Negócios dono da conta (owned_pages/client_pages, as com o nome da loja primeiro) → Facebook do site da loja → páginas que o acesso enxerga (só as com o nome da loja). Não achou: a tela mostra o que a Meta respondeu.
+
+## Ajustar depois de criada (`/meta-ads/[clientId]/campanha-do-zero/ajustar`)
+- Link no fim da criação ("Ajustar esta campanha") e no topo da Campanha do zero ("Ajustar uma campanha já criada").
+- Lê a campanha da Meta na hora (conjuntos e anúncios). Dá pra: **mover anúncio de conjunto** (arrastar ou "mover pra…"), renomear anúncio e conjunto, mudar o orçamento do conjunto, criar conjunto novo (copia público, destino e orçamento do primeiro), excluir anúncio.
+- Mover = a Meta não troca o conjunto de um anúncio: cria de novo no conjunto certo com o MESMO criativo (pausado) e exclui o antigo; o carro do estoque passa a apontar pro novo.
+- Travas: conta da loja (cadastro), objeto da campanha (Meta), **só pausado** (o que roda é do Gerenciador), nada é ligado. Histórico em `meta_acoes` (tipo "ajuste": mover/nome/verba/conjunto-novo/excluir). Código: `src/lib/meta/ajustar-campanha.ts`.
+
+## Carros marcados
+- Se a loja tem arte em algum carro, já vêm marcados **só os carros com arte**; carro que ganha arte na tela entra marcado. Botões: "Só os com arte", "Marcar todos", "Desmarcar todos".
+
+## Página: o que se sabe + o portfólio inteiro
+- A lista mostra "Desta loja" (liberada pra conta, dos anúncios, do site, ou do portfólio com o nome da loja — a primeira já escolhida) e "Todas do portfólio" (páginas do negócio dono da conta e dos negócios que o acesso enxerga, próprias e de clientes, e as do acesso). Se não sabe qual é, nada vem escolhido e a pessoa escolhe.

@@ -31,14 +31,15 @@ export function FormularioDoZero(p: {
   artesSoltas: { id: string; nome: string }[];
   contas: { id: string; nome: string; metaAccountId: string }[];
   carros: CarroDoZero[];
-  paginasIniciais: { id: string; nome: string }[];
+  paginasIniciais: { id: string; nome: string; sugerida?: boolean }[];
   erroDasPaginas: string | null;
 }) {
   const [contaId, setContaId] = useState(p.contas[0].id);
   const [paginas, setPaginas] = useState(p.paginasIniciais);
   const [erroPaginas, setErroPaginas] = useState(p.erroDasPaginas);
   // A página: uma da lista, "outra" (colar o ID ou o link) ou "sem" (o gestor completa no Gerenciador).
-  const [paginaId, setPaginaId] = useState(p.paginasIniciais[0]?.id ?? "__outra");
+  const primeiraPagina = (l: { id: string; sugerida?: boolean }[]) => l.find((x) => x.sugerida)?.id ?? (l.length ? "" : "__outra");
+  const [paginaId, setPaginaId] = useState(primeiraPagina(p.paginasIniciais));
   const [outraPagina, setOutraPagina] = useState("");
   const paginaEscolhida = paginaId === "__sem" ? "" : paginaId === "__outra" ? (outraPagina.match(/(?:id=)?(\d{5,25})/)?.[1] ?? "") : paginaId;
   const [nome, setNome] = useState(`${p.loja} — WhatsApp`);
@@ -71,12 +72,14 @@ export function FormularioDoZero(p: {
   const [achados, setAchados] = useState<LocalDoPublico[]>([]);
   const [maxFotos, setMaxFotos] = useState(6);
   const [linhas, setLinhas] = useState<LinhaDoCarro[]>(
-    p.carros.map((c) => ({ carro: c, marcado: true, conjunto: "c1", nome: c.titulo, legenda: "", estado: "esperando", msg: c.jaAnunciado ? "já tem anúncio (vai criar outro)" : "" })),
+    // Com arte na loja, já vêm marcados SÓ os carros com arte (são os que vão subir); sem nenhuma arte, todos.
+    p.carros.map((c) => ({ carro: c, marcado: p.carros.some((x) => x.arteId) ? !!c.arteId : true, conjunto: "c1", nome: c.titulo, legenda: "", estado: "esperando", msg: c.jaAnunciado ? "já tem anúncio (vai criar outro)" : "" })),
   );
   const [erro, setErro] = useState<string | null>(null);
   const [fase, setFase] = useState<"montando" | "criando" | "pronto">("montando");
   const [resumo, setResumo] = useState<string | null>(null);
   const [linkDaCampanha, setLinkDaCampanha] = useState<string | null>(null);
+  const [linkDoAjuste, setLinkDoAjuste] = useState<string | null>(null);
   const [pendente, comecar] = useTransition();
 
   const marcados = linhas.filter((l) => l.marcado);
@@ -102,7 +105,7 @@ export function FormularioDoZero(p: {
       const r = await listarPaginas(p.clientId, id);
       if (r.ok) {
         setPaginas(r.paginas);
-        setPaginaId(r.paginas[0]?.id ?? "__outra");
+        setPaginaId(primeiraPagina(r.paginas));
         setErroPaginas(r.aviso ?? null);
       } else setErroPaginas(r.erro);
     });
@@ -132,6 +135,7 @@ export function FormularioDoZero(p: {
   function criarTudo() {
     setErro(null);
     if (locais.length === 0) return setErro("Adicione pelo menos uma cidade no público.");
+    if (paginaId === "") return setErro("Escolha a página do Facebook da loja (ou \"Sem página\").");
     if (paginaId === "__outra" && !paginaEscolhida) return setErro('Cole o ID da página (só números) ou escolha "Sem página".');
     if (marcados.length === 0) return setErro("Marque pelo menos um carro.");
     if (estrutura === "montada" && conjuntosUsados.some((c) => !c.nome.trim())) return setErro("Dê nome a todos os conjuntos.");
@@ -169,6 +173,7 @@ export function FormularioDoZero(p: {
         setFase("montando");
         return;
       }
+      setLinkDoAjuste(`/meta-ads/${p.clientId}/campanha-do-zero/ajustar?conta=${conta.metaAccountId}&campanha=${est.campanhaId}`);
       setLinkDaCampanha(`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${conta.metaAccountId.replace(/^act_/, "")}&selected_campaign_ids=${est.campanhaId}`);
       let feitos = 0;
       for (let i = 0; i < linhas.length; i++) {
@@ -207,6 +212,8 @@ export function FormularioDoZero(p: {
 
   /** Põe a arte no carro (na tela). A que o carro tinha volta pra "sem carro", como no servidor. */
   function colocarNoCarro(arteId: string, carroId: string | null) {
+    // Carro que ganhou arte entra na lista do que vai subir.
+    if (carroId) setLinhas((ls) => ls.map((l) => (l.carro.id === carroId ? { ...l, marcado: true } : l)));
     setArteDoCarro((antes) => {
       const depois = { ...antes };
       const soltar: string[] = [];
@@ -285,11 +292,25 @@ export function FormularioDoZero(p: {
           <label className="flex flex-col gap-1 text-sm">
             Página do Facebook (o WhatsApp é o ligado a ela)
             <select disabled={travado} value={paginaId} onChange={(e) => setPaginaId(e.target.value)} className={campo} aria-label="Página do Facebook">
-              {paginas.map((pg) => (
-                <option key={pg.id} value={pg.id}>
-                  {pg.nome}
-                </option>
-              ))}
+              {paginaId === "" && <option value="">— escolha a página —</option>}
+              {paginas.some((pg) => pg.sugerida) && (
+                <optgroup label="Desta loja">
+                  {paginas.filter((pg) => pg.sugerida).map((pg) => (
+                    <option key={pg.id} value={pg.id}>
+                      {pg.nome}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {paginas.some((pg) => !pg.sugerida) && (
+                <optgroup label="Todas do portfólio">
+                  {paginas.filter((pg) => !pg.sugerida).map((pg) => (
+                    <option key={pg.id} value={pg.id}>
+                      {pg.nome}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
               <option value="__outra">Outra página (colar o ID)</option>
               <option value="__sem">Sem página (termino no Gerenciador)</option>
             </select>
@@ -541,7 +562,20 @@ export function FormularioDoZero(p: {
 
       <section className={caixa}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="font-semibold">4. Carros ({marcados.length} de {linhas.length})</h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="font-semibold">4. Carros ({marcados.length} de {linhas.length})</h2>
+            {(
+              [
+                ["Só os com arte", (l: LinhaDoCarro) => !!arteDoCarro[l.carro.id]],
+                ["Marcar todos", () => true],
+                ["Desmarcar todos", () => false],
+              ] as const
+            ).map(([r, f]) => (
+              <button key={r} type="button" disabled={travado} onClick={() => setLinhas((ls) => ls.map((l) => ({ ...l, marcado: f(l) })))} className="px-2 py-1 rounded-lg border border-border text-xs">
+                {r}
+              </button>
+            ))}
+          </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
             Fotos por anúncio
             <select disabled={travado} value={maxFotos} onChange={(e) => setMaxFotos(Number(e.target.value))} className={campo}>
@@ -772,6 +806,11 @@ export function FormularioDoZero(p: {
         {linkDaCampanha && (
           <a href={linkDaCampanha} target="_blank" rel="noreferrer" className="text-sm inline-flex items-center gap-1.5 text-accent">
             Abrir a campanha no Gerenciador <ExternalLink size={13} />
+          </a>
+        )}
+        {linkDoAjuste && (
+          <a href={linkDoAjuste} className="text-sm inline-flex items-center gap-1.5 text-accent font-medium">
+            Ajustar esta campanha (mover carro de conjunto, nomes, orçamento)
           </a>
         )}
       </div>

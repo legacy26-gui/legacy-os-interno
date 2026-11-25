@@ -1,5 +1,5 @@
 import Link from "next/link";
-import {
+import { Rocket,
   Megaphone,
   AlertTriangle,
   Wallet,
@@ -316,6 +316,12 @@ export default async function LojaNoMetaAdsPage({
             <div className="flex flex-wrap items-center gap-2">
               {/* O estoque do site, numa bolha: escolhe o carro e anuncia agora. */}
               <EstoqueBalao clientId={cliente.id} loja={cliente.companyName} />
+              <Link
+                href={`/meta-ads/${cliente.id}/campanha-do-zero`}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 border border-border rounded-lg text-sm font-medium hover:bg-surface-muted"
+              >
+                <Rocket size={14} /> Campanha do zero
+              </Link>
               <Link
                 href={`/meta-ads/${cliente.id}/subir-anuncio`}
                 className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-accent text-white rounded-lg text-sm font-medium"

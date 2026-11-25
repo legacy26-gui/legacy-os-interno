@@ -1,0 +1,387 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { Loader2, Search, Trash2, Check, AlertTriangle, ExternalLink, Sparkles } from "lucide-react";
+import { criarAnuncioNoZero, criarEstruturaDoZero, legendaDoZero, listarPaginas, type CarroDoZero } from "@/lib/actions/campanha-do-zero";
+import { procurarLocais } from "@/lib/actions/publico-do-conjunto";
+import { IDADE_MAXIMA, IDADE_MINIMA, RAIOS_DA_CIDADE, type GeneroDoPublico, type LocalDoPublico } from "@/lib/meta/publico-puro";
+
+type Estado = "esperando" | "criando" | "ok" | "erro";
+interface LinhaDoCarro {
+  carro: CarroDoZero;
+  marcado: boolean;
+  nome: string;
+  legenda: string;
+  estado: Estado;
+  msg: string;
+}
+
+const reais = (c: number | null) => (c === null ? "—" : (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }));
+const IDADES = Array.from({ length: IDADE_MAXIMA - IDADE_MINIMA + 1 }, (_, i) => IDADE_MINIMA + i);
+
+export function FormularioDoZero(p: {
+  clientId: string;
+  loja: string;
+  contas: { id: string; nome: string; metaAccountId: string }[];
+  carros: CarroDoZero[];
+  paginasIniciais: { id: string; nome: string }[];
+  erroDasPaginas: string | null;
+}) {
+  const [contaId, setContaId] = useState(p.contas[0].id);
+  const [paginas, setPaginas] = useState(p.paginasIniciais);
+  const [erroPaginas, setErroPaginas] = useState(p.erroDasPaginas);
+  const [paginaId, setPaginaId] = useState(p.paginasIniciais[0]?.id ?? "");
+  const [nome, setNome] = useState(`${p.loja} — WhatsApp`);
+  const [estrutura, setEstrutura] = useState<"por-carro" | "um-conjunto">("por-carro");
+  const [ondeOrcamento, setOndeOrcamento] = useState<"conjunto" | "campanha">("conjunto");
+  const [valor, setValor] = useState("15");
+  const [idadeMin, setIdadeMin] = useState(25);
+  const [idadeMax, setIdadeMax] = useState(IDADE_MAXIMA);
+  const [genero, setGenero] = useState<GeneroDoPublico>("todos");
+  const [locais, setLocais] = useState<LocalDoPublico[]>([]);
+  const [busca, setBusca] = useState("");
+  const [achados, setAchados] = useState<LocalDoPublico[]>([]);
+  const [maxFotos, setMaxFotos] = useState(6);
+  const [linhas, setLinhas] = useState<LinhaDoCarro[]>(
+    p.carros.map((c) => ({ carro: c, marcado: !c.jaAnunciado, nome: c.titulo, legenda: "", estado: "esperando", msg: c.jaAnunciado ? "já tem anúncio" : "" })),
+  );
+  const [erro, setErro] = useState<string | null>(null);
+  const [fase, setFase] = useState<"montando" | "criando" | "pronto">("montando");
+  const [resumo, setResumo] = useState<string | null>(null);
+  const [linkDaCampanha, setLinkDaCampanha] = useState<string | null>(null);
+  const [pendente, comecar] = useTransition();
+
+  const marcados = linhas.filter((l) => l.marcado);
+  const conta = p.contas.find((c) => c.id === contaId)!;
+  const centavos = Math.round(Number(valor.replace(",", ".")) * 100);
+  const total = ondeOrcamento === "campanha" ? centavos : centavos * (estrutura === "por-carro" ? marcados.length : 1);
+  const mudar = (i: number, d: Partial<LinhaDoCarro>) => setLinhas((ls) => ls.map((l, j) => (j === i ? { ...l, ...d } : l)));
+
+  function trocarConta(id: string) {
+    setContaId(id);
+    setPaginas([]);
+    setPaginaId("");
+    comecar(async () => {
+      const r = await listarPaginas(p.clientId, id);
+      if (r.ok) {
+        setPaginas(r.paginas);
+        setPaginaId(r.paginas[0]?.id ?? "");
+        setErroPaginas(null);
+      } else setErroPaginas(r.erro);
+    });
+  }
+
+  function buscar() {
+    const termo = busca.trim();
+    if (termo.length < 2) return;
+    comecar(async () => {
+      const r = await procurarLocais(p.clientId, termo);
+      setAchados(r.ok ? (r.locais ?? []) : []);
+    });
+  }
+
+  function gerarLegendas() {
+    comecar(async () => {
+      for (let i = 0; i < linhas.length; i++) {
+        const l = linhas[i];
+        if (!l.marcado || l.legenda.trim()) continue;
+        mudar(i, { msg: "escrevendo legenda…" });
+        const r = await legendaDoZero(p.clientId, l.carro.id);
+        mudar(i, r.ok ? { legenda: r.legenda, msg: "" } : { msg: `legenda: ${r.erro}` });
+      }
+    });
+  }
+
+  function criarTudo() {
+    setErro(null);
+    if (locais.length === 0) return setErro("Adicione pelo menos uma cidade no público.");
+    if (!paginaId) return setErro("Escolha a página do Facebook da loja.");
+    if (marcados.length === 0) return setErro("Marque pelo menos um carro.");
+    if (!confirm(`Criar na Meta, tudo PAUSADO:\n\n• 1 campanha "${nome}"\n• ${estrutura === "por-carro" ? `${marcados.length} conjuntos (um por carro)` : "1 conjunto com todos os carros"}\n• ${marcados.length} anúncios\n• Orçamento: ${reais(total)}/dia no total\n\nNada liga sozinho.`)) return;
+    setFase("criando");
+    comecar(async () => {
+      const est = await criarEstruturaDoZero({
+        clientId: p.clientId,
+        contaId,
+        paginaId,
+        nome,
+        estrutura,
+        orcamento: { onde: ondeOrcamento, centavosPorDia: centavos },
+        publico: { idadeMin, idadeMax, genero, locais },
+        carros: marcados.map((l) => ({ carroId: l.carro.id, nome: l.nome })),
+      });
+      if (!est.ok) {
+        setErro(est.erro);
+        setFase("montando");
+        return;
+      }
+      setLinkDaCampanha(`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${conta.metaAccountId.replace(/^act_/, "")}&selected_campaign_ids=${est.campanhaId}`);
+      let feitos = 0;
+      for (let i = 0; i < linhas.length; i++) {
+        const l = linhas[i];
+        if (!l.marcado) continue;
+        const conj = estrutura === "por-carro" ? est.conjuntos.find((c) => c.carroId === l.carro.id) : est.conjuntos[0];
+        if (!conj) {
+          mudar(i, { estado: "erro", msg: "o conjunto deste carro não foi criado" });
+          continue;
+        }
+        mudar(i, { estado: "criando", msg: "legenda…" });
+        let legenda = l.legenda.trim();
+        if (!legenda) {
+          const lg = await legendaDoZero(p.clientId, l.carro.id);
+          if (!lg.ok) {
+            mudar(i, { estado: "erro", msg: `legenda: ${lg.erro}` });
+            continue;
+          }
+          legenda = lg.legenda;
+          mudar(i, { legenda });
+        }
+        mudar(i, { msg: "fotos e anúncio…" });
+        const r = await criarAnuncioNoZero({ clientId: p.clientId, contaMeta: conta.metaAccountId, paginaId, adsetId: conj.adsetId, carroId: l.carro.id, nomeDoAnuncio: l.nome, legenda, maxFotos });
+        if (r.ok) {
+          feitos++;
+          mudar(i, { estado: "ok", msg: `${r.fotos} foto(s)${r.avisos.length ? ` · ${r.avisos.join(" ")}` : ""}` });
+        } else mudar(i, { estado: "erro", msg: r.erro });
+      }
+      setResumo(`${feitos} de ${marcados.length} anúncios criados, pausados.${est.avisos.length ? ` ${est.avisos.join(" ")}` : ""}`);
+      setFase("pronto");
+    });
+  }
+
+  const travado = fase !== "montando";
+  const caixa = "rounded-2xl border border-border bg-surface p-5 flex flex-col gap-3";
+  const campo = "rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm";
+
+  return (
+    <div className="flex flex-col gap-5">
+      <section className={caixa}>
+        <h2 className="font-semibold">1. Conta e página</h2>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1 text-sm">
+            Conta de anúncio
+            <select disabled={travado} value={contaId} onChange={(e) => trocarConta(e.target.value)} className={campo}>
+              {p.contas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Página do Facebook (o WhatsApp é o ligado a ela)
+            <select disabled={travado || paginas.length === 0} value={paginaId} onChange={(e) => setPaginaId(e.target.value)} className={campo}>
+              {paginas.length === 0 && <option value="">—</option>}
+              {paginas.map((pg) => (
+                <option key={pg.id} value={pg.id}>
+                  {pg.nome}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {erroPaginas && <p className="text-xs text-amber-600 dark:text-amber-400">{erroPaginas}</p>}
+      </section>
+
+      <section className={caixa}>
+        <h2 className="font-semibold">2. Campanha, estrutura e orçamento</h2>
+        <label className="flex flex-col gap-1 text-sm">
+          Nome da campanha
+          <input disabled={travado} value={nome} onChange={(e) => setNome(e.target.value)} className={campo} />
+        </label>
+        <div className="flex flex-wrap gap-2 text-sm">
+          {(
+            [
+              ["por-carro", "Um conjunto por carro"],
+              ["um-conjunto", "Um conjunto com todos"],
+            ] as const
+          ).map(([v, r]) => (
+            <button key={v} type="button" disabled={travado} onClick={() => setEstrutura(v)} className={`px-3 py-2 rounded-lg border ${estrutura === v ? "border-accent bg-accent/10" : "border-border"}`}>
+              {r}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-end gap-3 text-sm">
+          <div className="flex gap-2">
+            {(
+              [
+                ["conjunto", estrutura === "por-carro" ? "Por carro (conjunto)" : "No conjunto"],
+                ["campanha", "Na campanha (a Meta divide)"],
+              ] as const
+            ).map(([v, r]) => (
+              <button key={v} type="button" disabled={travado} onClick={() => setOndeOrcamento(v)} className={`px-3 py-2 rounded-lg border ${ondeOrcamento === v ? "border-accent bg-accent/10" : "border-border"}`}>
+                {r}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2">
+            R$
+            <input disabled={travado} inputMode="decimal" value={valor} onChange={(e) => setValor(e.target.value)} className={`${campo} w-24`} />
+            por dia
+          </label>
+          <span className="text-foreground-muted">Total: {Number.isFinite(total) ? reais(total) : "—"}/dia</span>
+        </div>
+      </section>
+
+      <section className={caixa}>
+        <h2 className="font-semibold">3. Público</h2>
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          De
+          <select disabled={travado} value={idadeMin} onChange={(e) => setIdadeMin(Number(e.target.value))} className={campo}>
+            {IDADES.map((n) => (
+              <option key={n}>{n}</option>
+            ))}
+          </select>
+          até
+          <select disabled={travado} value={idadeMax} onChange={(e) => setIdadeMax(Number(e.target.value))} className={campo}>
+            {IDADES.map((n) => (
+              <option key={n} value={n}>
+                {n === IDADE_MAXIMA ? "65+" : n}
+              </option>
+            ))}
+          </select>
+          anos
+          {(
+            [
+              ["todos", "Todos"],
+              ["homens", "Homens"],
+              ["mulheres", "Mulheres"],
+            ] as const
+          ).map(([v, r]) => (
+            <button key={v} type="button" disabled={travado} onClick={() => setGenero(v)} className={`px-3 py-1.5 rounded-lg border ${genero === v ? "border-accent bg-accent/10" : "border-border"}`}>
+              {r}
+            </button>
+          ))}
+        </div>
+        <ul className="flex flex-col gap-2">
+          {locais.map((l, i) => (
+            <li key={`${l.chave}-${i}`} className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-sm">
+              <span className="flex-1">
+                {l.nome} <span className="text-xs text-foreground-muted">{l.detalhe}</span>
+              </span>
+              {l.tipo === "cidade" && (
+                <select disabled={travado} value={l.raioKm ?? 0} onChange={(e) => setLocais(locais.map((x, j) => (j === i ? { ...x, raioKm: Number(e.target.value) || null } : x)))} className={campo}>
+                  <option value={0}>só a cidade</option>
+                  {RAIOS_DA_CIDADE.map((r) => (
+                    <option key={r} value={r}>
+                      {r} km
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button type="button" disabled={travado} onClick={() => setLocais(locais.filter((_, j) => j !== i))} aria-label="Tirar">
+                <Trash2 size={15} />
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="flex gap-2">
+          <input
+            disabled={travado}
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), buscar())}
+            placeholder="Adicionar cidade ou estado (ex.: Ponta Grossa)"
+            className={`${campo} flex-1`}
+          />
+          <button type="button" disabled={travado || pendente} onClick={buscar} className="px-3 rounded-lg border border-border inline-flex items-center gap-1.5 text-sm">
+            <Search size={14} /> Buscar
+          </button>
+        </div>
+        {achados.length > 0 && (
+          <ul className="flex flex-col rounded-lg border border-border divide-y divide-border text-sm">
+            {achados.map((a) => (
+              <li key={`${a.tipo}-${a.chave}`}>
+                <button
+                  type="button"
+                  className="w-full text-left px-3 py-2 hover:bg-surface-muted"
+                  onClick={() => {
+                    if (!locais.some((x) => x.chave === a.chave && x.tipo === a.tipo)) setLocais([...locais, { ...a, raioKm: a.tipo === "cidade" ? 17 : null }]);
+                    setAchados([]);
+                    setBusca("");
+                  }}
+                >
+                  {a.nome} <span className="text-xs text-foreground-muted">{a.detalhe}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <label className="flex items-start gap-2 text-sm opacity-80">
+          <input type="checkbox" checked={false} disabled readOnly className="mt-1" />
+          <span>
+            Alcançar mais pessoas (Advantage+ público) — <strong>sempre desligado</strong>
+          </span>
+        </label>
+      </section>
+
+      <section className={caixa}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="font-semibold">4. Carros ({marcados.length} de {linhas.length})</h2>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            Fotos por anúncio
+            <select disabled={travado} value={maxFotos} onChange={(e) => setMaxFotos(Number(e.target.value))} className={campo}>
+              {[1, 2, 3, 4, 5, 6].map((n) => (
+                <option key={n}>{n}</option>
+              ))}
+            </select>
+            <button type="button" disabled={travado || pendente} onClick={gerarLegendas} className="px-3 py-2 rounded-lg border border-border inline-flex items-center gap-1.5">
+              <Sparkles size={14} /> Escrever legendas com IA
+            </button>
+          </div>
+        </div>
+        <p className="text-xs text-foreground-muted">Legenda vazia é escrita pela IA na hora de criar. O nome vale pro anúncio{estrutura === "por-carro" ? " e pro conjunto do carro" : ""}.</p>
+        <ul className="flex flex-col gap-3">
+          {linhas.map((l, i) => (
+            <li key={l.carro.id} className={`rounded-xl border p-3 flex flex-col gap-2 ${l.estado === "ok" ? "border-emerald-500/50" : l.estado === "erro" ? "border-red-500/50" : "border-border"}`}>
+              <div className="flex items-start gap-3">
+                <input type="checkbox" disabled={travado || l.carro.jaAnunciado} checked={l.marcado} onChange={(e) => mudar(i, { marcado: e.target.checked })} className="mt-1" />
+                {l.carro.foto && /^https:\/\//.test(l.carro.foto) && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={l.carro.foto} alt="" className="w-16 h-12 object-cover rounded" />
+                )}
+                <div className="flex-1 min-w-0 flex flex-col gap-1">
+                  <input disabled={travado || !l.marcado} value={l.nome} onChange={(e) => mudar(i, { nome: e.target.value })} className={`${campo} font-medium`} />
+                  <span className="text-xs text-foreground-muted">
+                    {[l.carro.anoModelo, l.carro.km !== null ? `${l.carro.km.toLocaleString("pt-BR")} km` : null, l.carro.cor, reais(l.carro.precoCents)].filter(Boolean).join(" · ")}
+                  </span>
+                </div>
+                <span className="text-xs shrink-0 flex items-center gap-1">
+                  {l.estado === "criando" && <Loader2 size={12} className="animate-spin" />}
+                  {l.estado === "ok" && <Check size={12} className="text-emerald-500" />}
+                  {l.estado === "erro" && <AlertTriangle size={12} className="text-red-500" />}
+                  <span className={l.estado === "erro" ? "text-red-500" : "text-foreground-muted"}>{l.msg}</span>
+                </span>
+              </div>
+              {l.marcado && (
+                <textarea
+                  disabled={travado}
+                  value={l.legenda}
+                  onChange={(e) => mudar(i, { legenda: e.target.value })}
+                  placeholder="Legenda (vazia = a IA escreve na hora)"
+                  rows={l.legenda ? 4 : 1}
+                  className={`${campo} text-xs`}
+                />
+              )}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {erro && <p className="text-sm text-red-500 flex items-start gap-1.5"><AlertTriangle size={14} className="mt-0.5 shrink-0" /> {erro}</p>}
+      {resumo && <p className="text-sm font-medium">{resumo}</p>}
+      <div className="flex flex-wrap items-center gap-3">
+        {fase !== "pronto" && (
+          <button type="button" disabled={travado || pendente} onClick={criarTudo} className="px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-medium inline-flex items-center gap-2 disabled:opacity-60">
+            {fase === "criando" ? <Loader2 size={15} className="animate-spin" /> : null}
+            {fase === "criando" ? "Criando… (não feche a página)" : `Criar tudo pausado (${marcados.length} carros)`}
+          </button>
+        )}
+        {linkDaCampanha && (
+          <a href={linkDaCampanha} target="_blank" rel="noreferrer" className="text-sm inline-flex items-center gap-1.5 text-accent">
+            Abrir a campanha no Gerenciador <ExternalLink size={13} />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}

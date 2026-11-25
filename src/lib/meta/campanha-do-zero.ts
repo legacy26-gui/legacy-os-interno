@@ -1,0 +1,278 @@
+import "server-only";
+
+import { prisma } from "@/lib/prisma";
+import { buscarNaGraph } from "./cliente-graph";
+import { escreverNaGraph, escritaLiberada } from "./escrever-na-graph";
+import { conferirEdicao, montarTargeting, type EdicaoDoPublico } from "./publico-puro";
+import { tipoDeImagem } from "./rascunho-anuncio";
+import { baixarFotosDoCarro, MAX_FOTOS } from "@/lib/estoque/fotos";
+
+// CAMPANHA DO ZERO pra loja nova (sem campanha nenhuma pra copiar): campanha → conjunto(s) → um anúncio por carro do estoque,
+// tudo PAUSADO, com destino MENSAGEM NO WHATSAPP (decisão do Guilherme, 25/11/2026).
+//
+// ── O que é sempre igual ──────────────────────────────────────────────────
+//   • Objetivo Engajamento, otimização "conversas", destino WhatsApp (o número é o ligado à página da loja).
+//   • Público definido na hora (cidade + raio, idade, gênero) e o "alcançar mais pessoas" (Advantage+ público) DESLIGADO.
+//   • Criativo SEM os aprimoramentos automáticos da Meta (retoque, variação de texto, música…) e sem "vários anunciantes".
+//   • Nada liga sozinho: o gestor confere no Gerenciador e liga.
+//
+// ── Por que em passos ─────────────────────────────────────────────────────
+// 15 carros × 6 fotos (baixar do site, subir na Meta) passa do tempo de uma chamada só. Então: (1) cria a campanha e os
+// conjuntos; (2) a tela chama um carro por vez. Um carro que falhar não derruba os outros, e dá pra tentar ele de novo.
+//
+// ⚠️ Testado contra uma Meta FALSA. A primeira criação de verdade deve ser conferida no Gerenciador.
+
+type Obj = Record<string, unknown>;
+
+export type Estrutura = "por-carro" | "um-conjunto";
+export interface Orcamento {
+  /** "conjunto" = cada conjunto com o seu valor por dia; "campanha" = um valor pra campanha, a Meta divide. */
+  onde: "conjunto" | "campanha";
+  centavosPorDia: number;
+}
+
+export const ORCAMENTO_MINIMO_CENTS = 600; // R$ 6/dia: abaixo disso a Meta costuma recusar
+const LINK_DO_WHATSAPP = "https://api.whatsapp.com/send";
+
+/** Os aprimoramentos automáticos do criativo que ficam DESLIGADOS (opt-out explícito). */
+export const APRIMORAMENTOS_DESLIGADOS = [
+  "image_touchups",
+  "image_brightness_and_contrast",
+  "image_templates",
+  "image_uncrop",
+  "image_background_gen",
+  "text_optimizations",
+  "text_translation",
+  "inline_comment",
+  "enhance_cta",
+  "adapt_to_placement",
+  "add_text_overlay",
+  "description_automation",
+  "site_extensions",
+  "music",
+];
+
+// ─────────────────────────── Montagem (puras) ───────────────────────────
+
+export function camposDaCampanha(p: { nome: string; orcamento: Orcamento }): Record<string, string> {
+  const c: Record<string, string> = {
+    name: p.nome.slice(0, 200),
+    objective: "OUTCOME_ENGAGEMENT",
+    status: "PAUSED",
+    special_ad_categories: "[]",
+    buying_type: "AUCTION",
+  };
+  if (p.orcamento.onde === "campanha") {
+    c.daily_budget = String(p.orcamento.centavosPorDia);
+    c.bid_strategy = "LOWEST_COST_WITHOUT_CAP";
+  } else {
+    // Orçamento nos conjuntos: a Meta exige dizer se um conjunto pode usar a sobra do outro. Não pode.
+    c.is_adset_budget_sharing_enabled = "false";
+  }
+  return c;
+}
+
+export function camposDoConjunto(p: {
+  nome: string;
+  campanhaId: string;
+  paginaId: string;
+  publico: EdicaoDoPublico;
+  orcamento: Orcamento;
+}): Record<string, string> {
+  const c: Record<string, string> = {
+    name: p.nome.slice(0, 200),
+    campaign_id: p.campanhaId,
+    status: "PAUSED",
+    billing_event: "IMPRESSIONS",
+    optimization_goal: "CONVERSATIONS",
+    destination_type: "WHATSAPP",
+    promoted_object: JSON.stringify({ page_id: p.paginaId }),
+    // Público do zero, com o Advantage+ público explicitamente desligado (montarTargeting).
+    targeting: JSON.stringify(montarTargeting({}, p.publico)),
+  };
+  if (p.orcamento.onde === "conjunto") {
+    c.daily_budget = String(p.orcamento.centavosPorDia);
+    c.bid_strategy = "LOWEST_COST_WITHOUT_CAP";
+  }
+  return c;
+}
+
+export function specDoCriativo(p: { paginaId: string; instagramId?: string | null; legenda: string; titulo: string; hashes: string[] }): Obj {
+  const botao = { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP", link: LINK_DO_WHATSAPP } };
+  const ld: Obj = { message: p.legenda, link: LINK_DO_WHATSAPP, name: p.titulo.slice(0, 255), call_to_action: botao };
+  if (p.hashes.length === 1) ld.image_hash = p.hashes[0];
+  else {
+    ld.child_attachments = p.hashes.map((h) => ({ image_hash: h, link: LINK_DO_WHATSAPP, name: p.titulo.slice(0, 255), call_to_action: botao }));
+    ld.multi_share_end_card = false;
+    ld.multi_share_optimized = false;
+  }
+  return { page_id: p.paginaId, ...(p.instagramId ? { instagram_user_id: p.instagramId } : {}), link_data: ld };
+}
+
+export function grausDesligados(lista: string[] = APRIMORAMENTOS_DESLIGADOS): Obj {
+  return { creative_features_spec: Object.fromEntries(lista.map((k) => [k, { enroll_status: "OPT_OUT" }])) };
+}
+
+/** Confere o pedido antes de mandar qualquer coisa pra Meta. Devolve o erro, ou null. Pura. */
+export function conferirPedido(p: { nome: string; paginaId: string; publico: EdicaoDoPublico; orcamento: Orcamento; carros: number }): string | null {
+  if (!p.nome.trim()) return "Dê um nome pra campanha.";
+  if (!/^\d{5,25}$/.test(p.paginaId)) return "Escolha a página do Facebook da loja.";
+  if (p.carros === 0) return "Escolha pelo menos um carro.";
+  if (!Number.isInteger(p.orcamento.centavosPorDia) || p.orcamento.centavosPorDia < ORCAMENTO_MINIMO_CENTS) return "O orçamento mínimo é R$ 6 por dia.";
+  if (p.orcamento.centavosPorDia > 500_000) return "Orçamento acima de R$ 5.000 por dia: confere o valor.";
+  return conferirEdicao(p.publico);
+}
+
+// ─────────────────────────── Na Meta ───────────────────────────
+
+async function contaDaLoja(clientId: string, contaId: string) {
+  return prisma.metaAdAccount.findFirst({ where: { id: contaId, clientId, active: true }, select: { id: true, metaAccountId: true, name: true } });
+}
+
+/** As páginas do Facebook que a conta de anúncio pode usar. */
+export async function paginasDaConta(clientId: string, contaId: string): Promise<{ ok: true; paginas: { id: string; nome: string }[] } | { ok: false; erro: string }> {
+  const conta = await contaDaLoja(clientId, contaId);
+  if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
+  const r = await buscarNaGraph<{ data?: { id?: string; name?: string }[] }>(`${conta.metaAccountId}/promote_pages`, { fields: "id,name", limit: "50" });
+  if (!r.ok) return { ok: false, erro: `A Meta não listou as páginas: ${r.erro}` };
+  const paginas = (r.dados.data ?? []).filter((p) => p.id && p.name).map((p) => ({ id: String(p.id), nome: String(p.name) }));
+  return paginas.length ? { ok: true, paginas } : { ok: false, erro: "A conta de anúncio não tem nenhuma página do Facebook liberada. Ligue a página da loja à conta no Gerenciador de Negócios." };
+}
+
+export interface PedidoDaEstrutura {
+  clientId: string;
+  contaId: string;
+  paginaId: string;
+  nome: string;
+  estrutura: Estrutura;
+  orcamento: Orcamento;
+  publico: EdicaoDoPublico;
+  /** Os carros (id do estoque + nome do conjunto quando é um por carro). */
+  carros: { carroId: string; nome: string }[];
+}
+
+export type ResultadoDaEstrutura =
+  | { ok: true; campanhaId: string; contaMeta: string; conjuntos: { carroId: string | null; adsetId: string; nome: string }[]; avisos: string[] }
+  | { ok: false; erro: string; campanhaId?: string };
+
+/** Passo 1: a campanha e o(s) conjunto(s), pausados. */
+export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaEstrutura> {
+  if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
+  const erro = conferirPedido({ nome: p.nome, paginaId: p.paginaId, publico: p.publico, orcamento: p.orcamento, carros: p.carros.length });
+  if (erro) return { ok: false, erro };
+  const conta = await contaDaLoja(p.clientId, p.contaId);
+  if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
+  const paginas = await paginasDaConta(p.clientId, p.contaId);
+  if (paginas.ok && !paginas.paginas.some((x) => x.id === p.paginaId)) return { ok: false, erro: "Essa página não está liberada pra esta conta de anúncio." };
+
+  const camp = await escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/campaigns`, camposDaCampanha({ nome: p.nome, orcamento: p.orcamento }));
+  if (!camp.ok || !camp.dados.id) return { ok: false, erro: `A Meta não criou a campanha: ${camp.ok ? "não devolveu o id" : camp.erro}` };
+  const campanhaId = camp.dados.id;
+
+  const aCriar = p.estrutura === "por-carro" ? p.carros.map((c) => ({ carroId: c.carroId as string | null, nome: c.nome })) : [{ carroId: null, nome: `${p.nome} — carros` }];
+  const conjuntos: { carroId: string | null; adsetId: string; nome: string }[] = [];
+  const avisos: string[] = [];
+  for (const c of aCriar) {
+    const r = await escreverNaGraph<{ id?: string }>(
+      `${conta.metaAccountId}/adsets`,
+      camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: p.orcamento }),
+    );
+    if (r.ok && r.dados.id) conjuntos.push({ carroId: c.carroId, adsetId: r.dados.id, nome: c.nome });
+    else avisos.push(`Conjunto "${c.nome}" não foi criado: ${r.ok ? "a Meta não devolveu o id" : r.erro}`);
+  }
+  if (conjuntos.length === 0) return { ok: false, erro: `A campanha foi criada (pausada), mas nenhum conjunto: ${avisos[0] ?? ""}`, campanhaId };
+  return { ok: true, campanhaId, contaMeta: conta.metaAccountId, conjuntos, avisos };
+}
+
+async function subirFoto(contaMeta: string, bytes: Buffer, nome: string): Promise<string | null> {
+  if (!tipoDeImagem(bytes)) return null;
+  const r = await escreverNaGraph<{ images?: Record<string, { hash?: string }> }>(`${contaMeta}/adimages`, {
+    bytes: bytes.toString("base64"),
+    name: nome.replace(/[^\w.\- ]+/g, "_").slice(0, 120) || "foto",
+  });
+  return r.ok && r.dados.images ? (Object.values(r.dados.images)[0]?.hash ?? null) : null;
+}
+
+/** Cria o criativo com os aprimoramentos desligados; se a Meta recusar um nome de aprimoramento, tira só ele e tenta de novo. */
+async function criarCriativo(contaMeta: string, nome: string, spec: Obj): Promise<{ ok: true; id: string } | { ok: false; erro: string }> {
+  let lista = [...APRIMORAMENTOS_DESLIGADOS];
+  for (let tentativa = 0; tentativa < 6; tentativa++) {
+    const r = await escreverNaGraph<{ id?: string }>(`${contaMeta}/adcreatives`, {
+      name: nome.slice(0, 200),
+      object_story_spec: JSON.stringify(spec),
+      degrees_of_freedom_spec: JSON.stringify(grausDesligados(lista)),
+      contextual_multi_ads: JSON.stringify({ enroll_status: "OPT_OUT" }),
+    });
+    if (r.ok && r.dados.id) return { ok: true, id: r.dados.id };
+    const msg = r.ok ? "a Meta não devolveu o id" : r.erro;
+    const recusado = lista.find((k) => msg.includes(k));
+    if (!recusado) return { ok: false, erro: msg };
+    lista = lista.filter((k) => k !== recusado);
+  }
+  return { ok: false, erro: "a Meta recusou os ajustes do criativo" };
+}
+
+export type ResultadoDoCarro = { ok: true; adId: string; fotos: number; avisos: string[] } | { ok: false; erro: string };
+
+/** Passo 2: um carro — fotos do site, criativo, anúncio PAUSADO no conjunto. */
+export async function criarAnuncioDoCarro(p: {
+  clientId: string;
+  contaMeta: string;
+  paginaId: string;
+  adsetId: string;
+  carroId: string;
+  nomeDoAnuncio: string;
+  legenda: string;
+  maxFotos: number;
+}): Promise<ResultadoDoCarro> {
+  if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
+  const conta = await prisma.metaAdAccount.findFirst({ where: { clientId: p.clientId, metaAccountId: p.contaMeta, active: true }, select: { id: true } });
+  if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
+  const carro = await prisma.estoqueCarro.findFirst({ where: { id: p.carroId, clientId: p.clientId }, select: { id: true, titulo: true, url: true, rascunhoAdId: true } });
+  if (!carro) return { ok: false, erro: "Esse carro não é do estoque desta loja." };
+  if (carro.rascunhoAdId && carro.rascunhoAdId !== "pendente") return { ok: false, erro: `Esse carro já tem anúncio criado (${carro.rascunhoAdId}).` };
+  const legenda = p.legenda.trim();
+  if (legenda.length < 10) return { ok: false, erro: "A legenda ficou vazia." };
+
+  // Trava contra clique duplo / duas abas: marca "pendente" só se ninguém marcou antes.
+  const trava = await prisma.estoqueCarro.updateMany({ where: { id: carro.id, OR: [{ rascunhoAdId: null }, { rascunhoAdId: "pendente" }] }, data: { rascunhoAdId: "pendente" } });
+  if (trava.count === 0) return { ok: false, erro: "Esse carro já está sendo anunciado." };
+  const soltar = () => prisma.estoqueCarro.update({ where: { id: carro.id }, data: { rascunhoAdId: null } });
+
+  const fotos = await baixarFotosDoCarro(carro.url);
+  if (!fotos.ok) {
+    await soltar();
+    return { ok: false, erro: `Fotos do site: ${fotos.erro}` };
+  }
+  const hashes: string[] = [];
+  for (const [i, f] of fotos.fotos.slice(0, Math.max(1, Math.min(MAX_FOTOS, p.maxFotos))).entries()) {
+    const h = await subirFoto(p.contaMeta, f.bytes, `${carro.titulo} ${i + 1}`);
+    if (h) hashes.push(h);
+  }
+  if (hashes.length === 0) {
+    await soltar();
+    return { ok: false, erro: "A Meta não aceitou nenhuma foto desse carro." };
+  }
+
+  const nome = p.nomeDoAnuncio.trim() || carro.titulo;
+  const criativo = await criarCriativo(p.contaMeta, `${nome} — ${new Date().toISOString().slice(0, 10)}`, specDoCriativo({ paginaId: p.paginaId, legenda, titulo: carro.titulo, hashes }));
+  if (!criativo.ok) {
+    await soltar();
+    return { ok: false, erro: `Criativo: ${criativo.erro}` };
+  }
+  const ad = await escreverNaGraph<{ id?: string }>(`${p.contaMeta}/ads`, {
+    name: nome.slice(0, 200),
+    adset_id: p.adsetId,
+    creative: JSON.stringify({ creative_id: criativo.id }),
+    status: "PAUSED",
+  });
+  if (!ad.ok || !ad.dados.id) {
+    await soltar();
+    return { ok: false, erro: `Anúncio: ${ad.ok ? "a Meta não devolveu o id" : ad.erro}. O criativo ficou solto na conta e não gasta nada.` };
+  }
+  await prisma.estoqueCarro.update({ where: { id: carro.id }, data: { rascunhoAdId: ad.dados.id } });
+  const avisos: string[] = [];
+  if (fotos.puladas > 0) avisos.push(`${fotos.puladas} foto(s) do site não puderam ser usadas.`);
+  if (hashes.length < Math.min(fotos.fotos.length, p.maxFotos)) avisos.push("Alguma foto não subiu na Meta.");
+  return { ok: true, adId: ad.dados.id, fotos: hashes.length, avisos };
+}

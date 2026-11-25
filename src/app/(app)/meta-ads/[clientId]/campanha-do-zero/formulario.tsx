@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Loader2, Search, Trash2, Check, AlertTriangle, ExternalLink, Sparkles, Upload, X } from "lucide-react";
 import { atribuirArte, subirArte } from "@/lib/actions/artes";
+import { legendaDoModelo, MODELO_PADRAO } from "@/lib/meta/legenda-modelo";
 import { criarAnuncioNoZero, criarEstruturaDoZero, legendaDoZero, listarPaginas, type CarroDoZero } from "@/lib/actions/campanha-do-zero";
 import { procurarLocais } from "@/lib/actions/publico-do-conjunto";
 import { IDADE_MAXIMA, IDADE_MINIMA, RAIOS_DA_CIDADE, type GeneroDoPublico, type LocalDoPublico } from "@/lib/meta/publico-puro";
@@ -40,6 +41,10 @@ export function FormularioDoZero(p: {
   const [nome, setNome] = useState(`${p.loja} — WhatsApp`);
   const [objetivo, setObjetivo] = useState<"leads" | "engajamento">("leads");
   const [rodape, setRodape] = useState(p.rodape);
+  // Legenda: "ia" = a IA escreve (a vazia); "minha" = a pessoa escreve a de cada carro (sem IA); "todos" = um texto só, com os
+  // dados de cada carro trocados ({carro}, {preco}…).
+  const [modoLegenda, setModoLegenda] = useState<"ia" | "minha" | "todos">("ia");
+  const [modelo, setModelo] = useState(MODELO_PADRAO);
   // As artes: a de cada carro (vai como 1ª foto) e as que subiram sem carro definido (arrastar pro carro ou escolher).
   const [arteDoCarro, setArteDoCarro] = useState<Record<string, string>>(() => Object.fromEntries(p.carros.filter((c) => c.arteId).map((c) => [c.id, c.arteId as string])));
   const [soltas, setSoltas] = useState(p.artesSoltas);
@@ -127,6 +132,11 @@ export function FormularioDoZero(p: {
     if (!paginaId) return setErro("Escolha a página do Facebook da loja.");
     if (marcados.length === 0) return setErro("Marque pelo menos um carro.");
     if (estrutura === "montada" && conjuntosUsados.some((c) => !c.nome.trim())) return setErro("Dê nome a todos os conjuntos.");
+    if (modoLegenda === "minha") {
+      const sem = marcados.find((l) => l.legenda.trim().length < 10);
+      if (sem) return setErro(`Escreva a legenda do ${sem.carro.titulo} (ou troque pra "IA escreve").`);
+    }
+    if (modoLegenda === "todos" && modelo.trim().length < 10) return setErro("Escreva a legenda que vai pra todos os carros.");
     const descricao =
       estrutura === "por-carro"
         ? `${marcados.length} conjuntos (um por carro)`
@@ -168,8 +178,8 @@ export function FormularioDoZero(p: {
           continue;
         }
         mudar(i, { estado: "criando", msg: "legenda…" });
-        let legenda = l.legenda.trim();
-        if (!legenda) {
+        let legenda = modoLegenda === "todos" ? legendaDoModelo(modelo, l.carro, rodape) : l.legenda.trim();
+        if (!legenda && modoLegenda === "ia") {
           const lg = await legendaDoZero(p.clientId, l.carro.id, rodape);
           if (!lg.ok) {
             mudar(i, { estado: "erro", msg: `legenda: ${lg.erro}` });
@@ -519,17 +529,44 @@ export function FormularioDoZero(p: {
                 <option key={n}>{n}</option>
               ))}
             </select>
-            <button type="button" disabled={travado || pendente} onClick={gerarLegendas} className="px-3 py-2 rounded-lg border border-border inline-flex items-center gap-1.5">
-              <Sparkles size={14} /> Escrever legendas com IA
-            </button>
+            {modoLegenda === "ia" && (
+              <button type="button" disabled={travado || pendente} onClick={gerarLegendas} className="px-3 py-2 rounded-lg border border-border inline-flex items-center gap-1.5">
+                <Sparkles size={14} /> Escrever legendas com IA
+              </button>
+            )}
           </div>
         </div>
+        <div className="flex flex-col gap-1 text-sm">
+          Legenda
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["ia", "IA escreve (pode editar)"],
+                ["minha", "Eu escrevo a de cada carro"],
+                ["todos", "Uma legenda pra todos"],
+              ] as const
+            ).map(([v, r]) => (
+              <button key={v} type="button" disabled={travado} onClick={() => setModoLegenda(v)} className={`px-3 py-2 rounded-lg border ${modoLegenda === v ? "border-accent bg-accent/10" : "border-border"}`}>
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
+        {modoLegenda === "todos" && (
+          <label className="flex flex-col gap-1 text-sm">
+            Legenda de todos os carros
+            <textarea disabled={travado} value={modelo} onChange={(e) => setModelo(e.target.value)} rows={7} className={campo} aria-label="Legenda de todos os carros" />
+            <span className="text-xs text-foreground-muted">
+              <code>{"{carro} {ano} {km} {cor} {preco} {rodape}"}</code> viram os dados de cada carro; linha sem dado some. Sem IA.
+            </span>
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-sm">
           Rodapé da legenda (endereço e WhatsApp da loja)
           <textarea disabled={travado} value={rodape} onChange={(e) => setRodape(e.target.value)} rows={3} placeholder={"📍 Rua ..., 123 - Bairro - Cidade\n📲 WhatsApp: (42) 9xxxx-xxxx"} className={campo} />
           <span className="text-xs text-foreground-muted">
             {p.rodapeDoSite && p.rodape ? "Puxado do site da loja — confira. " : !p.rodape ? "O site não mostrou endereço/WhatsApp: escreva aqui. " : ""}
-            A IA termina cada legenda com este rodapé, e ele fica salvo pra loja.
+            {modoLegenda === "ia" ? "A IA termina cada legenda com este rodapé, e ele fica salvo pra loja." : modoLegenda === "todos" ? "Entra onde estiver {rodape}." : "Não é usado quando você escreve cada legenda."}
           </span>
         </label>
         <div className="flex flex-col gap-2 rounded-xl border border-dashed border-border p-3">
@@ -605,7 +642,7 @@ export function FormularioDoZero(p: {
             </div>
           )}
         </div>
-        <p className="text-xs text-foreground-muted">Legenda vazia é escrita pela IA na hora de criar. O nome vale pro anúncio{estrutura === "por-carro" ? " e pro conjunto do carro" : ""}.{estrutura === "montada" ? " Escolha o conjunto de cada carro." : ""}</p>
+        <p className="text-xs text-foreground-muted">{modoLegenda === "ia" ? "Legenda vazia é escrita pela IA na hora de criar." : modoLegenda === "minha" ? "Escreva a legenda de cada carro (a IA não entra)." : "Abaixo, a prévia da legenda de cada carro."} O nome vale pro anúncio{estrutura === "por-carro" ? " e pro conjunto do carro" : ""}.{estrutura === "montada" ? " Escolha o conjunto de cada carro." : ""}</p>
         <ul className="flex flex-col gap-3">
           {linhas.map((l, i) => (
             <li
@@ -682,13 +719,19 @@ export function FormularioDoZero(p: {
                   <span className={l.estado === "erro" ? "text-red-500" : "text-foreground-muted"}>{l.msg}</span>
                 </span>
               </div>
-              {l.marcado && (
+              {l.marcado && modoLegenda === "todos" && (
+                <pre className="whitespace-pre-wrap text-xs rounded-lg bg-surface-muted p-2 font-sans" aria-label={`Prévia da legenda do ${l.carro.titulo}`}>
+                  {legendaDoModelo(modelo, l.carro, rodape)}
+                </pre>
+              )}
+              {l.marcado && modoLegenda !== "todos" && (
                 <textarea
                   disabled={travado}
                   value={l.legenda}
                   onChange={(e) => mudar(i, { legenda: e.target.value })}
-                  placeholder="Legenda (vazia = a IA escreve na hora)"
-                  rows={l.legenda ? 4 : 1}
+                  placeholder={modoLegenda === "ia" ? "Legenda (vazia = a IA escreve na hora)" : "Escreva a legenda deste carro"}
+                  aria-label={`Legenda do ${l.carro.titulo}`}
+                  rows={l.legenda || modoLegenda === "minha" ? 4 : 1}
                   className={`${campo} text-xs`}
                 />
               )}

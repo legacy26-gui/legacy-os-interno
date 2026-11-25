@@ -51,3 +51,8 @@ Loja nova não tem legendas antigas pra IA copiar, e a legenda saía genérica. 
 - A pessoa confere/edita; ao escrever as legendas, o rodapé fica **salvo pra loja** (`estoque_da_loja.rodapeDaLegenda`) e passa a valer também no "anunciar agora".
 - A IA termina cada legenda com esse rodapé, exatamente com aqueles dados. Sem rodapé e sem exemplos, ela não inventa endereço nem telefone.
 - Testado nos sites: R2 (achou endereço e telefone fixo, sem WhatsApp no site), 7 Point, Bom Jesus (tem 2 endereços: pegou o 1º), DS.
+
+## Legenda: três jeitos
+- **IA escreve (pode editar)** — padrão: legenda vazia é escrita pela IA (com o rodapé da loja).
+- **Eu escrevo a de cada carro** — a IA não entra; não cria nada enquanto faltar legenda em algum carro marcado.
+- **Uma legenda pra todos** — um texto só; `{carro} {ano} {km} {cor} {preco} {rodape}` viram os dados de cada carro (linha sem dado some). A tela mostra a prévia de cada carro. Sem IA. Código: `src/lib/meta/legenda-modelo.ts`.

@@ -526,6 +526,9 @@ nome em todos).
   → só ele). Não pausa só quando nenhum carro casou **pelo nome** (só legenda, ou só palavra de formato): aí responde "faltou o
   carro, me fala o nome" e não tira nada. Palavra de formato (stories, video, feed…) nunca identifica carro. Sem confirmação por
   quantidade. (A tabela `perguntas_no_grupo` e a leitura de resposta ficaram no código, inertes: nada mais cria pergunta.)
+- **Carro só no nome do conjunto → pausa o CONJUNTO** (pedido do Guilherme): quando os anúncios do carro têm nome genérico e o
+  conjunto só tem anúncios assim, o robô pausa o conjunto (uma vez) e avisa "Pronto, pausei o conjunto *X*". Se o conjunto tem
+  anúncio com nome de OUTRO carro, pausa só os anúncios do carro pedido.
 - **Desfazer pelo Meu Dia**: o bloco do robô mostra **hoje e ontem** (contando da meia-noite de Brasília — antes o "hoje" começava
   às 9h e escondia o que acontecia cedo), com **Religar** em cada anúncio e **Religar os N deste pedido**. Quem religa é uma pessoa
   clicando (o robô continua nunca ligando nada sozinho).

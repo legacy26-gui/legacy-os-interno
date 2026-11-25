@@ -19,7 +19,7 @@ import { avisarAEquipeDaLoja } from "./avisar-a-equipe";
 import { anotar } from "./trilha";
 import { listaDosAnunciosAtivos, pedeListaDeAnuncios } from "./anuncios-ativos";
 import { tratarListaNoPrivado } from "./anuncios-ativos-no-privado";
-import { donosDosAnuncios, nomeIdentificavel } from "./nome-do-anuncio";
+import { donosDosAnuncios, nomeEhGenerico, nomeIdentificavel } from "./nome-do-anuncio";
 import { apagarPergunta, lerPergunta, lerResposta } from "./pergunta-no-grupo";
 import { pedeSugestao, semRecomendacao } from "@/lib/copiloto/pede-sugestao";
 import { tratarVendaNoGrupo } from "@/lib/vendas/venda-por-lead";
@@ -395,6 +395,14 @@ export async function atenderMensagemDoGrupo(
     nome: nomeIdentificavel(c.adName, donoDe(c).conjunto, donoDe(c).campanha).nome,
     textos: [c.titulo, c.legenda].filter((t): t is string => !!t),
   }));
+  // O carro está só no nome do CONJUNTO (os anúncios se chamam "Stories", "Video"…) e o conjunto não tem anúncio de outro
+  // carro: aí quem sai é o CONJUNTO (pedido do Guilherme). Conjunto com anúncio de nome de carro próprio fica de fora disto.
+  const conjuntoDoAd = new Map(criativos.map((c) => [c.adId, c.adsetId]));
+  const conjuntosSoDoCarro = new Set(
+    [...new Set(criativos.map((c) => c.adsetId).filter((x): x is string => !!x))].filter((s) =>
+      criativos.filter((c) => c.adsetId === s).every((c) => nomeEhGenerico(c.adName)),
+    ),
+  );
 
   // Sem a marcação: o número do robô dentro do texto entraria na conta de
   // raridade de palavras e poderia, sozinho, empurrar a escolha pro anúncio
@@ -555,6 +563,8 @@ export async function atenderMensagemDoGrupo(
   // dois saem — é o que quem pediu quer. Só não pausa quando nenhum carro casou PELO NOME (só por legenda, ou só por palavra
   // de formato como "stories"/"video"): aí responde que não achou o carro.
   const semCarro: string[] = [];
+  const conjuntosTirados: string[] = [];
+  const conjuntosJaPausados = new Set<string>();
   for (const alvo of pedido.alvos) {
     if (!alvo.semDuvida) {
       const juntos = alvo.empatados ?? [];
@@ -573,6 +583,25 @@ export async function atenderMensagemDoGrupo(
     // responde "pronto, tirei do ar", todo mundo acredita, e o carro vendido
     // continua gastando verba pelo anúncio gêmeo. Ver nomeNormalizado.
     for (const candidato of alvo.mesmoCarro) {
+      // Carro que só existe no nome do conjunto: pausa o conjunto (uma vez), não anúncio por anúncio.
+      const doConjunto = conjuntoDoAd.get(candidato.adId);
+      if (doConjunto && conjuntosSoDoCarro.has(doConjunto)) {
+        if (conjuntosJaPausados.has(doConjunto)) continue;
+        conjuntosJaPausados.add(doConjunto);
+        const conj = await acharObjetoDaLoja(loja.id, "conjunto", doConjunto);
+        if (conj) {
+          const r = await mudarStatus({ clientId: loja.id, quemId: null, nivel: "conjunto", objeto: conj, ligar: false, origem: "whatsapp", pedidoPor: quem, pedidoTexto: m.texto });
+          if (r.ok) {
+            conjuntosTirados.push(conj.nome);
+            await anotar(m.messageId, m.grupoId, "pausou-conjunto-do-carro", conj.nome);
+          } else {
+            falhas.push(`o conjunto ${conj.nome} (${r.erro})`);
+            await anotar(m.messageId, m.grupoId, "a-meta-recusou", `${conj.nome}: ${r.erro}`);
+          }
+          continue;
+        }
+        // Conjunto não achado no cadastro: segue pelo anúncio, como sempre.
+      }
       // De novo pelo cadastro da loja, e não pelo id que veio da leitura: é a
       // mesma trava que impede um id trocado no navegador de pausar a campanha
       // de outra pessoa. Custa uma consulta e fecha a porta.
@@ -629,6 +658,8 @@ export async function atenderMensagemDoGrupo(
 
   // ── Uma resposta só, com tudo que aconteceu ───────────────────────────
   const partes: string[] = [];
+  if (conjuntosTirados.length === 1) partes.push(`Pronto, pausei o conjunto *${conjuntosTirados[0]}*.`);
+  else if (conjuntosTirados.length > 1) partes.push(`Pronto, pausei os conjuntos:\n${conjuntosTirados.map((n) => `• *${n}*`).join("\n")}`);
   if (tirados.length === 1) {
     partes.push(`Pronto, tirei *${tirados[0]}* do ar.`);
   } else if (tirados.length > 1) {
@@ -652,7 +683,7 @@ export async function atenderMensagemDoGrupo(
   }
   if (semCarro.length > 0) {
     partes.push(
-      tirados.length > 0
+      tirados.length + conjuntosTirados.length > 0
         ? "Não achei o carro do resto do pedido nos anúncios no ar. Me fala o nome do carro (como está no anúncio ou no conjunto)."
         : "Não achei qual carro é esse nos anúncios no ar. Me fala o nome do carro (como está no anúncio ou no conjunto).",
     );
@@ -664,7 +695,7 @@ export async function atenderMensagemDoGrupo(
     partes.push(textoDaSugestao(pedido.sugestoes));
   }
   if (
-    tirados.length > 0 &&
+    tirados.length + conjuntosTirados.length > 0 &&
     falhas.length === 0 &&
     semCarro.length === 0 &&
     pedido.sugestoes.length === 0 &&
@@ -678,8 +709,11 @@ export async function atenderMensagemDoGrupo(
   if (partes.length > 0) await responder(m.grupoId, partes.join("\n\n"), m.messageId);
   if (falhas.length > 0) await avisarDaFalha(loja, m, falhas);
 
-  if (falhas.length > 0 && tirados.length === 0) {
+  if (falhas.length > 0 && tirados.length + conjuntosTirados.length === 0) {
     return { tipo: "falhou", clientId: loja.id, erro: falhas.join("; ") };
+  }
+  if (tirados.length === 0 && conjuntosTirados.length > 0) {
+    return { tipo: "desligou-varios", clientId: loja.id, quantos: conjuntosTirados.length };
   }
   if (tirados.length === 0) {
     return {

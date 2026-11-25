@@ -8,7 +8,9 @@ cria **campanha → conjunto(s) → um anúncio por carro do estoque**, tudo **P
 1. **Conta e página** — a conta de anúncio da loja e a página do Facebook (lista de `act_X/promote_pages`). O WhatsApp é o número
    ligado a essa página.
 2. **Campanha, estrutura e orçamento** — nome; **um conjunto por carro** (nome do conjunto = nome do carro; combina com o robô,
-   que pausa o conjunto) ou **um conjunto com todos**; orçamento **por conjunto** (R$/dia cada) ou **na campanha** (a Meta divide).
+   que pausa o conjunto), **um conjunto com todos**, ou **montar os conjuntos**: quantos quiser (até 50), cada um com nome e,
+   quando o orçamento é por conjunto, o seu valor por dia (vazio = o valor padrão); em cada carro escolhe-se o conjunto. Conjunto
+   sem carro não é criado; orçamento **por conjunto** (R$/dia cada) ou **na campanha** (a Meta divide).
    Mostra o total por dia. Mínimo R$ 6/dia.
 3. **Público** — idade, gênero, cidades/estados com raio (busca da própria Meta). **Advantage+ público sempre desligado.**
 4. **Carros** — o estoque lido do site (carro que já tem anúncio vem desmarcado e travado). Nome do anúncio editável; legenda

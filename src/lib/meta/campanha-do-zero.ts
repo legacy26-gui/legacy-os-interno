@@ -24,7 +24,7 @@ import { baixarFotosDoCarro, MAX_FOTOS } from "@/lib/estoque/fotos";
 
 type Obj = Record<string, unknown>;
 
-export type Estrutura = "por-carro" | "um-conjunto";
+export type Estrutura = "por-carro" | "um-conjunto" | "montada";
 export interface Orcamento {
   /** "conjunto" = cada conjunto com o seu valor por dia; "campanha" = um valor pra campanha, a Meta divide. */
   onde: "conjunto" | "campanha";
@@ -147,18 +147,20 @@ export interface PedidoDaEstrutura {
   estrutura: Estrutura;
   orcamento: Orcamento;
   publico: EdicaoDoPublico;
-  /** Os carros (id do estoque + nome do conjunto quando é um por carro). */
-  carros: { carroId: string; nome: string }[];
+  /** Os carros (id do estoque + nome do conjunto quando é um por carro; `conjunto` = chave do conjunto quando é "montada"). */
+  carros: { carroId: string; nome: string; conjunto?: string }[];
+  /** Só em "montada": os conjuntos que o gestor montou (quantos quiser), cada um com o seu orçamento opcional. */
+  conjuntos?: { chave: string; nome: string; centavosPorDia?: number | null }[];
 }
 
 export type ResultadoDaEstrutura =
-  | { ok: true; campanhaId: string; contaMeta: string; conjuntos: { carroId: string | null; adsetId: string; nome: string }[]; avisos: string[] }
+  | { ok: true; campanhaId: string; contaMeta: string; conjuntos: { chave: string; carroId: string | null; adsetId: string; nome: string }[]; avisos: string[] }
   | { ok: false; erro: string; campanhaId?: string };
 
 /** Passo 1: a campanha e o(s) conjunto(s), pausados. */
 export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaEstrutura> {
   if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
-  const erro = conferirPedido({ nome: p.nome, paginaId: p.paginaId, publico: p.publico, orcamento: p.orcamento, carros: p.carros.length });
+  const erro = conferirPedido({ nome: p.nome, paginaId: p.paginaId, publico: p.publico, orcamento: p.orcamento, carros: p.carros.length }) ?? conferirMontagem(p);
   if (erro) return { ok: false, erro };
   const conta = await contaDaLoja(p.clientId, p.contaId);
   if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
@@ -169,19 +171,46 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
   if (!camp.ok || !camp.dados.id) return { ok: false, erro: `A Meta não criou a campanha: ${camp.ok ? "não devolveu o id" : camp.erro}` };
   const campanhaId = camp.dados.id;
 
-  const aCriar = p.estrutura === "por-carro" ? p.carros.map((c) => ({ carroId: c.carroId as string | null, nome: c.nome })) : [{ carroId: null, nome: `${p.nome} — carros` }];
-  const conjuntos: { carroId: string | null; adsetId: string; nome: string }[] = [];
+  const aCriar = conjuntosACriar(p);
+  const conjuntos: { chave: string; carroId: string | null; adsetId: string; nome: string }[] = [];
   const avisos: string[] = [];
   for (const c of aCriar) {
+    const orc: Orcamento = p.orcamento.onde === "conjunto" && c.centavosPorDia ? { onde: "conjunto", centavosPorDia: c.centavosPorDia } : p.orcamento;
     const r = await escreverNaGraph<{ id?: string }>(
       `${conta.metaAccountId}/adsets`,
-      camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: p.orcamento }),
+      camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: orc }),
     );
-    if (r.ok && r.dados.id) conjuntos.push({ carroId: c.carroId, adsetId: r.dados.id, nome: c.nome });
+    if (r.ok && r.dados.id) conjuntos.push({ chave: c.chave, carroId: c.carroId, adsetId: r.dados.id, nome: c.nome });
     else avisos.push(`Conjunto "${c.nome}" não foi criado: ${r.ok ? "a Meta não devolveu o id" : r.erro}`);
   }
   if (conjuntos.length === 0) return { ok: false, erro: `A campanha foi criada (pausada), mas nenhum conjunto: ${avisos[0] ?? ""}`, campanhaId };
   return { ok: true, campanhaId, contaMeta: conta.metaAccountId, conjuntos, avisos };
+}
+
+/** Os conjuntos a criar, conforme a estrutura escolhida. Em "montada", só os que têm pelo menos um carro. Pura. */
+export function conjuntosACriar(p: Pick<PedidoDaEstrutura, "estrutura" | "nome" | "carros" | "conjuntos">): { chave: string; carroId: string | null; nome: string; centavosPorDia: number | null }[] {
+  if (p.estrutura === "por-carro") return p.carros.map((c) => ({ chave: c.carroId, carroId: c.carroId, nome: c.nome, centavosPorDia: null }));
+  if (p.estrutura === "um-conjunto") return [{ chave: "todos", carroId: null, nome: `${p.nome} — carros`, centavosPorDia: null }];
+  const usados = new Set(p.carros.map((c) => c.conjunto));
+  return (p.conjuntos ?? []).filter((c) => usados.has(c.chave)).map((c) => ({ chave: c.chave, carroId: null, nome: c.nome.trim(), centavosPorDia: c.centavosPorDia ?? null }));
+}
+
+/** Confere a estrutura "montada": cada carro num conjunto que existe, nomes preenchidos, orçamentos válidos. Pura. */
+export function conferirMontagem(p: Pick<PedidoDaEstrutura, "estrutura" | "carros" | "conjuntos" | "orcamento">): string | null {
+  if (p.estrutura !== "montada") return null;
+  const conjuntos = p.conjuntos ?? [];
+  if (conjuntos.length === 0) return "Crie pelo menos um conjunto.";
+  if (conjuntos.length > 50) return "No máximo 50 conjuntos por campanha.";
+  const chaves = new Set(conjuntos.map((c) => c.chave));
+  if (chaves.size !== conjuntos.length) return "Dois conjuntos com a mesma chave.";
+  const semConjunto = p.carros.filter((c) => !c.conjunto || !chaves.has(c.conjunto));
+  if (semConjunto.length) return `Escolha o conjunto de ${semConjunto.length === 1 ? "um carro" : `${semConjunto.length} carros`}.`;
+  const usados = new Set(p.carros.map((c) => c.conjunto));
+  for (const c of conjuntos.filter((x) => usados.has(x.chave))) {
+    if (!c.nome.trim()) return "Dê nome a todos os conjuntos.";
+    if (p.orcamento.onde === "conjunto" && c.centavosPorDia != null && (!Number.isInteger(c.centavosPorDia) || c.centavosPorDia < ORCAMENTO_MINIMO_CENTS)) return `O orçamento do conjunto "${c.nome}" está abaixo de R$ 6 por dia.`;
+  }
+  return null;
 }
 
 async function subirFoto(contaMeta: string, bytes: Buffer, nome: string): Promise<string | null> {

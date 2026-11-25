@@ -10,6 +10,8 @@ type Estado = "esperando" | "criando" | "ok" | "erro";
 interface LinhaDoCarro {
   carro: CarroDoZero;
   marcado: boolean;
+  /** Em "montar os conjuntos": em qual conjunto o carro vai. */
+  conjunto: string;
   nome: string;
   legenda: string;
   estado: Estado;
@@ -32,7 +34,10 @@ export function FormularioDoZero(p: {
   const [erroPaginas, setErroPaginas] = useState(p.erroDasPaginas);
   const [paginaId, setPaginaId] = useState(p.paginasIniciais[0]?.id ?? "");
   const [nome, setNome] = useState(`${p.loja} — WhatsApp`);
-  const [estrutura, setEstrutura] = useState<"por-carro" | "um-conjunto">("por-carro");
+  const [estrutura, setEstrutura] = useState<"por-carro" | "um-conjunto" | "montada">("por-carro");
+  // "Montar os conjuntos": quantos o gestor quiser, cada um com nome e (se o orçamento é por conjunto) o seu valor por dia.
+  const [conjuntos, setConjuntos] = useState<{ chave: string; nome: string; valor: string }[]>([{ chave: "c1", nome: "Conjunto 1", valor: "" }]);
+  const [proximaChave, setProximaChave] = useState(2);
   const [ondeOrcamento, setOndeOrcamento] = useState<"conjunto" | "campanha">("conjunto");
   const [valor, setValor] = useState("15");
   const [idadeMin, setIdadeMin] = useState(25);
@@ -43,7 +48,7 @@ export function FormularioDoZero(p: {
   const [achados, setAchados] = useState<LocalDoPublico[]>([]);
   const [maxFotos, setMaxFotos] = useState(6);
   const [linhas, setLinhas] = useState<LinhaDoCarro[]>(
-    p.carros.map((c) => ({ carro: c, marcado: !c.jaAnunciado, nome: c.titulo, legenda: "", estado: "esperando", msg: c.jaAnunciado ? "já tem anúncio" : "" })),
+    p.carros.map((c) => ({ carro: c, marcado: !c.jaAnunciado, conjunto: "c1", nome: c.titulo, legenda: "", estado: "esperando", msg: c.jaAnunciado ? "já tem anúncio" : "" })),
   );
   const [erro, setErro] = useState<string | null>(null);
   const [fase, setFase] = useState<"montando" | "criando" | "pronto">("montando");
@@ -54,7 +59,16 @@ export function FormularioDoZero(p: {
   const marcados = linhas.filter((l) => l.marcado);
   const conta = p.contas.find((c) => c.id === contaId)!;
   const centavos = Math.round(Number(valor.replace(",", ".")) * 100);
-  const total = ondeOrcamento === "campanha" ? centavos : centavos * (estrutura === "por-carro" ? marcados.length : 1);
+  const emCentavos = (v: string) => Math.round(Number(v.replace(",", ".")) * 100);
+  const conjuntosUsados = conjuntos.filter((c) => marcados.some((l) => l.conjunto === c.chave));
+  const total =
+    ondeOrcamento === "campanha"
+      ? centavos
+      : estrutura === "por-carro"
+        ? centavos * marcados.length
+        : estrutura === "um-conjunto"
+          ? centavos
+          : conjuntosUsados.reduce((t, c) => t + (c.valor.trim() ? emCentavos(c.valor) : centavos), 0);
   const mudar = (i: number, d: Partial<LinhaDoCarro>) => setLinhas((ls) => ls.map((l, j) => (j === i ? { ...l, ...d } : l)));
 
   function trocarConta(id: string) {
@@ -97,7 +111,14 @@ export function FormularioDoZero(p: {
     if (locais.length === 0) return setErro("Adicione pelo menos uma cidade no público.");
     if (!paginaId) return setErro("Escolha a página do Facebook da loja.");
     if (marcados.length === 0) return setErro("Marque pelo menos um carro.");
-    if (!confirm(`Criar na Meta, tudo PAUSADO:\n\n• 1 campanha "${nome}"\n• ${estrutura === "por-carro" ? `${marcados.length} conjuntos (um por carro)` : "1 conjunto com todos os carros"}\n• ${marcados.length} anúncios\n• Orçamento: ${reais(total)}/dia no total\n\nNada liga sozinho.`)) return;
+    if (estrutura === "montada" && conjuntosUsados.some((c) => !c.nome.trim())) return setErro("Dê nome a todos os conjuntos.");
+    const descricao =
+      estrutura === "por-carro"
+        ? `${marcados.length} conjuntos (um por carro)`
+        : estrutura === "um-conjunto"
+          ? "1 conjunto com todos os carros"
+          : `${conjuntosUsados.length} conjuntos: ${conjuntosUsados.map((c) => `${c.nome} (${marcados.filter((l) => l.conjunto === c.chave).length})`).join(", ")}`;
+    if (!confirm(`Criar na Meta, tudo PAUSADO:\n\n• 1 campanha "${nome}"\n• ${descricao}\n• ${marcados.length} anúncios\n• Orçamento: ${reais(total)}/dia no total\n\nNada liga sozinho.`)) return;
     setFase("criando");
     comecar(async () => {
       const est = await criarEstruturaDoZero({
@@ -108,7 +129,11 @@ export function FormularioDoZero(p: {
         estrutura,
         orcamento: { onde: ondeOrcamento, centavosPorDia: centavos },
         publico: { idadeMin, idadeMax, genero, locais },
-        carros: marcados.map((l) => ({ carroId: l.carro.id, nome: l.nome })),
+        carros: marcados.map((l) => ({ carroId: l.carro.id, nome: l.nome, conjunto: estrutura === "montada" ? l.conjunto : undefined })),
+        conjuntos:
+          estrutura === "montada"
+            ? conjuntos.map((c) => ({ chave: c.chave, nome: c.nome, centavosPorDia: ondeOrcamento === "conjunto" && c.valor.trim() ? emCentavos(c.valor) : null }))
+            : undefined,
       });
       if (!est.ok) {
         setErro(est.erro);
@@ -120,7 +145,8 @@ export function FormularioDoZero(p: {
       for (let i = 0; i < linhas.length; i++) {
         const l = linhas[i];
         if (!l.marcado) continue;
-        const conj = estrutura === "por-carro" ? est.conjuntos.find((c) => c.carroId === l.carro.id) : est.conjuntos[0];
+        const chave = estrutura === "por-carro" ? l.carro.id : estrutura === "montada" ? l.conjunto : "todos";
+        const conj = est.conjuntos.find((c) => c.chave === chave);
         if (!conj) {
           mudar(i, { estado: "erro", msg: "o conjunto deste carro não foi criado" });
           continue;
@@ -193,6 +219,7 @@ export function FormularioDoZero(p: {
             [
               ["por-carro", "Um conjunto por carro"],
               ["um-conjunto", "Um conjunto com todos"],
+              ["montada", "Montar os conjuntos"],
             ] as const
           ).map(([v, r]) => (
             <button key={v} type="button" disabled={travado} onClick={() => setEstrutura(v)} className={`px-3 py-2 rounded-lg border ${estrutura === v ? "border-accent bg-accent/10" : "border-border"}`}>
@@ -200,11 +227,72 @@ export function FormularioDoZero(p: {
             </button>
           ))}
         </div>
+        {estrutura === "montada" && (
+          <div className="flex flex-col gap-2 rounded-xl border border-border p-3">
+            <p className="text-xs text-foreground-muted">
+              Crie quantos conjuntos quiser e escolha, em cada carro (parte 4), em qual conjunto ele vai. Conjunto sem carro não é criado.
+              {ondeOrcamento === "conjunto" ? " Valor vazio = o valor padrão abaixo." : ""}
+            </p>
+            {conjuntos.map((c, i) => (
+              <div key={c.chave} className="flex flex-wrap items-center gap-2 text-sm">
+                <input
+                  disabled={travado}
+                  value={c.nome}
+                  onChange={(e) => setConjuntos(conjuntos.map((x, j) => (j === i ? { ...x, nome: e.target.value } : x)))}
+                  placeholder="Nome do conjunto"
+                  aria-label={`Nome do conjunto ${i + 1}`}
+                  className={`${campo} flex-1 min-w-48`}
+                />
+                {ondeOrcamento === "conjunto" && (
+                  <label className="flex items-center gap-1">
+                    R$
+                    <input
+                      disabled={travado}
+                      inputMode="decimal"
+                      value={c.valor}
+                      onChange={(e) => setConjuntos(conjuntos.map((x, j) => (j === i ? { ...x, valor: e.target.value } : x)))}
+                      placeholder={valor || "—"}
+                      aria-label={`Orçamento do conjunto ${i + 1}`}
+                      className={`${campo} w-20`}
+                    />
+                    /dia
+                  </label>
+                )}
+                <span className="text-xs text-foreground-muted">{marcados.filter((l) => l.conjunto === c.chave).length} carro(s)</span>
+                {conjuntos.length > 1 && (
+                  <button
+                    type="button"
+                    disabled={travado}
+                    aria-label={`Tirar o conjunto ${i + 1}`}
+                    onClick={() => {
+                      const resto = conjuntos.filter((_, j) => j !== i);
+                      setConjuntos(resto);
+                      setLinhas((ls) => ls.map((l) => (l.conjunto === c.chave ? { ...l, conjunto: resto[0].chave } : l)));
+                    }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
+              </div>
+            ))}
+            <button
+              type="button"
+              disabled={travado}
+              onClick={() => {
+                setConjuntos([...conjuntos, { chave: `c${proximaChave}`, nome: `Conjunto ${conjuntos.length + 1}`, valor: "" }]);
+                setProximaChave(proximaChave + 1);
+              }}
+              className="text-sm px-3 py-1.5 rounded-lg border border-dashed border-border w-fit"
+            >
+              + Adicionar conjunto
+            </button>
+          </div>
+        )}
         <div className="flex flex-wrap items-end gap-3 text-sm">
           <div className="flex gap-2">
             {(
               [
-                ["conjunto", estrutura === "por-carro" ? "Por carro (conjunto)" : "No conjunto"],
+                ["conjunto", estrutura === "por-carro" ? "Por carro (conjunto)" : estrutura === "montada" ? "Por conjunto" : "No conjunto"],
                 ["campanha", "Na campanha (a Meta divide)"],
               ] as const
             ).map(([v, r]) => (
@@ -329,7 +417,7 @@ export function FormularioDoZero(p: {
             </button>
           </div>
         </div>
-        <p className="text-xs text-foreground-muted">Legenda vazia é escrita pela IA na hora de criar. O nome vale pro anúncio{estrutura === "por-carro" ? " e pro conjunto do carro" : ""}.</p>
+        <p className="text-xs text-foreground-muted">Legenda vazia é escrita pela IA na hora de criar. O nome vale pro anúncio{estrutura === "por-carro" ? " e pro conjunto do carro" : ""}.{estrutura === "montada" ? " Escolha o conjunto de cada carro." : ""}</p>
         <ul className="flex flex-col gap-3">
           {linhas.map((l, i) => (
             <li key={l.carro.id} className={`rounded-xl border p-3 flex flex-col gap-2 ${l.estado === "ok" ? "border-emerald-500/50" : l.estado === "erro" ? "border-red-500/50" : "border-border"}`}>
@@ -341,6 +429,18 @@ export function FormularioDoZero(p: {
                 )}
                 <div className="flex-1 min-w-0 flex flex-col gap-1">
                   <input disabled={travado || !l.marcado} value={l.nome} onChange={(e) => mudar(i, { nome: e.target.value })} className={`${campo} font-medium`} />
+                  {estrutura === "montada" && l.marcado && (
+                    <label className="flex items-center gap-2 text-xs">
+                      Conjunto:
+                      <select disabled={travado} value={l.conjunto} onChange={(e) => mudar(i, { conjunto: e.target.value })} aria-label={`Conjunto de ${l.carro.titulo}`} className={`${campo} py-1`}>
+                        {conjuntos.map((c) => (
+                          <option key={c.chave} value={c.chave}>
+                            {c.nome || "(sem nome)"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <span className="text-xs text-foreground-muted">
                     {[l.carro.anoModelo, l.carro.km !== null ? `${l.carro.km.toLocaleString("pt-BR")} km` : null, l.carro.cor, reais(l.carro.precoCents)].filter(Boolean).join(" · ")}
                   </span>

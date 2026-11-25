@@ -94,13 +94,22 @@ export async function criarEstruturaDoZero(p: {
   estrutura: Estrutura;
   orcamento: Orcamento;
   publico: EdicaoDoPublico;
-  carros: { carroId: string; nome: string }[];
+  carros: { carroId: string; nome: string; conjunto?: string }[];
+  conjuntos?: { chave: string; nome: string; centavosPorDia?: number | null }[];
 }): Promise<ResultadoDaEstrutura> {
   return semQuebrar(async () => {
     if (!(await pode(p.clientId))) return { ok: false as const, erro: "Esta loja não está na sua carteira." };
     const ids = new Set((await prisma.estoqueCarro.findMany({ where: { clientId: p.clientId, id: { in: (p.carros ?? []).map((c) => String(c.carroId)) } }, select: { id: true } })).map((c) => c.id));
-    const carros = (p.carros ?? []).filter((c) => ids.has(String(c.carroId))).map((c) => ({ carroId: String(c.carroId), nome: String(c.nome ?? "").slice(0, 200) }));
-    return criarEstrutura({ ...p, carros, estrutura: p.estrutura === "um-conjunto" ? "um-conjunto" : "por-carro" });
+    const carros = (p.carros ?? [])
+      .filter((c) => ids.has(String(c.carroId)))
+      .map((c) => ({ carroId: String(c.carroId), nome: String(c.nome ?? "").slice(0, 200), conjunto: c.conjunto ? String(c.conjunto).slice(0, 40) : undefined }));
+    const conjuntos = (p.conjuntos ?? []).slice(0, 50).map((c) => ({
+      chave: String(c.chave).slice(0, 40),
+      nome: String(c.nome ?? "").slice(0, 200),
+      centavosPorDia: typeof c.centavosPorDia === "number" && Number.isFinite(c.centavosPorDia) ? Math.round(c.centavosPorDia) : null,
+    }));
+    const estrutura = p.estrutura === "um-conjunto" || p.estrutura === "montada" ? p.estrutura : "por-carro";
+    return criarEstrutura({ ...p, carros, conjuntos, estrutura });
   }, { ok: false as const, erro: "Deu erro no servidor. Tenta de novo." });
 }
 

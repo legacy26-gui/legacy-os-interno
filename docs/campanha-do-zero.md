@@ -62,3 +62,4 @@ Loja nova não tem legendas antigas pra IA copiar, e a legenda saía genérica. 
 - Opções extras: **Outra página (colar o ID)** — aceita o ID ou link com `id=`; e **Sem página (termino no Gerenciador)**.
 - Página fora da lista da conta: cria mesmo assim, com aviso (antes recusava).
 - Sem página: a Meta não cria anúncio (o criativo exige `page_id`). O sistema cria campanha + conjuntos (sem `promoted_object`) e sobe as fotos de cada carro (arte na frente) pra biblioteca de imagens da conta.
+- Ordem de busca da página (`paginasDaConta`), com o token de leitura e o de escrita: promote_pages → anúncios da conta → Gerenciador de Negócios dono da conta (owned_pages/client_pages, as com o nome da loja primeiro) → Facebook do site da loja → páginas que o acesso enxerga (só as com o nome da loja). Não achou: a tela mostra o que a Meta respondeu.

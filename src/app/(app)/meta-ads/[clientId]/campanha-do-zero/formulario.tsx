@@ -303,6 +303,11 @@ export function FormularioDoZero(p: {
                 className={campo}
               />
             )}
+            {paginaId === "__outra" && (
+              <span className="text-xs text-foreground-muted">
+                Onde achar: na página da loja no Facebook → Sobre → Transparência da página (ID da página). Ou no Gerenciador de Negócios → Contas → Páginas.
+              </span>
+            )}
             {paginaId === "__sem" && <span className="text-xs text-amber-600 dark:text-amber-400">Sem página a Meta não deixa criar o anúncio: cria a campanha e os conjuntos, e as fotos de cada carro sobem pra biblioteca da conta.</span>}
           </label>
         </div>

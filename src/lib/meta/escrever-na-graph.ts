@@ -79,6 +79,37 @@ export interface ConferenciaDaEscrita {
 }
 
 /**
+ * Uma LEITURA (GET) com o token de escrita. Existe pra achar a página da loja: o usuário do sistema que cria campanha às vezes
+ * enxerga páginas que o token de leitura não enxerga — e é com ele que o anúncio vai ser criado. Nunca devolve o token.
+ */
+export async function lerComTokenDeEscrita<T>(caminho: string, params: Record<string, string> = {}): Promise<RespostaDaEscrita<T>> {
+  const chave = token();
+  if (!chave) return { ok: false, erro: "token de escrita não configurado" };
+  const url = new URL(`${base()}/${versao()}/${caminho}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  const corte = new AbortController();
+  const relogio = setTimeout(() => corte.abort(), TIMEOUT_MS);
+  try {
+    const r = await fetch(url, { method: "GET", headers: { Authorization: `Bearer ${chave}` }, signal: corte.signal, cache: "no-store" });
+    const texto = await r.text();
+    if (!r.ok) {
+      let detalhe = `HTTP ${r.status}`;
+      try {
+        detalhe = (JSON.parse(texto) as { error?: { message?: string } }).error?.message ?? detalhe;
+      } catch {
+        // não é JSON
+      }
+      return { ok: false, erro: semSegredo(detalhe) };
+    }
+    return { ok: true, dados: JSON.parse(texto) as T };
+  } catch (e) {
+    return { ok: false, erro: semSegredo(e instanceof Error ? e.message : String(e)) };
+  } finally {
+    clearTimeout(relogio);
+  }
+}
+
+/**
  * Pergunta à Meta o que o token de ESCRITA alcança.
  *
  * Existe porque "configurei a variável, será que entrou?" é uma pergunta que

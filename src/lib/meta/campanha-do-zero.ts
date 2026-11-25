@@ -2,7 +2,8 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { buscarNaGraph } from "./cliente-graph";
-import { escreverNaGraph, escritaLiberada } from "./escrever-na-graph";
+import { escreverNaGraph, escritaLiberada, lerComTokenDeEscrita } from "./escrever-na-graph";
+import { urlDeSiteSegura, USER_AGENT_DO_ESTOQUE } from "@/lib/estoque/ler-estoque";
 import { conferirEdicao, montarTargeting, type EdicaoDoPublico } from "./publico-puro";
 import { tipoDeImagem } from "./rascunho-anuncio";
 import { fotosComArte } from "@/lib/estoque/artes";
@@ -168,19 +169,56 @@ export function paginaDoPost(postId: string | null | undefined): string | null {
   return m ? m[1] : null;
 }
 
+type Pagina = { id: string; nome: string };
+type Lista = { data?: { id?: string; name?: string }[] };
+const daLista = (d: Lista | undefined): Pagina[] => (d?.data ?? []).filter((p) => p.id).map((p) => ({ id: String(p.id), nome: String(p.name ?? `Página ${p.id}`) }));
+
+/** Lê com os dois tokens (leitura e escrita): um pode enxergar o que o outro não enxerga. */
+async function lerComOsDois<T>(caminho: string, params: Record<string, string>): Promise<{ dados: T[]; erros: string[] }> {
+  const dados: T[] = [];
+  const erros: string[] = [];
+  for (const r of [await buscarNaGraph<T>(caminho, params), await lerComTokenDeEscrita<T>(caminho, params)]) {
+    if (r.ok) dados.push(r.dados);
+    else erros.push(r.erro);
+  }
+  return { dados, erros };
+}
+
+/** O endereço da página do Facebook no site da loja (facebook.com/<nome>). Pura. */
+export function facebookDoSite(html: string): string | null {
+  for (const m of html.matchAll(/https?:\/\/(?:www\.|m\.|pt-br\.)?facebook\.com\/(?:profile\.php\?id=(\d+)|([A-Za-z0-9.\-]{3,80}))\/?["'?#]/g)) {
+    const nome = m[1] ?? m[2];
+    if (nome && !/^(sharer|share|plugins|tr|dialog|login|watch|groups|events|pages|people|policies|help|privacy)/i.test(nome)) return nome;
+  }
+  return null;
+}
+
 /**
- * As páginas do Facebook que a conta de anúncio pode usar. A lista "pode promover" da Meta (promote_pages) às vezes vem vazia
- * mesmo a loja tendo página (o acesso do sistema não enxerga a página, ou ela não está ligada à conta no Gerenciador de
- * Negócios). Então também procura a página nos anúncios que a conta JÁ tem (todo anúncio aponta pra página que publicou).
+ * As páginas do Facebook pra campanha da loja. Procura, nesta ordem, até achar:
+ * 1. as que a conta "pode promover" (promote_pages), com os dois tokens;
+ * 2. a dos anúncios que a conta já tem;
+ * 3. as do Gerenciador de Negócios dono da conta (próprias e de clientes);
+ * 4. o Facebook que o site da loja mostra;
+ * 5. as que o acesso do sistema enxerga (as com o nome da loja primeiro).
+ * Não achou: diz o que a Meta respondeu em cada tentativa, pra saber o que ligar.
  */
-export async function paginasDaConta(clientId: string, contaId: string): Promise<{ ok: true; paginas: { id: string; nome: string }[]; aviso?: string } | { ok: false; erro: string }> {
+export async function paginasDaConta(clientId: string, contaId: string): Promise<{ ok: true; paginas: Pagina[]; aviso?: string } | { ok: false; erro: string }> {
   const conta = await contaDaLoja(clientId, contaId);
   if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
-  const r = await buscarNaGraph<{ data?: { id?: string; name?: string }[] }>(`${conta.metaAccountId}/promote_pages`, { fields: "id,name", limit: "50" });
-  const paginas = r.ok ? (r.dados.data ?? []).filter((p) => p.id && p.name).map((p) => ({ id: String(p.id), nome: String(p.name) })) : [];
-  if (paginas.length) return { ok: true, paginas };
+  const erros: string[] = [];
+  const juntar = (listas: Pagina[][]) => {
+    const m = new Map<string, Pagina>();
+    for (const l of listas) for (const p of l) if (!m.has(p.id) || m.get(p.id)!.nome.startsWith("Página ")) m.set(p.id, p);
+    return [...m.values()];
+  };
 
-  // Pelos anúncios da conta: os já sincronizados no sistema e, se não tiver, os da Meta.
+  // 1.
+  const promo = await lerComOsDois<Lista>(`${conta.metaAccountId}/promote_pages`, { fields: "id,name", limit: "50" });
+  erros.push(...promo.erros.map((e) => `páginas da conta: ${e}`));
+  const liberadas = juntar(promo.dados.map(daLista));
+  if (liberadas.length) return { ok: true, paginas: liberadas };
+
+  // 2.
   const ids = new Map<string, number>();
   const contar = (id: string | null) => id && ids.set(id, (ids.get(id) ?? 0) + 1);
   const salvos = await prisma.metaAdCreative.findMany({ where: { adAccountId: conta.id, postId: { not: null } }, select: { postId: true }, take: 300 });
@@ -192,14 +230,67 @@ export async function paginasDaConta(clientId: string, contaId: string): Promise
     });
     if (cr.ok) for (const c of cr.dados.data ?? []) contar(c.object_story_spec?.page_id ? String(c.object_story_spec.page_id) : paginaDoPost(c.effective_object_story_id));
   }
-  if (ids.size === 0) {
-    return { ok: false, erro: r.ok ? "A Meta não mostrou nenhuma página pra esta conta, e a conta ainda não tem anúncio pra eu descobrir. Cole o ID da página abaixo, ou ligue a página à conta no Gerenciador de Negócios." : `A Meta não listou as páginas (${r.erro}). Cole o ID da página abaixo.` };
+  const aviso = "A Meta não lista a página como liberada pra esta conta. Se der erro ao criar, ligue a página à conta no Gerenciador de Negócios.";
+  if (ids.size > 0) {
+    const ordem = [...ids.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id).slice(0, 10);
+    const nomes = await buscarNaGraph<Record<string, { name?: string }>>("", { ids: ordem.join(","), fields: "name" });
+    return { ok: true, paginas: ordem.map((id) => ({ id, nome: (nomes.ok && nomes.dados[id]?.name) || `Página ${id}` })), aviso: `Achei pelos anúncios que a conta já tem. ${aviso}` };
   }
-  // A mais usada primeiro; o nome, se o acesso enxergar a página (senão, o ID).
-  const ordem = [...ids.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id).slice(0, 10);
-  const nomes = await buscarNaGraph<Record<string, { name?: string }>>("", { ids: ordem.join(","), fields: "name" });
-  const achadas = ordem.map((id) => ({ id, nome: (nomes.ok && nomes.dados[id]?.name) || `Página ${id}` }));
-  return { ok: true, paginas: achadas, aviso: "Achei a página pelos anúncios que a conta já tem (a Meta não listou como 'liberada pra conta'). Se der erro ao criar, ligue a página à conta no Gerenciador de Negócios." };
+
+  // 3.
+  const dono = await lerComOsDois<{ business?: { id?: string } }>(conta.metaAccountId, { fields: "business{id,name}" });
+  const bms = [...new Set(dono.dados.map((d) => d.business?.id).filter((x): x is string => !!x))];
+  const doBm: Pagina[][] = [];
+  for (const bm of bms) {
+    for (const lado of ["owned_pages", "client_pages"]) {
+      const r = await lerComOsDois<Lista>(`${bm}/${lado}`, { fields: "id,name", limit: "100" });
+      doBm.push(...r.dados.map(daLista));
+    }
+  }
+  const loja = await prisma.client.findUnique({ where: { id: clientId }, select: { companyName: true } });
+  const palavrasDaLoja = (loja?.companyName ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length >= 3 && !["veiculos", "automoveis", "multimarcas", "motors", "auto", "carros", "ltda"].includes(w));
+  const parecida = (p: Pagina) => {
+    const n = p.nome.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    return palavrasDaLoja.some((w) => n.includes(w));
+  };
+  const doNegocio = juntar(doBm);
+  if (doNegocio.length) {
+    const ordenadas = [...doNegocio.filter(parecida), ...doNegocio.filter((p) => !parecida(p))];
+    return { ok: true, paginas: ordenadas, aviso: `Achei no Gerenciador de Negócios dono da conta (as com o nome da loja primeiro). ${aviso}` };
+  }
+
+  // 4.
+  const site = await prisma.estoqueDaLoja.findUnique({ where: { clientId }, select: { siteUrl: true } });
+  if (site?.siteUrl && urlDeSiteSegura(site.siteUrl)) {
+    try {
+      const r = await fetch(site.siteUrl, { headers: { "User-Agent": USER_AGENT_DO_ESTOQUE }, signal: AbortSignal.timeout(15_000), cache: "no-store" });
+      const fb = r.ok ? facebookDoSite(await r.text()) : null;
+      if (fb) {
+        const pg = await lerComOsDois<{ id?: string; name?: string }>(/^\d+$/.test(fb) ? fb : encodeURIComponent(fb), { fields: "id,name" });
+        const achada = pg.dados.find((d) => d.id);
+        if (achada?.id) return { ok: true, paginas: [{ id: String(achada.id), nome: String(achada.name ?? fb) }], aviso: `Achei pelo Facebook do site da loja (facebook.com/${fb}). ${aviso}` };
+        erros.push(`Facebook do site (${fb}): ${pg.erros[0] ?? "a Meta não devolveu a página"}`);
+      }
+    } catch {
+      // site fora do ar: segue
+    }
+  }
+
+  // 5.
+  const minhas = await lerComOsDois<Lista>("me/accounts", { fields: "id,name", limit: "200" });
+  const doAcesso = juntar(minhas.dados.map(daLista)).filter(parecida);
+  if (doAcesso.length) return { ok: true, paginas: doAcesso, aviso: `Achei entre as páginas que o acesso do sistema enxerga, pelo nome da loja. ${aviso}` };
+
+  const motivo = [...new Set(erros)].slice(0, 3).join(" · ");
+  return {
+    ok: false,
+    erro: `Não achei a página desta loja: a conta não lista página liberada, não tem anúncio, e não achei no Gerenciador de Negócios${bms.length ? "" : " (o acesso do sistema não enxerga o Gerenciador dono da conta)"} nem pelo site. Cole o ID da página abaixo, ou ligue a página à conta no Gerenciador de Negócios.${motivo ? ` (Meta: ${motivo})` : ""}`,
+  };
 }
 
 export interface PedidoDaEstrutura {

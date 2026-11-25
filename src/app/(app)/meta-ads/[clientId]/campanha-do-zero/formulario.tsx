@@ -37,7 +37,10 @@ export function FormularioDoZero(p: {
   const [contaId, setContaId] = useState(p.contas[0].id);
   const [paginas, setPaginas] = useState(p.paginasIniciais);
   const [erroPaginas, setErroPaginas] = useState(p.erroDasPaginas);
-  const [paginaId, setPaginaId] = useState(p.paginasIniciais[0]?.id ?? "");
+  // A página: uma da lista, "outra" (colar o ID ou o link) ou "sem" (o gestor completa no Gerenciador).
+  const [paginaId, setPaginaId] = useState(p.paginasIniciais[0]?.id ?? "__outra");
+  const [outraPagina, setOutraPagina] = useState("");
+  const paginaEscolhida = paginaId === "__sem" ? "" : paginaId === "__outra" ? (outraPagina.match(/(?:id=)?(\d{5,25})/)?.[1] ?? "") : paginaId;
   const [nome, setNome] = useState(`${p.loja} — WhatsApp`);
   const [objetivo, setObjetivo] = useState<"leads" | "engajamento">("leads");
   const [rodape, setRodape] = useState(p.rodape);
@@ -94,13 +97,13 @@ export function FormularioDoZero(p: {
   function trocarConta(id: string) {
     setContaId(id);
     setPaginas([]);
-    setPaginaId("");
+    setPaginaId("__outra");
     comecar(async () => {
       const r = await listarPaginas(p.clientId, id);
       if (r.ok) {
         setPaginas(r.paginas);
-        setPaginaId(r.paginas[0]?.id ?? "");
-        setErroPaginas(null);
+        setPaginaId(r.paginas[0]?.id ?? "__outra");
+        setErroPaginas(r.aviso ?? null);
       } else setErroPaginas(r.erro);
     });
   }
@@ -129,7 +132,7 @@ export function FormularioDoZero(p: {
   function criarTudo() {
     setErro(null);
     if (locais.length === 0) return setErro("Adicione pelo menos uma cidade no público.");
-    if (!paginaId) return setErro("Escolha a página do Facebook da loja.");
+    if (paginaId === "__outra" && !paginaEscolhida) return setErro('Cole o ID da página (só números) ou escolha "Sem página".');
     if (marcados.length === 0) return setErro("Marque pelo menos um carro.");
     if (estrutura === "montada" && conjuntosUsados.some((c) => !c.nome.trim())) return setErro("Dê nome a todos os conjuntos.");
     if (modoLegenda === "minha") {
@@ -143,13 +146,13 @@ export function FormularioDoZero(p: {
         : estrutura === "um-conjunto"
           ? "1 conjunto com todos os carros"
           : `${conjuntosUsados.length} conjuntos: ${conjuntosUsados.map((c) => `${c.nome} (${marcados.filter((l) => l.conjunto === c.chave).length})`).join(", ")}`;
-    if (!confirm(`Criar na Meta, tudo PAUSADO:\n\n• 1 campanha "${nome}" (${objetivo === "leads" ? "Leads" : "Engajamento"} → WhatsApp)\n• ${descricao}\n• ${marcados.length} anúncios\n• Orçamento: ${reais(total)}/dia no total\n\nNada liga sozinho.`)) return;
+    if (!confirm(`Criar na Meta, tudo PAUSADO:\n\n• 1 campanha "${nome}" (${objetivo === "leads" ? "Leads" : "Engajamento"} → WhatsApp)\n• ${descricao}\n• ${marcados.length} anúncios\n• Orçamento: ${reais(total)}/dia no total${paginaEscolhida ? "" : "\n\nSEM PÁGINA: a Meta não cria anúncio sem página. Cria a campanha e os conjuntos, e sobe as fotos de cada carro pra biblioteca da conta — os anúncios você termina no Gerenciador."}\n\nNada liga sozinho.`)) return;
     setFase("criando");
     comecar(async () => {
       const est = await criarEstruturaDoZero({
         clientId: p.clientId,
         contaId,
-        paginaId,
+        paginaId: paginaEscolhida,
         nome,
         objetivo,
         estrutura,
@@ -189,7 +192,7 @@ export function FormularioDoZero(p: {
           mudar(i, { legenda });
         }
         mudar(i, { msg: "fotos e anúncio…" });
-        const r = await criarAnuncioNoZero({ clientId: p.clientId, contaMeta: conta.metaAccountId, paginaId, adsetId: conj.adsetId, carroId: l.carro.id, nomeDoAnuncio: l.nome, legenda, maxFotos, boasVindas, mensagemPronta });
+        const r = await criarAnuncioNoZero({ clientId: p.clientId, contaMeta: conta.metaAccountId, paginaId: paginaEscolhida, adsetId: conj.adsetId, carroId: l.carro.id, nomeDoAnuncio: l.nome, legenda, maxFotos, boasVindas, mensagemPronta });
         if (r.ok) {
           feitos++;
           mudar(i, { estado: "ok", msg: `${r.fotos} foto(s)${r.avisos.length ? ` · ${r.avisos.join(" ")}` : ""}` });
@@ -281,14 +284,26 @@ export function FormularioDoZero(p: {
           </label>
           <label className="flex flex-col gap-1 text-sm">
             Página do Facebook (o WhatsApp é o ligado a ela)
-            <select disabled={travado || paginas.length === 0} value={paginaId} onChange={(e) => setPaginaId(e.target.value)} className={campo}>
-              {paginas.length === 0 && <option value="">—</option>}
+            <select disabled={travado} value={paginaId} onChange={(e) => setPaginaId(e.target.value)} className={campo} aria-label="Página do Facebook">
               {paginas.map((pg) => (
                 <option key={pg.id} value={pg.id}>
                   {pg.nome}
                 </option>
               ))}
+              <option value="__outra">Outra página (colar o ID)</option>
+              <option value="__sem">Sem página (termino no Gerenciador)</option>
             </select>
+            {paginaId === "__outra" && (
+              <input
+                disabled={travado}
+                value={outraPagina}
+                onChange={(e) => setOutraPagina(e.target.value)}
+                placeholder="ID da página (ex.: 102938475610293) ou link com id="
+                aria-label="ID da página"
+                className={campo}
+              />
+            )}
+            {paginaId === "__sem" && <span className="text-xs text-amber-600 dark:text-amber-400">Sem página a Meta não deixa criar o anúncio: cria a campanha e os conjuntos, e as fotos de cada carro sobem pra biblioteca da conta.</span>}
           </label>
         </div>
         {erroPaginas && <p className="text-xs text-amber-600 dark:text-amber-400">{erroPaginas}</p>}

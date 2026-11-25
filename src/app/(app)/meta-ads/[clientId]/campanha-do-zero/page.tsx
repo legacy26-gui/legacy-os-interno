@@ -48,7 +48,7 @@ export default async function CampanhaDoZeroPage({ params }: { params: Promise<{
           contas={dados.contas}
           carros={dados.carros}
           paginasIniciais={primeiras && primeiras.ok ? primeiras.paginas : []}
-          erroDasPaginas={primeiras && !primeiras.ok ? primeiras.erro : null}
+          erroDasPaginas={primeiras ? (primeiras.ok ? (primeiras.aviso ?? null) : primeiras.erro) : null}
         />
       )}
     </div>

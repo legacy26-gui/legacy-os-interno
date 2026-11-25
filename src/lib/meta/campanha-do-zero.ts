@@ -92,7 +92,8 @@ export function camposDoConjunto(p: {
     billing_event: "IMPRESSIONS",
     optimization_goal: p.meta ?? "CONVERSATIONS",
     destination_type: "WHATSAPP",
-    promoted_object: JSON.stringify({ page_id: p.paginaId }),
+    // Sem página (o gestor completa no Gerenciador): vai sem o objeto promovido.
+    ...(p.paginaId ? { promoted_object: JSON.stringify({ page_id: p.paginaId }) } : {}),
     // Público do zero, com o Advantage+ público explicitamente desligado (montarTargeting).
     targeting: JSON.stringify(montarTargeting({}, p.publico)),
   };
@@ -147,7 +148,8 @@ export function grausDesligados(lista: string[] = APRIMORAMENTOS_DESLIGADOS): Ob
 /** Confere o pedido antes de mandar qualquer coisa pra Meta. Devolve o erro, ou null. Pura. */
 export function conferirPedido(p: { nome: string; paginaId: string; publico: EdicaoDoPublico; orcamento: Orcamento; carros: number }): string | null {
   if (!p.nome.trim()) return "Dê um nome pra campanha.";
-  if (!/^\d{5,25}$/.test(p.paginaId)) return "Escolha a página do Facebook da loja.";
+  // Página vazia vale ("sem página": o gestor completa no Gerenciador); preenchida, tem que ser um ID.
+  if (p.paginaId && !/^\d{5,25}$/.test(p.paginaId)) return "O ID da página tem que ser só números (ex.: 102938475610293).";
   if (p.carros === 0) return "Escolha pelo menos um carro.";
   if (!Number.isInteger(p.orcamento.centavosPorDia) || p.orcamento.centavosPorDia < ORCAMENTO_MINIMO_CENTS) return "O orçamento mínimo é R$ 6 por dia.";
   if (p.orcamento.centavosPorDia > 500_000) return "Orçamento acima de R$ 5.000 por dia: confere o valor.";
@@ -160,14 +162,44 @@ async function contaDaLoja(clientId: string, contaId: string) {
   return prisma.metaAdAccount.findFirst({ where: { id: contaId, clientId, active: true }, select: { id: true, metaAccountId: true, name: true } });
 }
 
-/** As páginas do Facebook que a conta de anúncio pode usar. */
-export async function paginasDaConta(clientId: string, contaId: string): Promise<{ ok: true; paginas: { id: string; nome: string }[] } | { ok: false; erro: string }> {
+/** O ID da página dentro de "PAGINA_POST" (o effective_object_story_id de um anúncio). Pura. */
+export function paginaDoPost(postId: string | null | undefined): string | null {
+  const m = (postId ?? "").match(/^(\d{5,25})_\d+$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * As páginas do Facebook que a conta de anúncio pode usar. A lista "pode promover" da Meta (promote_pages) às vezes vem vazia
+ * mesmo a loja tendo página (o acesso do sistema não enxerga a página, ou ela não está ligada à conta no Gerenciador de
+ * Negócios). Então também procura a página nos anúncios que a conta JÁ tem (todo anúncio aponta pra página que publicou).
+ */
+export async function paginasDaConta(clientId: string, contaId: string): Promise<{ ok: true; paginas: { id: string; nome: string }[]; aviso?: string } | { ok: false; erro: string }> {
   const conta = await contaDaLoja(clientId, contaId);
   if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
   const r = await buscarNaGraph<{ data?: { id?: string; name?: string }[] }>(`${conta.metaAccountId}/promote_pages`, { fields: "id,name", limit: "50" });
-  if (!r.ok) return { ok: false, erro: `A Meta não listou as páginas: ${r.erro}` };
-  const paginas = (r.dados.data ?? []).filter((p) => p.id && p.name).map((p) => ({ id: String(p.id), nome: String(p.name) }));
-  return paginas.length ? { ok: true, paginas } : { ok: false, erro: "A conta de anúncio não tem nenhuma página do Facebook liberada. Ligue a página da loja à conta no Gerenciador de Negócios." };
+  const paginas = r.ok ? (r.dados.data ?? []).filter((p) => p.id && p.name).map((p) => ({ id: String(p.id), nome: String(p.name) })) : [];
+  if (paginas.length) return { ok: true, paginas };
+
+  // Pelos anúncios da conta: os já sincronizados no sistema e, se não tiver, os da Meta.
+  const ids = new Map<string, number>();
+  const contar = (id: string | null) => id && ids.set(id, (ids.get(id) ?? 0) + 1);
+  const salvos = await prisma.metaAdCreative.findMany({ where: { adAccountId: conta.id, postId: { not: null } }, select: { postId: true }, take: 300 });
+  for (const c of salvos) contar(paginaDoPost(c.postId));
+  if (ids.size === 0) {
+    const cr = await buscarNaGraph<{ data?: { effective_object_story_id?: string; object_story_spec?: { page_id?: string } }[] }>(`${conta.metaAccountId}/adcreatives`, {
+      fields: "effective_object_story_id,object_story_spec{page_id}",
+      limit: "50",
+    });
+    if (cr.ok) for (const c of cr.dados.data ?? []) contar(c.object_story_spec?.page_id ? String(c.object_story_spec.page_id) : paginaDoPost(c.effective_object_story_id));
+  }
+  if (ids.size === 0) {
+    return { ok: false, erro: r.ok ? "A Meta não mostrou nenhuma página pra esta conta, e a conta ainda não tem anúncio pra eu descobrir. Cole o ID da página abaixo, ou ligue a página à conta no Gerenciador de Negócios." : `A Meta não listou as páginas (${r.erro}). Cole o ID da página abaixo.` };
+  }
+  // A mais usada primeiro; o nome, se o acesso enxergar a página (senão, o ID).
+  const ordem = [...ids.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id).slice(0, 10);
+  const nomes = await buscarNaGraph<Record<string, { name?: string }>>("", { ids: ordem.join(","), fields: "name" });
+  const achadas = ordem.map((id) => ({ id, nome: (nomes.ok && nomes.dados[id]?.name) || `Página ${id}` }));
+  return { ok: true, paginas: achadas, aviso: "Achei a página pelos anúncios que a conta já tem (a Meta não listou como 'liberada pra conta'). Se der erro ao criar, ligue a página à conta no Gerenciador de Negócios." };
 }
 
 export interface PedidoDaEstrutura {
@@ -197,8 +229,13 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
   if (erro) return { ok: false, erro };
   const conta = await contaDaLoja(p.clientId, p.contaId);
   if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
-  const paginas = await paginasDaConta(p.clientId, p.contaId);
-  if (paginas.ok && !paginas.paginas.some((x) => x.id === p.paginaId)) return { ok: false, erro: "Essa página não está liberada pra esta conta de anúncio." };
+  // Sem trava de página (decisão do Guilherme): página fora da lista da conta, ou nenhuma, segue com aviso.
+  const avisosDaPagina: string[] = [];
+  if (!p.paginaId) avisosDaPagina.push("Sem página: a Meta não cria anúncio sem página — as fotos ficaram na biblioteca da conta; escolha a página e crie os anúncios no Gerenciador.");
+  else {
+    const paginas = await paginasDaConta(p.clientId, p.contaId);
+    if (!paginas.ok || !paginas.paginas.some((x) => x.id === p.paginaId)) avisosDaPagina.push("A página não aparece entre as liberadas pra esta conta; se a Meta recusar, ligue a página à conta no Gerenciador de Negócios.");
+  }
 
   const objetivo: Objetivo = p.objetivo === "engajamento" ? "engajamento" : "leads";
   const camp = await escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/campaigns`, camposDaCampanha({ nome: p.nome, orcamento: p.orcamento, objetivo }));
@@ -208,7 +245,7 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
   const aCriar = conjuntosACriar(p);
   let metaDoConjunto = "CONVERSATIONS";
   const conjuntos: { chave: string; carroId: string | null; adsetId: string; nome: string }[] = [];
-  const avisos: string[] = [];
+  const avisos: string[] = [...avisosDaPagina];
   for (const c of aCriar) {
     const orc: Orcamento = p.orcamento.onde === "conjunto" && c.centavosPorDia ? { onde: "conjunto", centavosPorDia: c.centavosPorDia } : p.orcamento;
     const criar = (meta: string) =>
@@ -305,6 +342,7 @@ export async function criarAnuncioDoCarro(p: {
   if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
   const conta = await prisma.metaAdAccount.findFirst({ where: { clientId: p.clientId, metaAccountId: p.contaMeta, active: true }, select: { id: true } });
   if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
+  if (!p.paginaId) return subirSoAsFotos(p);
   const carro = await prisma.estoqueCarro.findFirst({ where: { id: p.carroId, clientId: p.clientId }, select: { id: true, titulo: true, url: true, rascunhoAdId: true } });
   if (!carro) return { ok: false, erro: "Esse carro não é do estoque desta loja." };
   const legenda = p.legenda.trim();
@@ -371,4 +409,20 @@ export async function criarAnuncioDoCarro(p: {
   if (puladas > 0) avisos.push(`${puladas} foto(s) do site não puderam ser usadas.`);
   if (hashes.length < montadas.fotos.length) avisos.push("Alguma foto não subiu na Meta.");
   return { ok: true, adId: ad.dados.id, fotos: hashes.length, avisos };
+}
+
+/**
+ * Sem página, a Meta não cria o anúncio (o criativo exige a página). O que dá pra adiantar: as fotos do carro (com a arte na
+ * frente) sobem pra biblioteca de imagens da conta, com o nome do carro — no Gerenciador é só escolher a página e as fotos.
+ */
+async function subirSoAsFotos(p: { clientId: string; contaMeta: string; carroId: string; maxFotos: number }): Promise<ResultadoDoCarro> {
+  const carro = await prisma.estoqueCarro.findFirst({ where: { id: p.carroId, clientId: p.clientId }, select: { id: true, titulo: true, url: true } });
+  if (!carro) return { ok: false, erro: "Esse carro não é do estoque desta loja." };
+  const temArte = (await prisma.arteDoCarro.count({ where: { carroId: carro.id } })) > 0;
+  const fotos = await baixarFotosDoCarro(carro.url);
+  const limite = Math.max(1, Math.min(MAX_FOTOS, p.maxFotos));
+  const montadas = await fotosComArte(carro.id, fotos.ok ? fotos.fotos.slice(0, temArte ? limite - 1 : limite) : []);
+  let subidas = 0;
+  for (const [i, bytes] of montadas.fotos.entries()) if (await subirFoto(p.contaMeta, bytes, `${carro.titulo} ${i + 1}`)) subidas++;
+  return { ok: false, erro: `Sem página: anúncio não criado (a Meta exige a página). ${subidas} foto(s) do carro já estão na biblioteca da conta.` };
 }

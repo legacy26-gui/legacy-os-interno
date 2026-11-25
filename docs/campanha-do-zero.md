@@ -56,3 +56,9 @@ Loja nova não tem legendas antigas pra IA copiar, e a legenda saía genérica. 
 - **IA escreve (pode editar)** — padrão: legenda vazia é escrita pela IA (com o rodapé da loja).
 - **Eu escrevo a de cada carro** — a IA não entra; não cria nada enquanto faltar legenda em algum carro marcado.
 - **Uma legenda pra todos** — um texto só; `{carro} {ano} {km} {cor} {preco} {rodape}` viram os dados de cada carro (linha sem dado some). A tela mostra a prévia de cada carro. Sem IA. Código: `src/lib/meta/legenda-modelo.ts`.
+
+## Página do Facebook (sem trava)
+- A lista vem de `promote_pages` (páginas que a conta pode promover). Ela pode vir vazia mesmo a loja tendo página (o acesso do sistema não enxerga a página, ou a página não está ligada à conta no Gerenciador de Negócios). Aí o sistema procura a página nos **anúncios que a conta já tem** (`effective_object_story_id` = `PAGINA_POST`; primeiro os sincronizados, depois `act_X/adcreatives`), a mais usada primeiro.
+- Opções extras: **Outra página (colar o ID)** — aceita o ID ou link com `id=`; e **Sem página (termino no Gerenciador)**.
+- Página fora da lista da conta: cria mesmo assim, com aviso (antes recusava).
+- Sem página: a Meta não cria anúncio (o criativo exige `page_id`). O sistema cria campanha + conjuntos (sem `promoted_object`) e sobe as fotos de cada carro (arte na frente) pra biblioteca de imagens da conta.

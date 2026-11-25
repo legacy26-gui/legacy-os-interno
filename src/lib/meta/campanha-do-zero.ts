@@ -392,8 +392,13 @@ export function numeroDoWhatsapp(v: unknown): string | null {
 }
 
 /**
- * Os números de WhatsApp que dá pra usar nos conjuntos: o ligado à página escolhida e os das contas de WhatsApp Business do
- * portfólio (negócio dono da conta e os que o acesso enxerga). Lê com os dois tokens. A pessoa também pode digitar um número.
+ * Os números de WhatsApp pra escolher em cada conjunto (pedido do Guilherme: "aparecer os números conectados"). A Meta não tem
+ * uma lista pública dos números conectados à página; então junta tudo que dá pra ver com segurança, dizendo de onde veio:
+ * 1. o número ligado à página (whatsapp_number);
+ * 2. os números que os conjuntos da conta JÁ usam (promoted_object.whatsapp_phone_number) — são números que a Meta aceitou;
+ * 3. os números das contas de WhatsApp Business do portfólio;
+ * 4. o WhatsApp/telefone do cadastro da loja e o do site.
+ * Lê com os dois tokens. A pessoa também pode digitar.
  */
 export async function numerosDoWhatsapp(clientId: string, contaId: string, paginaId: string): Promise<{ numero: string; nome: string }[]> {
   const conta = await contaDaLoja(clientId, contaId);
@@ -403,10 +408,24 @@ export async function numerosDoWhatsapp(clientId: string, contaId: string, pagin
     const n = numeroDoWhatsapp(bruto);
     if (n && !achados.has(n)) achados.set(n, nome);
   };
+  // 1.
   if (/^\d{5,25}$/.test(paginaId)) {
     const pg = await lerComOsDois<{ whatsapp_number?: string; name?: string }>(paginaId, { fields: "whatsapp_number,name" });
-    for (const d of pg.dados) por(d.whatsapp_number, `da página${d.name ? ` ${d.name}` : ""}`);
+    for (const d of pg.dados) por(d.whatsapp_number, `conectado à página${d.name ? ` ${d.name}` : ""}`);
   }
+  // 2.
+  const conjuntos = await lerComOsDois<{ data?: { promoted_object?: { whatsapp_phone_number?: string; page_id?: string } }[] }>(`${conta.metaAccountId}/adsets`, {
+    fields: "promoted_object",
+    limit: "300",
+  });
+  const usados = new Map<string, number>();
+  for (const d of conjuntos.dados)
+    for (const c of d.data ?? []) {
+      const n = numeroDoWhatsapp(c.promoted_object?.whatsapp_phone_number);
+      if (n && (!paginaId || !c.promoted_object?.page_id || c.promoted_object.page_id === paginaId)) usados.set(n, (usados.get(n) ?? 0) + 1);
+    }
+  for (const [n] of [...usados.entries()].sort((a, b) => b[1] - a[1])) por(n, "já usado nos conjuntos desta conta");
+  // 3.
   const dono = await lerComOsDois<{ business?: { id?: string } }>(conta.metaAccountId, { fields: "business{id}" });
   const negocios = await lerComOsDois<Lista>("me/businesses", { fields: "id,name", limit: "50" });
   const bms = [...new Set([...dono.dados.map((d) => d.business?.id), ...negocios.dados.flatMap((d) => daLista(d).map((x) => x.id))].filter((x): x is string => !!x))].slice(0, 10);
@@ -414,9 +433,17 @@ export async function numerosDoWhatsapp(clientId: string, contaId: string, pagin
   for (const bm of bms) {
     for (const lado of ["owned_whatsapp_business_accounts", "client_whatsapp_business_accounts"]) {
       const r = await lerComOsDois<Wabas>(`${bm}/${lado}`, { fields: "id,name,phone_numbers{display_phone_number,verified_name}", limit: "50" });
-      for (const d of r.dados) for (const w of d.data ?? []) for (const n of w.phone_numbers?.data ?? []) por(n.display_phone_number, n.verified_name ?? w.name ?? "");
+      for (const d of r.dados) for (const w of d.data ?? []) for (const n of w.phone_numbers?.data ?? []) por(n.display_phone_number, `WhatsApp Business ${n.verified_name ?? w.name ?? ""}`.trim());
     }
   }
+  // 4.
+  const loja = await prisma.client.findUnique({ where: { id: clientId }, select: { whatsapp: true, phone: true } });
+  por(loja?.whatsapp, "do cadastro da loja");
+  const cel = numeroDoWhatsapp(loja?.phone);
+  if (cel && /^55\d\d9/.test(cel)) por(cel, "telefone do cadastro da loja");
+  const rodape = await prisma.estoqueDaLoja.findUnique({ where: { clientId }, select: { rodapeDaLegenda: true } });
+  const doRodape = rodape?.rodapeDaLegenda?.match(/whats[^\n\d]*([\d()\s.+-]{10,20})/i)?.[1];
+  por(doRodape, "do rodapé da legenda (site da loja)");
   return [...achados.entries()].map(([numero, nome]) => ({ numero, nome }));
 }
 

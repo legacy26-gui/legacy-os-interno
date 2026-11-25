@@ -34,6 +34,9 @@ export function FormularioDoZero(p: {
   const [erroPaginas, setErroPaginas] = useState(p.erroDasPaginas);
   const [paginaId, setPaginaId] = useState(p.paginasIniciais[0]?.id ?? "");
   const [nome, setNome] = useState(`${p.loja} — WhatsApp`);
+  const [objetivo, setObjetivo] = useState<"leads" | "engajamento">("leads");
+  const [boasVindas, setBoasVindas] = useState("Oi! Como podemos ajudar?");
+  const [mensagemPronta, setMensagemPronta] = useState("Olá! Posso ter mais informações sobre o {carro}?");
   const [estrutura, setEstrutura] = useState<"por-carro" | "um-conjunto" | "montada">("por-carro");
   // "Montar os conjuntos": quantos o gestor quiser, cada um com nome e (se o orçamento é por conjunto) o seu valor por dia.
   const [conjuntos, setConjuntos] = useState<{ chave: string; nome: string; valor: string }[]>([{ chave: "c1", nome: "Conjunto 1", valor: "" }]);
@@ -118,7 +121,7 @@ export function FormularioDoZero(p: {
         : estrutura === "um-conjunto"
           ? "1 conjunto com todos os carros"
           : `${conjuntosUsados.length} conjuntos: ${conjuntosUsados.map((c) => `${c.nome} (${marcados.filter((l) => l.conjunto === c.chave).length})`).join(", ")}`;
-    if (!confirm(`Criar na Meta, tudo PAUSADO:\n\n• 1 campanha "${nome}"\n• ${descricao}\n• ${marcados.length} anúncios\n• Orçamento: ${reais(total)}/dia no total\n\nNada liga sozinho.`)) return;
+    if (!confirm(`Criar na Meta, tudo PAUSADO:\n\n• 1 campanha "${nome}" (${objetivo === "leads" ? "Leads" : "Engajamento"} → WhatsApp)\n• ${descricao}\n• ${marcados.length} anúncios\n• Orçamento: ${reais(total)}/dia no total\n\nNada liga sozinho.`)) return;
     setFase("criando");
     comecar(async () => {
       const est = await criarEstruturaDoZero({
@@ -126,6 +129,7 @@ export function FormularioDoZero(p: {
         contaId,
         paginaId,
         nome,
+        objetivo,
         estrutura,
         orcamento: { onde: ondeOrcamento, centavosPorDia: centavos },
         publico: { idadeMin, idadeMax, genero, locais },
@@ -163,7 +167,7 @@ export function FormularioDoZero(p: {
           mudar(i, { legenda });
         }
         mudar(i, { msg: "fotos e anúncio…" });
-        const r = await criarAnuncioNoZero({ clientId: p.clientId, contaMeta: conta.metaAccountId, paginaId, adsetId: conj.adsetId, carroId: l.carro.id, nomeDoAnuncio: l.nome, legenda, maxFotos });
+        const r = await criarAnuncioNoZero({ clientId: p.clientId, contaMeta: conta.metaAccountId, paginaId, adsetId: conj.adsetId, carroId: l.carro.id, nomeDoAnuncio: l.nome, legenda, maxFotos, boasVindas, mensagemPronta });
         if (r.ok) {
           feitos++;
           mudar(i, { estado: "ok", msg: `${r.fotos} foto(s)${r.avisos.length ? ` · ${r.avisos.join(" ")}` : ""}` });
@@ -214,6 +218,22 @@ export function FormularioDoZero(p: {
           Nome da campanha
           <input disabled={travado} value={nome} onChange={(e) => setNome(e.target.value)} className={campo} />
         </label>
+        <div className="flex flex-col gap-1 text-sm">
+          Objetivo da campanha
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["leads", "Leads"],
+                ["engajamento", "Engajamento"],
+              ] as const
+            ).map(([v, r]) => (
+              <button key={v} type="button" disabled={travado} onClick={() => setObjetivo(v)} className={`px-3 py-2 rounded-lg border ${objetivo === v ? "border-accent bg-accent/10" : "border-border"}`}>
+                {r}
+              </button>
+            ))}
+          </div>
+          <span className="text-xs text-foreground-muted">Local da conversão: só mensagens no WhatsApp.</span>
+        </div>
         <div className="flex flex-wrap gap-2 text-sm">
           {(
             [
@@ -400,6 +420,21 @@ export function FormularioDoZero(p: {
             Alcançar mais pessoas (Advantage+ público) — <strong>sempre desligado</strong>
           </span>
         </label>
+      </section>
+
+      <section className={caixa}>
+        <h2 className="font-semibold">Modelo de conversa do WhatsApp</h2>
+        <label className="flex flex-col gap-1 text-sm">
+          Mensagem de boas-vindas
+          <input disabled={travado} value={boasVindas} onChange={(e) => setBoasVindas(e.target.value)} className={campo} />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          Mensagem pronta (o cliente envia)
+          <input disabled={travado} value={mensagemPronta} onChange={(e) => setMensagemPronta(e.target.value)} className={campo} />
+        </label>
+        <p className="text-xs text-foreground-muted">
+          <code>{"{carro}"}</code> vira o nome de cada carro. Ex.: {mensagemPronta.replaceAll("{carro}", linhas[0]?.carro.titulo ?? "Onix 2020")}
+        </p>
       </section>
 
       <section className={caixa}>

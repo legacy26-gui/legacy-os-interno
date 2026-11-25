@@ -88,6 +88,7 @@ export async function legendaDoZero(clientId: string, carroId: string): Promise<
 
 export async function criarEstruturaDoZero(p: {
   clientId: string;
+  objetivo?: "leads" | "engajamento";
   contaId: string;
   paginaId: string;
   nome: string;
@@ -109,7 +110,7 @@ export async function criarEstruturaDoZero(p: {
       centavosPorDia: typeof c.centavosPorDia === "number" && Number.isFinite(c.centavosPorDia) ? Math.round(c.centavosPorDia) : null,
     }));
     const estrutura = p.estrutura === "um-conjunto" || p.estrutura === "montada" ? p.estrutura : "por-carro";
-    return criarEstrutura({ ...p, carros, conjuntos, estrutura });
+    return criarEstrutura({ ...p, carros, conjuntos, estrutura, objetivo: p.objetivo === "engajamento" ? "engajamento" : "leads" });
   }, { ok: false as const, erro: "Deu erro no servidor. Tenta de novo." });
 }
 
@@ -122,9 +123,16 @@ export async function criarAnuncioNoZero(p: {
   nomeDoAnuncio: string;
   legenda: string;
   maxFotos: number;
+  boasVindas?: string;
+  mensagemPronta?: string;
 }): Promise<ResultadoDoCarro> {
   return semQuebrar(async () => {
     if (!(await pode(p.clientId))) return { ok: false as const, erro: "Esta loja não está na sua carteira." };
-    return criarAnuncioDoCarro({ ...p, maxFotos: Number(p.maxFotos) || 6 });
+    return criarAnuncioDoCarro({
+      ...p,
+      maxFotos: Number(p.maxFotos) || 6,
+      boasVindas: String(p.boasVindas ?? "").slice(0, 300),
+      mensagemPronta: String(p.mensagemPronta ?? "").slice(0, 300),
+    });
   }, { ok: false as const, erro: "Deu erro no servidor. Tenta de novo." });
 }

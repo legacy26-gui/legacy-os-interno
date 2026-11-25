@@ -36,3 +36,10 @@ Loja da carteira de quem cria; conta, carros e página conferidos no servidor (p
 ## ⚠️ Testado contra uma Meta falsa
 A primeira criação de verdade deve ser conferida no Gerenciador (objetivo, WhatsApp, público, aprimoramentos desligados) antes
 de ligar. Se a Meta recusar algum campo, a mensagem dela aparece na linha do carro ou no topo.
+
+## Objetivo e modelo de conversa
+
+- **Objetivo**: escolhido na tela — **Leads** (padrão, `OUTCOME_LEADS`) ou **Engajamento** (`OUTCOME_ENGAGEMENT`). Nos dois, o local da conversão é só o WhatsApp (`destination_type=WHATSAPP`).
+- Meta de desempenho do conjunto: `CONVERSATIONS`. Se a Meta recusar essa meta numa campanha de Leads, o sistema tenta `LEAD_GENERATION` uma vez, usa a que funcionou nos próximos conjuntos e avisa.
+- **Modelo de conversa** (no criativo, `link_data.page_welcome_message`): mensagem de boas-vindas (padrão "Oi! Como podemos ajudar?") e mensagem pronta (padrão "Olá! Posso ter mais informações sobre o {carro}?"). `{carro}` vira o nome de cada carro. Se a Meta recusar o modelo, o anúncio é criado sem ele e a tela avisa pra pôr no Gerenciador.
+- Testado só contra uma Meta falsa: o formato exato que a Meta aceita precisa ser confirmado no primeiro teste real.

@@ -25,6 +25,9 @@ import { baixarFotosDoCarro, MAX_FOTOS } from "@/lib/estoque/fotos";
 type Obj = Record<string, unknown>;
 
 export type Estrutura = "por-carro" | "um-conjunto" | "montada";
+/** O objetivo da campanha (decisão do Guilherme: escolher na hora; o padrão é Leads com destino único WhatsApp). */
+export type Objetivo = "leads" | "engajamento";
+export const OBJETIVO_NA_META: Record<Objetivo, string> = { leads: "OUTCOME_LEADS", engajamento: "OUTCOME_ENGAGEMENT" };
 export interface Orcamento {
   /** "conjunto" = cada conjunto com o seu valor por dia; "campanha" = um valor pra campanha, a Meta divide. */
   onde: "conjunto" | "campanha";
@@ -54,10 +57,10 @@ export const APRIMORAMENTOS_DESLIGADOS = [
 
 // ─────────────────────────── Montagem (puras) ───────────────────────────
 
-export function camposDaCampanha(p: { nome: string; orcamento: Orcamento }): Record<string, string> {
+export function camposDaCampanha(p: { nome: string; orcamento: Orcamento; objetivo?: Objetivo }): Record<string, string> {
   const c: Record<string, string> = {
     name: p.nome.slice(0, 200),
-    objective: "OUTCOME_ENGAGEMENT",
+    objective: OBJETIVO_NA_META[p.objetivo ?? "leads"],
     status: "PAUSED",
     special_ad_categories: "[]",
     buying_type: "AUCTION",
@@ -78,13 +81,15 @@ export function camposDoConjunto(p: {
   paginaId: string;
   publico: EdicaoDoPublico;
   orcamento: Orcamento;
+  /** "CONVERSATIONS" (padrão) ou "LEAD_GENERATION" (a Meta pede este em algumas contas com objetivo Leads). */
+  meta?: string;
 }): Record<string, string> {
   const c: Record<string, string> = {
     name: p.nome.slice(0, 200),
     campaign_id: p.campanhaId,
     status: "PAUSED",
     billing_event: "IMPRESSIONS",
-    optimization_goal: "CONVERSATIONS",
+    optimization_goal: p.meta ?? "CONVERSATIONS",
     destination_type: "WHATSAPP",
     promoted_object: JSON.stringify({ page_id: p.paginaId }),
     // Público do zero, com o Advantage+ público explicitamente desligado (montarTargeting).
@@ -97,9 +102,34 @@ export function camposDoConjunto(p: {
   return c;
 }
 
-export function specDoCriativo(p: { paginaId: string; instagramId?: string | null; legenda: string; titulo: string; hashes: string[] }): Obj {
+/** A mensagem pronta com o carro: troca {carro} pelo nome do carro (ou põe o carro no fim, se não tiver {carro}). Pura. */
+export function mensagemProntaDoCarro(modelo: string, carro: string): string {
+  const m = modelo.trim();
+  if (!m) return `Olá! Posso ter mais informações sobre o ${carro}?`;
+  return (m.includes("{carro}") ? m.replaceAll("{carro}", carro) : `${m.replace(/[?.!]\s*$/, "")} — ${carro}?`).slice(0, 300);
+}
+
+/**
+ * O modelo de conversa do WhatsApp (o que aparece no Gerenciador como "Mensagem de boas-vindas" + "Mensagem pronta"): a pessoa
+ * clica e a conversa já abre com a pergunta sobre AQUELE carro escrita. Pura.
+ */
+export function modeloDeConversa(boasVindas: string, mensagemPronta: string): string {
+  return JSON.stringify({
+    type: "VISUAL_EDITOR",
+    version: 2,
+    landing_screen_type: "welcome_message",
+    media_type: "text",
+    text_format: {
+      customer_action_type: "autofill_message",
+      message: { text: (boasVindas.trim() || "Oi! Como podemos ajudar?").slice(0, 300), autofill_message: { content: mensagemPronta.slice(0, 300) } },
+    },
+  });
+}
+
+export function specDoCriativo(p: { paginaId: string; instagramId?: string | null; legenda: string; titulo: string; hashes: string[]; conversa?: string | null }): Obj {
   const botao = { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP", link: LINK_DO_WHATSAPP } };
   const ld: Obj = { message: p.legenda, link: LINK_DO_WHATSAPP, name: p.titulo.slice(0, 255), call_to_action: botao };
+  if (p.conversa) ld.page_welcome_message = p.conversa;
   if (p.hashes.length === 1) ld.image_hash = p.hashes[0];
   else {
     ld.child_attachments = p.hashes.map((h) => ({ image_hash: h, link: LINK_DO_WHATSAPP, name: p.titulo.slice(0, 255), call_to_action: botao }));
@@ -141,6 +171,8 @@ export async function paginasDaConta(clientId: string, contaId: string): Promise
 
 export interface PedidoDaEstrutura {
   clientId: string;
+  /** Padrão: leads. */
+  objetivo?: Objetivo;
   contaId: string;
   paginaId: string;
   nome: string;
@@ -167,19 +199,31 @@ export async function criarEstrutura(p: PedidoDaEstrutura): Promise<ResultadoDaE
   const paginas = await paginasDaConta(p.clientId, p.contaId);
   if (paginas.ok && !paginas.paginas.some((x) => x.id === p.paginaId)) return { ok: false, erro: "Essa página não está liberada pra esta conta de anúncio." };
 
-  const camp = await escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/campaigns`, camposDaCampanha({ nome: p.nome, orcamento: p.orcamento }));
+  const objetivo: Objetivo = p.objetivo === "engajamento" ? "engajamento" : "leads";
+  const camp = await escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/campaigns`, camposDaCampanha({ nome: p.nome, orcamento: p.orcamento, objetivo }));
   if (!camp.ok || !camp.dados.id) return { ok: false, erro: `A Meta não criou a campanha: ${camp.ok ? "não devolveu o id" : camp.erro}` };
   const campanhaId = camp.dados.id;
 
   const aCriar = conjuntosACriar(p);
+  let metaDoConjunto = "CONVERSATIONS";
   const conjuntos: { chave: string; carroId: string | null; adsetId: string; nome: string }[] = [];
   const avisos: string[] = [];
   for (const c of aCriar) {
     const orc: Orcamento = p.orcamento.onde === "conjunto" && c.centavosPorDia ? { onde: "conjunto", centavosPorDia: c.centavosPorDia } : p.orcamento;
-    const r = await escreverNaGraph<{ id?: string }>(
-      `${conta.metaAccountId}/adsets`,
-      camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: orc }),
-    );
+    const criar = (meta: string) =>
+      escreverNaGraph<{ id?: string }>(`${conta.metaAccountId}/adsets`, camposDoConjunto({ nome: c.nome, campanhaId, paginaId: p.paginaId, publico: p.publico, orcamento: orc, meta }));
+    let r = await criar(metaDoConjunto);
+    // Objetivo Leads + WhatsApp: a meta "conversas" é a do Gerenciador, mas há contas em que a Meta só aceita "leads"
+    // (LEAD_GENERATION). Recusou a meta: tenta a outra uma vez, e as próximas já vão com a que funcionou.
+    if (!r.ok && objetivo === "leads" && /optimization_goal|otimiza/i.test(r.erro)) {
+      const outra = metaDoConjunto === "CONVERSATIONS" ? "LEAD_GENERATION" : "CONVERSATIONS";
+      const r2 = await criar(outra);
+      if (r2.ok) {
+        metaDoConjunto = outra;
+        avisos.push(`A Meta pediu a meta de desempenho "${outra === "LEAD_GENERATION" ? "maximizar leads" : "maximizar conversas"}" nesta conta.`);
+      }
+      r = r2;
+    }
     if (r.ok && r.dados.id) conjuntos.push({ chave: c.chave, carroId: c.carroId, adsetId: r.dados.id, nome: c.nome });
     else avisos.push(`Conjunto "${c.nome}" não foi criado: ${r.ok ? "a Meta não devolveu o id" : r.erro}`);
   }
@@ -253,6 +297,9 @@ export async function criarAnuncioDoCarro(p: {
   nomeDoAnuncio: string;
   legenda: string;
   maxFotos: number;
+  /** Modelo de conversa: boas-vindas e mensagem pronta ({carro} vira o nome do carro). */
+  boasVindas?: string;
+  mensagemPronta?: string;
 }): Promise<ResultadoDoCarro> {
   if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
   const conta = await prisma.metaAdAccount.findFirst({ where: { clientId: p.clientId, metaAccountId: p.contaMeta, active: true }, select: { id: true } });
@@ -284,7 +331,17 @@ export async function criarAnuncioDoCarro(p: {
   }
 
   const nome = p.nomeDoAnuncio.trim() || carro.titulo;
-  const criativo = await criarCriativo(p.contaMeta, `${nome} — ${new Date().toISOString().slice(0, 10)}`, specDoCriativo({ paginaId: p.paginaId, legenda, titulo: carro.titulo, hashes }));
+  const avisosDoCriativo: string[] = [];
+  const conversa = modeloDeConversa(p.boasVindas ?? "", mensagemProntaDoCarro(p.mensagemPronta ?? "", carro.titulo));
+  const nomeDoCriativo = `${nome} — ${new Date().toISOString().slice(0, 10)}`;
+  let criativo = await criarCriativo(p.contaMeta, nomeDoCriativo, specDoCriativo({ paginaId: p.paginaId, legenda, titulo: carro.titulo, hashes, conversa }));
+  // A Meta recusou o modelo de conversa (formato mudou, ou a conta não tem): cria sem ele e avisa — o anúncio sai, e a
+  // mensagem pronta se põe no Gerenciador.
+  // (Qualquer recusa: o texto do erro da Meta vem mascarado e nem sempre cita o campo.)
+  if (!criativo.ok) {
+    criativo = await criarCriativo(p.contaMeta, nomeDoCriativo, specDoCriativo({ paginaId: p.paginaId, legenda, titulo: carro.titulo, hashes }));
+    if (criativo.ok) avisosDoCriativo.push("A Meta não aceitou a mensagem pronta: ponha no Gerenciador (modelo de conversa).");
+  }
   if (!criativo.ok) {
     await soltar();
     return { ok: false, erro: `Criativo: ${criativo.erro}` };
@@ -300,7 +357,7 @@ export async function criarAnuncioDoCarro(p: {
     return { ok: false, erro: `Anúncio: ${ad.ok ? "a Meta não devolveu o id" : ad.erro}. O criativo ficou solto na conta e não gasta nada.` };
   }
   await prisma.estoqueCarro.update({ where: { id: carro.id }, data: { rascunhoAdId: ad.dados.id } });
-  const avisos: string[] = [];
+  const avisos: string[] = [...avisosDoCriativo];
   if (fotos.puladas > 0) avisos.push(`${fotos.puladas} foto(s) do site não puderam ser usadas.`);
   if (hashes.length < Math.min(fotos.fotos.length, p.maxFotos)) avisos.push("Alguma foto não subiu na Meta.");
   return { ok: true, adId: ad.dados.id, fotos: hashes.length, avisos };

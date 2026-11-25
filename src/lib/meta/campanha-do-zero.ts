@@ -5,6 +5,7 @@ import { buscarNaGraph } from "./cliente-graph";
 import { escreverNaGraph, escritaLiberada } from "./escrever-na-graph";
 import { conferirEdicao, montarTargeting, type EdicaoDoPublico } from "./publico-puro";
 import { tipoDeImagem } from "./rascunho-anuncio";
+import { fotosComArte } from "@/lib/estoque/artes";
 import { baixarFotosDoCarro, MAX_FOTOS } from "@/lib/estoque/fotos";
 
 // CAMPANHA DO ZERO pra loja nova (sem campanha nenhuma pra copiar): campanha → conjunto(s) → um anúncio por carro do estoque,
@@ -315,14 +316,19 @@ export async function criarAnuncioDoCarro(p: {
   if (trava.count === 0) return { ok: false, erro: "Esse carro já está sendo anunciado." };
   const soltar = () => prisma.estoqueCarro.update({ where: { id: carro.id }, data: { rascunhoAdId: null } });
 
+  // A arte do banco de artes (se tiver) vai na frente, e as fotos do site são cortadas na proporção dela.
+  const temArte = (await prisma.arteDoCarro.count({ where: { carroId: carro.id } })) > 0;
   const fotos = await baixarFotosDoCarro(carro.url);
-  if (!fotos.ok) {
+  if (!fotos.ok && !temArte) {
     await soltar();
     return { ok: false, erro: `Fotos do site: ${fotos.erro}` };
   }
+  const limite = Math.max(1, Math.min(MAX_FOTOS, p.maxFotos));
+  const doSite = fotos.ok ? fotos.fotos.slice(0, temArte ? limite - 1 : limite) : [];
+  const montadas = await fotosComArte(carro.id, doSite);
   const hashes: string[] = [];
-  for (const [i, f] of fotos.fotos.slice(0, Math.max(1, Math.min(MAX_FOTOS, p.maxFotos))).entries()) {
-    const h = await subirFoto(p.contaMeta, f.bytes, `${carro.titulo} ${i + 1}`);
+  for (const [i, bytes] of montadas.fotos.entries()) {
+    const h = await subirFoto(p.contaMeta, bytes, `${carro.titulo} ${i + 1}`);
     if (h) hashes.push(h);
   }
   if (hashes.length === 0) {
@@ -358,7 +364,10 @@ export async function criarAnuncioDoCarro(p: {
   }
   await prisma.estoqueCarro.update({ where: { id: carro.id }, data: { rascunhoAdId: ad.dados.id } });
   const avisos: string[] = [...avisosDoCriativo];
-  if (fotos.puladas > 0) avisos.push(`${fotos.puladas} foto(s) do site não puderam ser usadas.`);
-  if (hashes.length < Math.min(fotos.fotos.length, p.maxFotos)) avisos.push("Alguma foto não subiu na Meta.");
+  if (montadas.comArte) avisos.push("Arte do banco na 1ª foto; as fotos do site foram cortadas na proporção dela.");
+  if (!fotos.ok) avisos.push(`Só a arte: as fotos do site não vieram (${fotos.erro}).`);
+  const puladas = fotos.puladas + montadas.puladas;
+  if (puladas > 0) avisos.push(`${puladas} foto(s) do site não puderam ser usadas.`);
+  if (hashes.length < montadas.fotos.length) avisos.push("Alguma foto não subiu na Meta.");
   return { ok: true, adId: ad.dados.id, fotos: hashes.length, avisos };
 }

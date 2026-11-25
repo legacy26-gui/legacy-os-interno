@@ -1,4 +1,5 @@
-import { ChevronDown, Package } from "lucide-react";
+import Link from "next/link";
+import { ChevronDown, Images, Package } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import { requireModuleAccess } from "@/lib/dal";
 import { CARTEIRA, escopoDaCarteira } from "@/lib/carteira";
@@ -168,8 +169,11 @@ export default async function EstoquePage() {
               A contagem de dias começa quando o sistema viu o carro pela primeira vez: carros que já estavam no site no dia em que a leitura foi ligada aparecem como &quot;hoje&quot;. FIPE (tela larga): pela versão do carro; com duas versões parecidas, a faixa entre elas; &quot;—&quot; quando não achou com segurança. Passe o mouse pra ver a versão.
             </p>
 
-            <div className="mt-4">
+            <div className="mt-4 flex flex-col gap-3">
               <ControlesDaLoja clientId={l.id} siteUrl={e.siteUrl} podeLigar={user.role === "ADMIN"} />
+              <Link href={`/inteligencia-comercial/estoque/${l.id}/artes`} className="inline-flex w-fit items-center gap-2 px-4 min-h-11 rounded-lg border border-border text-sm font-medium hover:bg-border/60">
+                <Images size={14} /> Banco de artes
+              </Link>
             </div>
           </details>
         );

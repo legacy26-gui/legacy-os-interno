@@ -452,13 +452,20 @@ export function FormularioDoZero(p: {
             </button>
           </div>
         </div>
+        <p className="text-xs text-foreground-muted">
+          {p.carros.filter((c) => c.arteId).length} de {p.carros.length} carros com arte (vai como 1ª foto, e as fotos do site são cortadas na proporção dela).{" "}
+          <a href={`/inteligencia-comercial/estoque/${p.clientId}/artes`} target="_blank" className="underline">Abrir o banco de artes</a>
+        </p>
         <p className="text-xs text-foreground-muted">Legenda vazia é escrita pela IA na hora de criar. O nome vale pro anúncio{estrutura === "por-carro" ? " e pro conjunto do carro" : ""}.{estrutura === "montada" ? " Escolha o conjunto de cada carro." : ""}</p>
         <ul className="flex flex-col gap-3">
           {linhas.map((l, i) => (
             <li key={l.carro.id} className={`rounded-xl border p-3 flex flex-col gap-2 ${l.estado === "ok" ? "border-emerald-500/50" : l.estado === "erro" ? "border-red-500/50" : "border-border"}`}>
               <div className="flex items-start gap-3">
                 <input type="checkbox" disabled={travado || l.carro.jaAnunciado} checked={l.marcado} onChange={(e) => mudar(i, { marcado: e.target.checked })} className="mt-1" />
-                {l.carro.foto && /^https:\/\//.test(l.carro.foto) && (
+                {l.carro.arteId ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`/api/estoque/arte/${l.carro.arteId}`} alt="Arte" title="Arte do banco: vai como 1ª foto" className="w-16 h-16 object-cover rounded ring-2 ring-accent" />
+                ) : l.carro.foto && /^https:\/\//.test(l.carro.foto) && (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={l.carro.foto} alt="" className="w-16 h-12 object-cover rounded" />
                 )}

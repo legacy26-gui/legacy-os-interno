@@ -45,6 +45,8 @@ export interface CarroDoZero {
   precoCents: number | null;
   foto: string | null;
   jaAnunciado: boolean;
+  /** O id da arte do banco de artes (vai como 1ª foto). */
+  arteId: string | null;
 }
 
 export async function prepararCampanhaDoZero(clientId: string): Promise<
@@ -57,14 +59,14 @@ export async function prepararCampanhaDoZero(clientId: string): Promise<
     const carros = await prisma.estoqueCarro.findMany({
       where: { clientId, sumiuEm: null },
       orderBy: { titulo: "asc" },
-      select: { id: true, titulo: true, anoModelo: true, km: true, cor: true, precoCents: true, foto: true, rascunhoAdId: true },
+      select: { id: true, titulo: true, anoModelo: true, km: true, cor: true, precoCents: true, foto: true, rascunhoAdId: true, arte: { select: { id: true } } },
     });
     return {
       ok: true as const,
       loja: loja?.companyName ?? "",
       cidade: loja?.city ?? null,
       contas: contas.map((c) => ({ id: c.id, nome: c.name ?? c.metaAccountId, metaAccountId: c.metaAccountId })),
-      carros: carros.map((c) => ({ ...c, jaAnunciado: !!c.rascunhoAdId && c.rascunhoAdId !== "pendente", rascunhoAdId: undefined })),
+      carros: carros.map(({ arte, rascunhoAdId, ...c }) => ({ ...c, jaAnunciado: !!rascunhoAdId && rascunhoAdId !== "pendente", arteId: arte?.id ?? null })),
     };
   }, { ok: false as const, erro: "Deu erro no servidor. Tenta de novo." });
 }

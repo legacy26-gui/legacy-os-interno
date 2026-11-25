@@ -12,6 +12,7 @@ import {
   type AvisoDoConjunto,
 } from "@/lib/meta/rascunho-anuncio";
 import { conferirLegenda, gerarLegendaDoCarro } from "@/lib/meta/legenda-do-rascunho";
+import { fotosComArte } from "@/lib/estoque/artes";
 import { baixarFotosDoCarro, enderecosDasFotos } from "./fotos";
 import type { EscolhaDoAnuncio, PlanoDoAnuncio } from "./anunciar-tipos";
 
@@ -210,15 +211,18 @@ export async function anunciarCarroDoEstoque(p: {
       return invalido(`O anúncio-base não serve: ${base.erro}`);
     }
 
+    // A arte do banco de artes (se tiver) é a 1ª foto, e as do site são cortadas na proporção dela.
+    const temArte = (await prisma.arteDoCarro.count({ where: { carroId: carro.id } })) > 0;
     const baixadas = await baixarFotosDoCarro(carro.url, e.fotos.length > 0 ? e.fotos.slice(0, 6) : undefined);
-    if (!baixadas.ok) {
+    if (!baixadas.ok && !temArte) {
       await soltar();
       return invalido(`Não consegui pegar as fotos do ${carro.titulo} no site: ${baixadas.erro}. Sobe pela tela mandando as fotos.`);
     }
+    const montadas = await fotosComArte(carro.id, baixadas.fotos.slice(0, temArte ? 5 : 6));
 
     const hashes: string[] = [];
-    for (let i = 0; i < baixadas.fotos.length; i++) {
-      const f = await subirFotoDoRascunho({ clientId: carro.clientId, adsetId, nome: `${carro.id.slice(-6)}-${i + 1}.jpg`, bytes: baixadas.fotos[i].bytes });
+    for (let i = 0; i < montadas.fotos.length; i++) {
+      const f = await subirFotoDoRascunho({ clientId: carro.clientId, adsetId, nome: `${carro.id.slice(-6)}-${i + 1}.jpg`, bytes: montadas.fotos[i] });
       if (!f.ok) {
         await soltar();
         return invalido(`Não consegui enviar a foto ${i + 1} pra Meta: ${f.erro}`);

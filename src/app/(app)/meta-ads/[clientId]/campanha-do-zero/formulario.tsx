@@ -4,7 +4,8 @@ import { useEffect, useState, useTransition } from "react";
 import { Loader2, Search, Trash2, Check, AlertTriangle, ExternalLink, Sparkles, Upload, X } from "lucide-react";
 import { atribuirArte, subirArte } from "@/lib/actions/artes";
 import { legendaDoModelo, MODELO_PADRAO } from "@/lib/meta/legenda-modelo";
-import { criarAnuncioNoZero, criarEstruturaDoZero, legendaDoZero, listarNumeros, listarPaginas, type CarroDoZero } from "@/lib/actions/campanha-do-zero";
+import { subirVideoPelaTela, type VideoSubido } from "@/lib/video-no-navegador";
+import { criarAnuncioDeVideoNoZero, criarAnuncioNoZero, criarEstruturaDoZero, legendaDoZero, listarNumeros, listarPaginas, type CarroDoZero } from "@/lib/actions/campanha-do-zero";
 import { procurarLocais } from "@/lib/actions/publico-do-conjunto";
 import { IDADE_MAXIMA, IDADE_MINIMA, RAIOS_DA_CIDADE, type GeneroDoPublico, type LocalDoPublico } from "@/lib/meta/publico-puro";
 
@@ -20,6 +21,12 @@ interface LinhaDoCarro {
   msg: string;
   /** Em "um conjunto por carro": o WhatsApp do conjunto deste carro ("" = o padrão da campanha). */
   whatsapp: string;
+  /** O vídeo do carro, já na conta de anúncio (vira um anúncio de vídeo no mesmo conjunto). */
+  video?: VideoSubido | null;
+  /** Subindo o vídeo agora: a porcentagem. */
+  subindoVideo?: number | null;
+  /** Só o anúncio de vídeo (sem o de fotos). */
+  soVideo?: boolean;
 }
 
 /**
@@ -193,6 +200,7 @@ export function FormularioDoZero(p: {
     if (paginaId === "") return setErro("Escolha a página do Facebook da loja (ou \"Sem página\").");
     if (paginaId === "__outra" && !paginaEscolhida) return setErro('Cole o ID da página (só números) ou escolha "Sem página".');
     if (marcados.length === 0) return setErro("Marque pelo menos um carro.");
+    if (linhas.some((l) => l.subindoVideo !== null && l.subindoVideo !== undefined)) return setErro("Espere o vídeo terminar de subir.");
     if (estrutura === "montada" && conjuntosUsados.some((c) => !c.nome.trim())) return setErro("Dê nome a todos os conjuntos.");
     if (modoLegenda === "minha") {
       const sem = marcados.find((l) => l.legenda.trim().length < 10);
@@ -205,7 +213,7 @@ export function FormularioDoZero(p: {
         : estrutura === "um-conjunto"
           ? "1 conjunto com todos os carros"
           : `${conjuntosUsados.length} conjuntos: ${conjuntosUsados.map((c) => `${c.nome} (${marcados.filter((l) => l.conjunto === c.chave).length})`).join(", ")}`;
-    if (!confirm(`Criar na Meta, tudo PAUSADO:\n\n• 1 campanha "${nome}" (${objetivo === "leads" ? "Leads" : "Engajamento"} → WhatsApp)\n• ${descricao}\n• ${marcados.length} anúncios\n• Orçamento: ${reais(total)}/dia no total${paginaEscolhida ? "" : "\n\nSEM PÁGINA: a Meta não cria anúncio sem página. Cria a campanha e os conjuntos, e sobe as fotos de cada carro pra biblioteca da conta — os anúncios você termina no Gerenciador."}\n\nNada liga sozinho.`)) return;
+    if (!confirm(`Criar na Meta, tudo PAUSADO:\n\n• 1 campanha "${nome}" (${objetivo === "leads" ? "Leads" : "Engajamento"} → WhatsApp)\n• ${descricao}\n• ${marcados.reduce((t, l) => t + (l.video ? (l.soVideo ? 1 : 2) : 1), 0)} anúncios${marcados.some((l) => l.video) ? ` (${marcados.filter((l) => l.video).length} de vídeo)` : ""}\n• Orçamento: ${reais(total)}/dia no total${paginaEscolhida ? "" : "\n\nSEM PÁGINA: a Meta não cria anúncio sem página. Cria a campanha e os conjuntos, e sobe as fotos de cada carro pra biblioteca da conta — os anúncios você termina no Gerenciador."}\n\nNada liga sozinho.`)) return;
     setFase("criando");
     comecar(async () => {
       const est = await criarEstruturaDoZero({
@@ -252,14 +260,28 @@ export function FormularioDoZero(p: {
           legenda = lg.legenda;
           mudar(i, { legenda });
         }
-        mudar(i, { msg: "fotos e anúncio…" });
-        const r = await criarAnuncioNoZero({ clientId: p.clientId, contaMeta: conta.metaAccountId, paginaId: paginaEscolhida, adsetId: conj.adsetId, carroId: l.carro.id, nomeDoAnuncio: l.nome, legenda, maxFotos, boasVindas, mensagemPronta });
-        if (r.ok) {
-          feitos++;
-          mudar(i, { estado: "ok", msg: `${r.fotos} foto(s)${r.avisos.length ? ` · ${r.avisos.join(" ")}` : ""}` });
-        } else mudar(i, { estado: "erro", msg: r.erro });
+        const partes: string[] = [];
+        let algumErro: string | null = null;
+        if (!(l.video && l.soVideo)) {
+          mudar(i, { msg: "fotos e anúncio…" });
+          const r = await criarAnuncioNoZero({ clientId: p.clientId, contaMeta: conta.metaAccountId, paginaId: paginaEscolhida, adsetId: conj.adsetId, carroId: l.carro.id, nomeDoAnuncio: l.nome, legenda, maxFotos, boasVindas, mensagemPronta });
+          if (r.ok) {
+            feitos++;
+            partes.push(`fotos: ${r.fotos}${r.avisos.length ? ` · ${r.avisos.join(" ")}` : ""}`);
+          } else algumErro = r.erro;
+        }
+        if (l.video) {
+          mudar(i, { msg: "anúncio de vídeo…" });
+          const rv = await criarAnuncioDeVideoNoZero({ clientId: p.clientId, contaMeta: conta.metaAccountId, paginaId: paginaEscolhida, adsetId: conj.adsetId, carroId: l.carro.id, nomeDoAnuncio: l.nome, legenda, videoId: l.video.videoId, capaHash: l.video.capaHash, boasVindas, mensagemPronta });
+          if (rv.ok) {
+            feitos++;
+            partes.push(`vídeo ✓${rv.avisos.length ? ` · ${rv.avisos.join(" ")}` : ""}`);
+          } else algumErro = `${algumErro ? `${algumErro} · ` : ""}vídeo: ${rv.erro}`;
+        }
+        mudar(i, algumErro && partes.length === 0 ? { estado: "erro", msg: algumErro } : { estado: algumErro ? "erro" : "ok", msg: [...partes, algumErro].filter(Boolean).join(" · ") });
       }
-      setResumo(`${feitos} de ${marcados.length} anúncios criados, pausados.${est.avisos.length ? ` ${est.avisos.join(" ")}` : ""}`);
+      const esperados = marcados.reduce((t, l) => t + (l.video ? (l.soVideo ? 1 : 2) : 1), 0);
+      setResumo(`${feitos} de ${esperados} anúncios criados, pausados.${est.avisos.length ? ` ${est.avisos.join(" ")}` : ""}`);
       setFase("pronto");
     });
   }
@@ -324,6 +346,14 @@ export function FormularioDoZero(p: {
     const r = await atribuirArte(p.clientId, arteId, carroId);
     if (r.erro) return setMsgArte([`✗ ${r.erro}`]);
     colocarNoCarro(arteId, carroId || null);
+  }
+
+  async function subirVideoDoCarro(i: number, arquivo: File | undefined) {
+    const conta = p.contas.find((c) => c.id === contaId);
+    if (!arquivo || !conta) return;
+    mudar(i, { subindoVideo: 0, msg: "" });
+    const r = await subirVideoPelaTela({ clientId: p.clientId, contaMeta: conta.metaAccountId, arquivo, progresso: (pct) => mudar(i, { subindoVideo: pct }) });
+    mudar(i, r.ok ? { subindoVideo: null, video: r.video, marcado: true } : { subindoVideo: null, msg: `vídeo: ${r.erro}` });
   }
 
   /** Soltar em cima de um carro: arquivo do computador sobe pra ele; arte da bandeja é ligada a ele. */
@@ -853,6 +883,41 @@ export function FormularioDoZero(p: {
                       </select>
                     </label>
                   )}
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    {l.video ? (
+                      <>
+                        <span className="text-emerald-600 dark:text-emerald-400">🎬 vídeo pronto: {l.video.nome}</span>
+                        <label className="inline-flex items-center gap-1">
+                          <input type="checkbox" disabled={travado} checked={!!l.soVideo} onChange={(e) => mudar(i, { soVideo: e.target.checked })} />
+                          só o vídeo (sem anúncio de fotos)
+                        </label>
+                        {!travado && (
+                          <button type="button" onClick={() => mudar(i, { video: null, soVideo: false })} className="underline">
+                            tirar vídeo
+                          </button>
+                        )}
+                      </>
+                    ) : l.subindoVideo !== null && l.subindoVideo !== undefined ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Loader2 size={12} className="animate-spin" /> subindo vídeo… {l.subindoVideo}%
+                      </span>
+                    ) : (
+                      <label className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-border ${travado ? "opacity-50" : "cursor-pointer hover:border-accent"}`}>
+                        🎬 Vídeo (MP4/MOV)
+                        <input
+                          type="file"
+                          accept="video/mp4,video/quicktime,.mp4,.mov"
+                          disabled={travado}
+                          className="hidden"
+                          aria-label={`Vídeo do ${l.carro.titulo}`}
+                          onChange={(e) => {
+                            void subirVideoDoCarro(i, e.target.files?.[0]);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
                   <span className="text-xs text-foreground-muted">
                     {[l.carro.anoModelo, l.carro.km !== null ? `${l.carro.km.toLocaleString("pt-BR")} km` : null, l.carro.cor, reais(l.carro.precoCents)].filter(Boolean).join(" · ")}
                   </span>

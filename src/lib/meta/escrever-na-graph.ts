@@ -274,3 +274,52 @@ export async function escreverNaGraph<T = unknown>(
     clearTimeout(relogio);
   }
 }
+
+/**
+ * Um POST com ARQUIVO (multipart) na Graph API — usado pra mandar o vídeo em pedaços (advideos, upload_phase=transfer).
+ * Mesmo token, mesmo tratamento de erro do escreverNaGraph, prazo maior (um pedaço de alguns MB pode demorar).
+ */
+export async function enviarArquivoNaGraph<T = unknown>(
+  caminho: string,
+  campos: Record<string, string>,
+  arquivo: { campo: string; bytes: Uint8Array; nome: string; tipo: string },
+  prazoMs = 120_000,
+): Promise<RespostaDaEscrita<T>> {
+  const chave = token();
+  if (!chave) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
+  const corte = new AbortController();
+  const relogio = setTimeout(() => corte.abort(), prazoMs);
+  try {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(campos)) form.set(k, v);
+    form.set(arquivo.campo, new Blob([arquivo.bytes as BlobPart], { type: arquivo.tipo }), arquivo.nome);
+    const resposta = await fetch(`${base()}/${versao()}/${caminho}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${chave}` },
+      body: form,
+      signal: corte.signal,
+      cache: "no-store",
+    });
+    const texto = await resposta.text();
+    if (!resposta.ok) {
+      let detalhe = `HTTP ${resposta.status}`;
+      try {
+        const corpo = JSON.parse(texto) as { error?: { message?: string; error_user_msg?: string } };
+        detalhe = corpo.error?.error_user_msg || corpo.error?.message || detalhe;
+      } catch {
+        // não é JSON
+      }
+      return { ok: false, erro: semSegredo(detalhe) };
+    }
+    try {
+      return { ok: true, dados: JSON.parse(texto) as T };
+    } catch {
+      return { ok: true, dados: {} as T };
+    }
+  } catch (erro) {
+    if (erro instanceof Error && erro.name === "AbortError") return { ok: false, erro: "A Meta demorou demais pra receber o pedaço do vídeo." };
+    return { ok: false, erro: semSegredo(erro instanceof Error ? erro.message : String(erro)) };
+  } finally {
+    clearTimeout(relogio);
+  }
+}

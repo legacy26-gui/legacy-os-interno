@@ -83,3 +83,9 @@ Loja nova não tem legendas antigas pra IA copiar, e a legenda saía genérica. 
 - Meta recusou o número ("This WhatsApp phone number is not linked to your account" — Auto PG, 25/11): tenta uma vez com "+" na frente; se ainda recusar, **não** cria o conjunto sem número (conjunto sem WhatsApp não deixa escolher o número depois no Gerenciador). Para, apaga a campanha vazia e explica o que liberar (`COMO_LIBERAR_O_WHATSAPP`): o usuário do sistema da Legacy precisa ter a página da loja (e a conta do WhatsApp) atribuída no Gerenciador de Negócios.
 - Escolheu número: antes de criar qualquer coisa, confere se o acesso de criar campanhas enxerga a página; não enxerga = não cria nada e diz o que liberar.
 - Nenhum conjunto saiu: a campanha vazia é apagada (status DELETED) e a tela diz o motivo.
+
+## Vídeo (pelo sistema)
+- Em cada carro (parte 4): **🎬 Vídeo (MP4/MOV)**. O vídeo sobe na hora pra conta de anúncio, em pedaços (a hospedagem não aceita pedido grande; o tamanho de cada pedaço é o que a Meta pede, até 3,5 MB), com a porcentagem na tela. O navegador tira um quadro do vídeo e sobe como **capa**. Até 250 MB.
+- Ao criar: o carro ganha o anúncio de fotos **e** um anúncio de vídeo ("<nome> — Vídeo") no mesmo conjunto, com o mesmo botão de WhatsApp e mensagem pronta. "só o vídeo" = sem o de fotos.
+- Se a Meta ainda está processando o vídeo e recusa o criativo, espera e tenta de novo; sem capa, usa a miniatura da Meta.
+- Código: `src/lib/meta/video.ts` (upload em partes, spec de vídeo), `src/lib/actions/video.ts`, `src/lib/video-no-navegador.ts`, `criarAnuncioDeVideoDoCarro`.

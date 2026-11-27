@@ -6,6 +6,7 @@ import { clienteEDaCarteira } from "@/lib/carteira";
 import { prisma } from "@/lib/prisma";
 import {
   criarAnuncioDoCarro,
+  criarAnuncioDeVideoDoCarro,
   criarEstrutura,
   numeroDoWhatsapp,
   numerosDoWhatsapp,
@@ -150,6 +151,37 @@ export async function criarAnuncioNoZero(p: {
     return criarAnuncioDoCarro({
       ...p,
       maxFotos: Number(p.maxFotos) || 6,
+      boasVindas: String(p.boasVindas ?? "").slice(0, 300),
+      mensagemPronta: String(p.mensagemPronta ?? "").slice(0, 300),
+    });
+  }, { ok: false as const, erro: "Deu erro no servidor. Tenta de novo." });
+}
+
+export async function criarAnuncioDeVideoNoZero(p: {
+  clientId: string;
+  contaMeta: string;
+  paginaId: string;
+  adsetId: string;
+  carroId: string;
+  nomeDoAnuncio: string;
+  legenda: string;
+  videoId: string;
+  capaHash?: string | null;
+  boasVindas?: string;
+  mensagemPronta?: string;
+}): Promise<ResultadoDoCarro> {
+  return semQuebrar(async () => {
+    if (!(await pode(p.clientId))) return { ok: false as const, erro: "Esta loja não está na sua carteira." };
+    return criarAnuncioDeVideoDoCarro({
+      clientId: p.clientId,
+      contaMeta: String(p.contaMeta),
+      paginaId: String(p.paginaId ?? ""),
+      adsetId: String(p.adsetId),
+      carroId: String(p.carroId),
+      nomeDoAnuncio: String(p.nomeDoAnuncio ?? "").slice(0, 200),
+      legenda: String(p.legenda ?? "").slice(0, 2200),
+      videoId: String(p.videoId ?? ""),
+      capaHash: p.capaHash ? String(p.capaHash) : null,
       boasVindas: String(p.boasVindas ?? "").slice(0, 300),
       mensagemPronta: String(p.mensagemPronta ?? "").slice(0, 300),
     });

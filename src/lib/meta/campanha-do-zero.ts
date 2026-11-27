@@ -6,6 +6,7 @@ import { escreverNaGraph, escritaLiberada, lerComTokenDeEscrita } from "./escrev
 import { urlDeSiteSegura, USER_AGENT_DO_ESTOQUE } from "@/lib/estoque/ler-estoque";
 import { conferirEdicao, montarTargeting, type EdicaoDoPublico } from "./publico-puro";
 import { tipoDeImagem } from "./rascunho-anuncio";
+import { esperarVideo, specDeVideo } from "./video";
 import { fotosComArte } from "@/lib/estoque/artes";
 import { baixarFotosDoCarro, MAX_FOTOS } from "@/lib/estoque/fotos";
 
@@ -38,6 +39,8 @@ export interface Orcamento {
 
 export const ORCAMENTO_MINIMO_CENTS = 600; // R$ 6/dia: abaixo disso a Meta costuma recusar
 const LINK_DO_WHATSAPP = "https://api.whatsapp.com/send";
+/** O botão "Enviar mensagem no WhatsApp" dos anúncios de foto e de vídeo. */
+export const BOTAO_DO_WHATSAPP = { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP", link: LINK_DO_WHATSAPP } };
 
 /** Os aprimoramentos automáticos do criativo que ficam DESLIGADOS (opt-out explícito). */
 export const APRIMORAMENTOS_DESLIGADOS = [
@@ -500,7 +503,7 @@ export function conferirMontagem(p: Pick<PedidoDaEstrutura, "estrutura" | "carro
   return null;
 }
 
-async function subirFoto(contaMeta: string, bytes: Buffer, nome: string): Promise<string | null> {
+export async function subirFoto(contaMeta: string, bytes: Buffer, nome: string): Promise<string | null> {
   if (!tipoDeImagem(bytes)) return null;
   const r = await escreverNaGraph<{ images?: Record<string, { hash?: string }> }>(`${contaMeta}/adimages`, {
     bytes: bytes.toString("base64"),
@@ -630,4 +633,61 @@ async function subirSoAsFotos(p: { clientId: string; contaMeta: string; carroId:
   let subidas = 0;
   for (const [i, bytes] of montadas.fotos.entries()) if (await subirFoto(p.contaMeta, bytes, `${carro.titulo} ${i + 1}`)) subidas++;
   return { ok: false, erro: `Sem página: anúncio não criado (a Meta exige a página). ${subidas} foto(s) do carro já estão na biblioteca da conta.` };
+}
+
+/**
+ * O anúncio de VÍDEO de um carro (além do de fotos, ou só ele). O vídeo já subiu pra conta (video.ts) e a capa é o quadro que
+ * o navegador tirou (hash) — ou, sem ela, a miniatura da Meta. Nasce PAUSADO, com o mesmo botão de WhatsApp e a mesma
+ * mensagem pronta do anúncio de fotos. Se a Meta ainda está processando o vídeo, espera um pouco e tenta de novo.
+ */
+export async function criarAnuncioDeVideoDoCarro(p: {
+  clientId: string;
+  contaMeta: string;
+  paginaId: string;
+  adsetId: string;
+  carroId: string;
+  nomeDoAnuncio: string;
+  legenda: string;
+  videoId: string;
+  capaHash?: string | null;
+  boasVindas?: string;
+  mensagemPronta?: string;
+}): Promise<ResultadoDoCarro> {
+  if (!escritaLiberada()) return { ok: false, erro: "O acesso de escrita na Meta ainda não está configurado no sistema." };
+  if (!p.paginaId) return { ok: false, erro: "Sem página: a Meta não cria anúncio de vídeo sem página." };
+  if (!/^\d{5,30}$/.test(p.videoId)) return { ok: false, erro: "Vídeo inválido." };
+  const conta = await prisma.metaAdAccount.findFirst({ where: { clientId: p.clientId, metaAccountId: p.contaMeta, active: true }, select: { id: true } });
+  if (!conta) return { ok: false, erro: "Essa conta não é desta loja." };
+  const carro = await prisma.estoqueCarro.findFirst({ where: { id: p.carroId, clientId: p.clientId }, select: { id: true, titulo: true } });
+  if (!carro) return { ok: false, erro: "Esse carro não é do estoque desta loja." };
+  const legenda = p.legenda.trim();
+  if (legenda.length < 10) return { ok: false, erro: "A legenda ficou vazia." };
+
+  const processado = await esperarVideo(p.videoId, p.capaHash ? 20_000 : 60_000);
+  if (processado.erro) return { ok: false, erro: processado.erro };
+  const capa = { hash: p.capaHash ?? null, url: p.capaHash ? null : processado.capa };
+  if (!capa.hash && !capa.url) return { ok: false, erro: "Sem capa do vídeo (a Meta ainda não gerou a miniatura). Tenta de novo em 1 minuto." };
+  const conversa = modeloDeConversa(p.boasVindas ?? "", mensagemProntaDoCarro(p.mensagemPronta ?? "", carro.titulo));
+  const nome = (p.nomeDoAnuncio.trim() || carro.titulo).slice(0, 180);
+  const spec = (comConversa: boolean) => specDeVideo({ paginaId: p.paginaId, videoId: p.videoId, capa, legenda, titulo: carro.titulo, botao: BOTAO_DO_WHATSAPP, conversa: comConversa ? conversa : null });
+  const avisos: string[] = [];
+  let criativo = await criarCriativo(p.contaMeta, `${nome} — vídeo`, spec(true));
+  if (!criativo.ok && /process|not ready|encoding|video/i.test(criativo.erro)) {
+    await esperarVideo(p.videoId, 45_000);
+    criativo = await criarCriativo(p.contaMeta, `${nome} — vídeo`, spec(true));
+  }
+  if (!criativo.ok) {
+    criativo = await criarCriativo(p.contaMeta, `${nome} — vídeo`, spec(false));
+    if (criativo.ok) avisos.push("A Meta não aceitou a mensagem pronta no vídeo: ponha no Gerenciador.");
+  }
+  if (!criativo.ok) return { ok: false, erro: `Criativo do vídeo: ${criativo.erro}` };
+  const ad = await escreverNaGraph<{ id?: string }>(`${p.contaMeta}/ads`, {
+    name: `${nome} — Vídeo`.slice(0, 200),
+    adset_id: p.adsetId,
+    creative: JSON.stringify({ creative_id: criativo.id }),
+    status: "PAUSED",
+  });
+  if (!ad.ok || !ad.dados.id) return { ok: false, erro: `Anúncio de vídeo: ${ad.ok ? "a Meta não devolveu o id" : ad.erro}. O criativo ficou solto na conta e não gasta nada.` };
+  if (!processado.pronto) avisos.push("A Meta ainda está processando o vídeo: o anúncio aparece no Gerenciador, a prévia pode demorar uns minutos.");
+  return { ok: true, adId: ad.dados.id, fotos: 0, avisos };
 }

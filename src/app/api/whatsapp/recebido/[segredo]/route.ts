@@ -4,7 +4,7 @@ import { atenderMensagemDoGrupo } from "@/lib/whatsapp/atender-grupo";
 import { atenderMensagemPrivada } from "@/lib/whatsapp/atender-privado";
 import { atenderAudioDoGrupo } from "@/lib/whatsapp/atender-audio";
 import { atenderAudioPrivado } from "@/lib/whatsapp/atender-audio-privado";
-import { receberFotoNoPrivado } from "@/lib/whatsapp/foto-recebida";
+import { receberFotoNoPrivado, receberVideoNoPrivado } from "@/lib/whatsapp/foto-recebida";
 import { registrarConexao } from "@/lib/whatsapp/vigia-conexao";
 import { primeiraVez } from "@/lib/whatsapp/so-uma-vez";
 import { anotar } from "@/lib/whatsapp/trilha";
@@ -75,6 +75,7 @@ interface CorpoDaZapi {
   audio?: { audioUrl?: unknown; mimeType?: unknown; seconds?: unknown };
   /** Foto. Só é usada no PRIVADO, e só de quem é da casa: é o começo de "subir anúncio pelo WhatsApp". */
   image?: { imageUrl?: unknown; caption?: unknown; mimeType?: unknown };
+  video?: { videoUrl?: unknown; caption?: unknown; mimeType?: unknown };
   /** Quando a mensagem foi enviada (ms). A Z-API escreve assim mesmo, com dois "m". */
   momment?: unknown;
   /** Alguns formatos da Z-API mandam os marcados aqui em cima. */
@@ -165,7 +166,9 @@ export async function POST(
   const eAudioPrivado = !!de && !texto?.trim() && !!audioUrl && corpo.isGroup !== true;
   const imagemUrl = typeof corpo.image?.imageUrl === "string" ? corpo.image.imageUrl : null;
   const eFotoPrivada = !!de && !texto?.trim() && !!imagemUrl && corpo.isGroup !== true;
-  if (!de || (!texto?.trim() && !eAudioDeGrupo && !eAudioPrivado && !eFotoPrivada)) {
+  const videoUrl = typeof corpo.video?.videoUrl === "string" ? corpo.video.videoUrl : null;
+  const eVideoPrivado = !!de && !texto?.trim() && !!videoUrl && corpo.isGroup !== true;
+  if (!de || (!texto?.trim() && !eAudioDeGrupo && !eAudioPrivado && !eFotoPrivada && !eVideoPrivado)) {
     return NextResponse.json({ ok: true, ignorado: "sem texto" });
   }
 
@@ -205,6 +208,23 @@ export async function POST(
       }
     });
     return NextResponse.json({ ok: true, foto: "recebida" });
+  }
+
+  if (eVideoPrivado && videoUrl) {
+    after(async () => {
+      try {
+        await receberVideoNoPrivado({
+          telefone: de,
+          videoUrl,
+          legenda: typeof corpo.video?.caption === "string" ? corpo.video.caption : null,
+          messageId: idDaMensagem,
+          momento: typeof corpo.momment === "number" ? corpo.momment : null,
+        });
+      } catch (e) {
+        await anotar(idDaMensagem, de, "video-estourou", e instanceof Error ? e.message : String(e));
+      }
+    });
+    return NextResponse.json({ ok: true, video: "recebido" });
   }
 
   if (eAudioPrivado && audioUrl) {

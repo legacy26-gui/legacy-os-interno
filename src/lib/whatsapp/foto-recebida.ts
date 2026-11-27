@@ -6,7 +6,8 @@ import { tipoDeImagem } from "@/lib/meta/rascunho-anuncio";
 import { enviarTexto } from "./zapi";
 import { anotar } from "./trilha";
 import { acharPessoaPeloNumero } from "./atender-privado";
-import { registrarFoto, tratarLegendaDaFoto, TEXTO_FOTO_RECEBIDA } from "./subir-anuncio";
+import { registrarFoto, tratarLegendaDaFoto, TEXTO_FOTO_RECEBIDA, TEXTO_VIDEO_RECEBIDO } from "./subir-anuncio";
+import { ehVideo } from "@/lib/meta/video";
 
 // Foto que chega no privado do robô: é o começo de "subir anúncio pelo WhatsApp".
 //
@@ -134,4 +135,73 @@ export async function receberFotoNoPrivado(a: {
     else if (r.avisar) await responder(TEXTO_FOTO_RECEBIDA);
   }
   return { tipo: "guardada", avisou: r.avisar, total: r.total };
+}
+
+// ───────────────────────────── Vídeo no privado ─────────────────────────────
+//
+// Mesmas travas da foto (pessoa da casa, escrita na Meta, endereço seguro), antes de baixar. Até VIDEO_MAXIMO (o WhatsApp
+// manda vídeo comprimido, normalmente bem menos). Precisa SER MP4/MOV de verdade (primeiros bytes). Fica guardado até o
+// "sim": aí sobe pra conta do conjunto e o anúncio sai de vídeo (ver executar em subir-anuncio.ts).
+
+const VIDEO_MAXIMO = 64 * 1024 * 1024;
+
+async function baixarVideo(url: string): Promise<{ ok: true; bytes: Buffer } | { ok: false; erro: string }> {
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(120_000), redirect: "error" });
+    if (!r.ok) return { ok: false, erro: `não consegui baixar o vídeo (${r.status})` };
+    if (Number(r.headers.get("content-length") ?? 0) > VIDEO_MAXIMO) return { ok: false, erro: "o vídeo passou de 64 MB" };
+    const bytes = Buffer.from(await r.arrayBuffer());
+    if (bytes.length === 0) return { ok: false, erro: "o vídeo veio vazio" };
+    if (bytes.length > VIDEO_MAXIMO) return { ok: false, erro: "o vídeo passou de 64 MB" };
+    return { ok: true, bytes };
+  } catch {
+    return { ok: false, erro: "não consegui baixar o vídeo" };
+  }
+}
+
+export async function receberVideoNoPrivado(a: {
+  telefone: string;
+  videoUrl: string;
+  legenda?: string | null;
+  messageId?: string | null;
+  momento?: number | null;
+}): Promise<DesfechoDaFoto> {
+  const ponta = `privado …${a.telefone.replace(/\D/g, "").slice(-4)}`;
+  const pessoa = await acharPessoaPeloNumero(a.telefone);
+  if (!pessoa || !canAccessModule(pessoa.role, "clientes", pessoa.email)) {
+    await anotar(a.messageId, ponta, "video-ignorado", pessoa ? "sem acesso a clientes" : "número não reconhecido");
+    return { tipo: "ignorada", motivo: pessoa ? "sem-acesso" : "desconhecido" };
+  }
+  const responder = async (texto: string) => {
+    const r = await enviarTexto(a.telefone, texto);
+    if (!r.ok) await anotar(a.messageId, ponta, "video-resposta-recusada", r.erro ?? "");
+  };
+  if (!escritaLiberada()) {
+    await responder("Recebi o vídeo, mas ainda não consigo subir anúncio: o acesso de escrita na Meta não está configurado no sistema.");
+    return { tipo: "falhou", erro: "sem-escrita" };
+  }
+  if (!urlDeFotoSegura(a.videoUrl) || !a.messageId) {
+    await anotar(a.messageId, ponta, "video-url-insegura");
+    return { tipo: "ignorada", motivo: "url" };
+  }
+  const baixado = await baixarVideo(a.videoUrl);
+  if (!baixado.ok) {
+    await anotar(a.messageId, ponta, "video-nao-baixou", baixado.erro);
+    await responder(`🎬 ${baixado.erro[0].toUpperCase()}${baixado.erro.slice(1)}. Manda de novo.`);
+    return { tipo: "falhou", erro: baixado.erro };
+  }
+  if (!ehVideo(baixado.bytes)) {
+    await responder("🎬 Só aceito vídeo MP4 (o normal do celular). Manda de novo.");
+    return { tipo: "falhou", erro: "formato" };
+  }
+  const quando = a.momento && Number.isFinite(a.momento) ? new Date(a.momento) : new Date();
+  const r = await registrarFoto(pessoa, { messageId: a.messageId, mime: "video/mp4", bytes: baixado.bytes, quando });
+  if (r.repetida) return { tipo: "ignorada", motivo: "repetida" };
+  await anotar(a.messageId, ponta, "video-guardado", `${Math.round(baixado.bytes.length / 1024)} KB`);
+  const legenda = (a.legenda ?? "").trim();
+  if (legenda) {
+    const resposta = await tratarLegendaDaFoto(pessoa, legenda);
+    await responder(resposta ?? TEXTO_VIDEO_RECEBIDO);
+  } else await responder(TEXTO_VIDEO_RECEBIDO);
+  return { tipo: "guardada", avisou: true, total: r.total };
 }

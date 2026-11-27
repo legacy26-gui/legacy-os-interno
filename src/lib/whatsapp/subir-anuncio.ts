@@ -6,7 +6,8 @@ import { prisma } from "@/lib/prisma";
 import { CARTEIRA_NO_META, escopoDaCarteira, type PessoaDaCasa } from "@/lib/carteira";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import { acharObjetoDaLoja } from "@/lib/meta/mudar-status";
-import { anunciosDoConjuntoNaMeta, lerBaseDoAnuncio, ORCAMENTO_MAXIMO_CENTS, ORCAMENTO_MINIMO_CENTS, subirFotoDoRascunho, subirRascunho } from "@/lib/meta/rascunho-anuncio";
+import { subirVideo } from "@/lib/meta/video";
+import { anunciosDoConjuntoNaMeta, contaDoConjunto, lerBaseDoAnuncio, ORCAMENTO_MAXIMO_CENTS, ORCAMENTO_MINIMO_CENTS, subirFotoDoRascunho, subirRascunho } from "@/lib/meta/rascunho-anuncio";
 import { gerarLegendaDoCarro } from "@/lib/meta/legenda-do-rascunho";
 import { achatar, acharCarro } from "./entender-pedido";
 import { acharLojaNoTexto, descartarPendente, respostaDeConfirmacao } from "./pausar-no-privado";
@@ -169,6 +170,8 @@ export async function registrarFoto(
   foto: FotoRecebida,
   agora: Date = new Date(),
 ): Promise<{ avisar: boolean; total: number; cheio: boolean; repetida: boolean }> {
+  // Vídeo: fica UM (o último que chegou). O anúncio vai ser de vídeo.
+  if (foto.mime.startsWith("video/")) await prisma.rascunhoFoto.deleteMany({ where: { userId: pessoa.id, mime: { startsWith: "video/" } } });
   const total = await prisma.rascunhoFoto.count({ where: { userId: pessoa.id } });
   if (total >= MAX_FOTOS) return { avisar: false, total, cheio: true, repetida: false };
 
@@ -205,6 +208,10 @@ export async function registrarFoto(
   }
   return { avisar, total: total + 1, cheio: false, repetida: false };
 }
+
+export const TEXTO_VIDEO_RECEBIDO =
+  "🎬 Recebi o vídeo. O anúncio vai ser de *vídeo* (com o mesmo botão e página do anúncio-base). Agora me diz a " +
+  `${negrito("loja")} e o ${negrito("carro")}, por exemplo: ${negrito("virtus 2021 r2")}.\nPra desistir, escreve ${negrito("cancela")}.`;
 
 export const TEXTO_FOTO_RECEBIDA =
   "📷 Recebi a foto. Manda as outras (até 10: uma foto = anúncio de foto, várias = carrossel) e depois me diz a " +
@@ -605,7 +612,7 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
     return (
       aviso +
       (inicio ? "Bora! " : "") +
-      `Manda as ${negrito("fotos")} do carro (uma foto = anúncio de foto, várias = carrossel, até ${MAX_FOTOS}). ` +
+      `Manda as ${negrito("fotos")} do carro (uma foto = anúncio de foto, várias = carrossel, até ${MAX_FOTOS}) ou um ${negrito("vídeo")}. ` +
       `Depois me diz a loja e o carro, ou escreve ${negrito("pronto")}. Pra desistir, ${negrito("cancela")}.`
     );
   }
@@ -618,7 +625,8 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
     } else {
       const opcoes = lojas.map((l) => ({ id: l.id, rotulo: l.companyName }));
       await salvar(c, { etapa: "loja", opcoes }, agora);
-      return `${aviso}Recebi ${fotos} ${fotos === 1 ? "foto" : "fotos"}. De qual loja é? Responde com o número:\n${listaNumerada(opcoes)}`;
+      const comVideo = (await prisma.rascunhoFoto.count({ where: { userId: pessoa.id, mime: { startsWith: "video/" } } })) > 0;
+      return `${aviso}Recebi ${comVideo ? "o vídeo" : `${fotos} ${fotos === 1 ? "foto" : "fotos"}`}. De qual loja é? Responde com o número:\n${listaNumerada(opcoes)}`;
     }
   }
   const loja = lojas.find((l) => l.id === c.clientId);
@@ -730,10 +738,11 @@ async function avancar(pessoa: Pessoa, c: Conversa, agora: Date, aviso: string, 
   await salvar(c, { etapa: "confirmando", opcoes: [] }, agora);
   const dup = c.duplicarConjunto && c.adsetId;
   const [orcamentoMolde, doMolde] = dup ? await Promise.all([orcamentoDoMolde(c.adsetId!), anunciosDoConjuntoNaMeta(c.adsetId!)]) : [null, null];
-  return aviso + resumo(c, fotos, estoqueUsado, orcamentoMolde, doMolde?.length ?? 0);
+  const temVideo = (await prisma.rascunhoFoto.count({ where: { userId: pessoa.id, mime: { startsWith: "video/" } } })) > 0;
+  return aviso + resumo(c, fotos, estoqueUsado, orcamentoMolde, doMolde?.length ?? 0, temVideo);
 }
 
-function resumo(c: Conversa, fotos: number, estoqueUsado: string, orcamentoMolde: number | null, anunciosNoMolde: number): string {
+function resumo(c: Conversa, fotos: number, estoqueUsado: string, orcamentoMolde: number | null, anunciosNoMolde: number, temVideo = false): string {
   const base = c.base as BaseSalva;
   const linhas = [
     "📋 *Confere antes de subir* (o anúncio vai PAUSADO)",
@@ -749,7 +758,7 @@ function resumo(c: Conversa, fotos: number, estoqueUsado: string, orcamentoMolde
         } (nasce pausado)`
       : `• Conjunto: ${negrito(`${c.campanhaNome ? c.campanhaNome + " › " : ""}${c.adsetNome ?? ""}`)}`,
     `• Duplicando: ${negrito(c.baseNome ?? "")} (${base.formato})`,
-    `• Fotos: ${fotos} → ${fotos === 1 ? "foto única" : "carrossel"}`,
+    temVideo ? `• Mídia: 🎬 vídeo → anúncio de vídeo${fotos > 1 ? " (as fotos ficam de fora)" : ""}` : `• Fotos: ${fotos} → ${fotos === 1 ? "foto única" : "carrossel"}`,
     `• Carro: ${c.carro}${estoqueUsado ? " (do estoque do site)" : ""}`,
     base.titulo ? `• Título: ${c.titulo}` : null,
     `• Link: ${base.link ? "o mesmo do anúncio base" : "(sem link)"}`,
@@ -784,10 +793,29 @@ async function executar(pessoa: Pessoa, c: Conversa, agora: Date): Promise<strin
       return "Essa loja não está mais na sua carteira. Não subi nada.";
     }
 
-    const fotos = await prisma.rascunhoFoto.findMany({ where: { userId: pessoa.id }, orderBy: { criadoEm: "asc" }, select: { bytes: true } });
-    if (fotos.length === 0) {
+    const midias = await prisma.rascunhoFoto.findMany({ where: { userId: pessoa.id }, orderBy: { criadoEm: "asc" }, select: { bytes: true, mime: true } });
+    if (midias.length === 0) {
       await desfazer();
       return "Não tenho mais as fotos. Manda de novo.";
+    }
+    const doVideo = midias.find((m) => m.mime.startsWith("video/")) ?? null;
+    const fotos = doVideo ? [] : midias;
+
+    // Vídeo: sobe pra conta do conjunto (em pedaços) e o anúncio sai de vídeo (capa = miniatura da Meta).
+    let video: { videoId: string } | null = null;
+    if (doVideo) {
+      const conta = await contaDoConjunto(c.clientId, c.adsetId);
+      if (!conta) {
+        await desfazer();
+        return "Não achei a conta desse conjunto. Manda *conjunto* pra escolher de novo.";
+      }
+      const v = await subirVideo(conta.contaMeta, new Uint8Array(doVideo.bytes), `${c.nome}.mp4`);
+      if (!v.ok) {
+        await desfazer();
+        await anotar(null, `privado ${pessoa.id}`, "subir-anuncio-video-falhou", v.erro);
+        return `Não consegui enviar o vídeo pra Meta: ${v.erro}\n\nResponde *sim* pra tentar de novo, ou *cancela*.`;
+      }
+      video = { videoId: v.videoId };
     }
 
     const hashes: string[] = [];
@@ -811,6 +839,7 @@ async function executar(pessoa: Pessoa, c: Conversa, agora: Date): Promise<strin
       titulo: c.base.titulo ? (c.titulo ?? "") : null,
       link: c.base.link,
       hashes,
+      video,
       pedidoPor: `${pessoa.name} (WhatsApp)`,
       quemId: pessoa.id,
     });
@@ -822,7 +851,7 @@ async function executar(pessoa: Pessoa, c: Conversa, agora: Date): Promise<strin
     }
 
     await apagarTudo(pessoa.id);
-    await anotar(null, `privado ${pessoa.id}`, "subir-anuncio-criou", `${r.formato} · ${hashes.length} foto(s)`);
+    await anotar(null, `privado ${pessoa.id}`, "subir-anuncio-criou", `${r.formato} · ${video ? "vídeo" : `${hashes.length} foto(s)`}`);
     try {
       revalidatePath(`/meta-ads/${c.clientId}/subir-anuncio`);
     } catch {
@@ -831,11 +860,11 @@ async function executar(pessoa: Pessoa, c: Conversa, agora: Date): Promise<strin
 
     const avisos = r.avisos.map((a) => `⚠️ ${a.texto}`).join("\n");
     return (
-      `✅ Subi o anúncio ${negrito(c.nome)} na ${negrito(c.lojaNome ?? "")} — PAUSADO (${r.formato === "carrossel" ? "carrossel" : "foto única"})` +
+      `✅ Subi o anúncio ${negrito(c.nome)} na ${negrito(c.lojaNome ?? "")} — PAUSADO (${r.formato === "video" ? "vídeo" : r.formato === "carrossel" ? "carrossel" : "foto única"})` +
       (r.adsetCriado ? `, num conjunto NOVO (${negrito(r.adsetCriado.nome)}), também pausado` : "") +
       `.\nEle ainda *não está no ar* e não gasta nada. Confere e publica no Gerenciador${r.adsetCriado ? " (ligue o conjunto e o anúncio)" : ""}:\n${r.linkDoGerenciador}` +
       (avisos ? `\n\n${avisos}` : "") +
-      `\n\nPróximo carro da ${c.lojaNome}? É só mandar as fotos: ${c.duplicarConjunto ? "eu duplico o mesmo conjunto molde" : "eu uso o mesmo conjunto"}.`
+      `\n\nPróximo carro da ${c.lojaNome}? É só mandar as fotos ou o vídeo: ${c.duplicarConjunto ? "eu duplico o mesmo conjunto molde" : "eu uso o mesmo conjunto"}.`
     );
   } catch (e) {
     await desfazer();

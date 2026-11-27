@@ -212,3 +212,8 @@ loja de teste e confira no Gerenciador (tudo deve aparecer pausado).
 - Parte 4 virou **"Fotos ou vídeo"**: "🎬 Escolher vídeo (MP4/MOV)" sobe o vídeo na hora pra conta do conjunto escolhido (em pedaços, com %), e o navegador tira um quadro do vídeo pra **capa**. Com vídeo, o anúncio sai de **vídeo** (as fotos ficam de fora).
 - O anúncio-base continua sendo de foto/carrossel: do base vêm a página, o Instagram, o **botão** (o do WhatsApp continua do WhatsApp), a descrição, a mensagem pronta e o rastreamento (`montarSpecDeVideoDoRascunho`). Mesma conferência de "nada de Advantage+ a mais".
 - Espera a Meta processar o vídeo; se ela recusar o criativo por "processando", espera e tenta de novo.
+
+## Vídeo pelo WhatsApp
+- Mandar um **vídeo** no privado do robô começa (ou continua) o "subir anúncio": o robô baixa (até 64 MB, MP4/MOV conferido pelos bytes), guarda até o "sim" e responde "🎬 Recebi o vídeo". Fica UM vídeo (o último).
+- No resumo: "Mídia: 🎬 vídeo → anúncio de vídeo". No "sim": o vídeo sobe pra conta do conjunto (em pedaços, servidor), e o anúncio é criado de vídeo duplicando o anúncio-base (capa = miniatura que a Meta gera).
+- Webhook: `video.videoUrl` da Z-API → `receberVideoNoPrivado` (foto-recebida.ts).

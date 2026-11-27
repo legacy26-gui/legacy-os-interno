@@ -89,3 +89,11 @@ Loja nova não tem legendas antigas pra IA copiar, e a legenda saía genérica. 
 - Ao criar: o carro ganha o anúncio de fotos **e** um anúncio de vídeo ("<nome> — Vídeo") no mesmo conjunto, com o mesmo botão de WhatsApp e mensagem pronta. "só o vídeo" = sem o de fotos.
 - Se a Meta ainda está processando o vídeo e recusa o criativo, espera e tenta de novo; sem capa, usa a miniatura da Meta.
 - Código: `src/lib/meta/video.ts` (upload em partes, spec de vídeo), `src/lib/actions/video.ts`, `src/lib/video-no-navegador.ts`, `criarAnuncioDeVideoDoCarro`.
+
+## Pelo WhatsApp (privado do robô)
+1. **Pedido**: "campanha do zero <loja>, leads, um conjunto por carro, R$ 20 por dia, idade 25 a 55, Ponta Grossa 30 km, legenda IA". O que não for dito fica no padrão (Leads, um conjunto por carro, R$ 15/dia por conjunto, 25–65, todos os gêneros, cidade do cadastro da loja +40 km, legenda pela IA, só os carros com arte). Leitura em `campanha-do-zero-puro.ts` (sem IA).
+2. **Artes e vídeos**: foto/vídeo no privado com o **nome do carro na legenda** → a arte vai pro banco de artes do carro (1ª foto); o vídeo vira anúncio de vídeo do carro. Enquanto há campanha do zero aberta, a mídia vai pra ela (não pro "subir anúncio").
+3. O robô pergunta o que faltar (loja, conta, página — a sugerida vem sozinha, cidade) e mostra o **resumo** (carros com 🖼️/🎬). Ajustes por texto: "orçamento 30", "idade 25 a 50", "cidade Curitiba 30 km", "só homens", "um conjunto"/"por carro", "engajamento"/"leads", "carros: todos | só com arte | onix, gol", "legenda: …", "página 123…". "resumo" mostra de novo; "cancela" desiste.
+4. **"sim"** → cria TUDO PAUSADO com o mesmo código da tela (`criarEstrutura`, `criarAnuncioDoCarro`, `criarAnuncioDeVideoDoCarro`), carro a carro, guardando o andamento. Se o tempo da chamada acabar, ela se chama de novo (`/api/whatsapp/campanha-do-zero/continuar`, assinatura HMAC por usuário) e continua; no fim manda no WhatsApp o resultado, o link do Gerenciador e o da tela de ajustes.
+- WhatsApp do anúncio: o número da página (escolher número por conjunto é só pela tela).
+- Tabelas: `campanhas_do_zero_whatsapp` (uma por pessoa, vence em 2 h sem resposta), `videos_do_zero`.

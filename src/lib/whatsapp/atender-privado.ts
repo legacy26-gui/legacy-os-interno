@@ -23,6 +23,7 @@ import {
 } from "./pausar-no-privado";
 import { executarVendaNoPrivado, lerRespostaDaVenda, montarVendaNoPrivado } from "@/lib/vendas/venda-no-privado";
 import { tratarSubirAnuncio } from "./subir-anuncio";
+import { tratarCampanhaDoZero } from "./campanha-do-zero-whats";
 import { tratarListaNoPrivado } from "./anuncios-ativos-no-privado";
 import { pedeSugestao, semRecomendacao } from "@/lib/copiloto/pede-sugestao";
 import { executarComercial, tratarComandoDoDia } from "./comandos-do-dia";
@@ -369,6 +370,16 @@ export async function atenderMensagemPrivada(
   // Vem ANTES da confirmação de pausa: se há um anúncio sendo montado, o "sim" é dele. E começar a montar um
   // anúncio descarta uma pausa que estivesse esperando (ver tratarSubirAnuncio).
   // "Anunciar o Compass da Vilela" (carro do ESTOQUE → rascunho pausado): só age se acha UM carro assim; senão segue.
+  // Campanha do zero pelo WhatsApp: a conversa dela vem antes do "subir anúncio" (um "sim" aberto é dela).
+  if (canAccessModule(pessoa.role, "clientes", pessoa.email)) {
+    const zero = await tratarCampanhaDoZero(pessoa, m.telefone, m.texto, agora);
+    if (zero) {
+      await responder(m.telefone, zero.resposta, m.messageId);
+      if (zero.depois) await zero.depois();
+      return { tipo: "subir-anuncio", userId: pessoa.id };
+    }
+  }
+
   const doEstoque = await montarAnuncioDoEstoque(pessoa, m.texto);
   if (doEstoque) {
     if (doEstoque.pendente) await guardarPendente(pessoa.id, doEstoque.pendente, agora);

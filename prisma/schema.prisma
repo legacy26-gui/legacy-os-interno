@@ -2446,3 +2446,30 @@ model ArteDoCarro {
   @@index([clientId, criadoEm])
   @@map("artes_dos_carros")
 }
+
+/// Campanha do zero montada pelo WhatsApp (privado do robô): o pedido sendo montado e, depois do "sim", a fila de carros
+/// sendo criados. Uma por pessoa. Ver src/lib/whatsapp/campanha-do-zero-whats.ts.
+model CampanhaDoZeroWhatsapp {
+  userId    String   @id
+  /// "montando" | "confirmando" | "criando"
+  etapa     String
+  pedido    Json
+  /// Durante a criação: a campanha/conjuntos criados e os carros que ainda faltam (a criação continua em mais de uma chamada).
+  andamento Json?
+  venceEm   DateTime
+  criadoEm  DateTime @default(now())
+
+  @@map("campanhas_do_zero_whatsapp")
+}
+
+/// O vídeo de um carro mandado pelo WhatsApp durante a campanha do zero (vira um anúncio de vídeo no conjunto do carro).
+model VideoDoZero {
+  id       String   @id @default(cuid())
+  userId   String
+  carroId  String
+  bytes    Bytes
+  criadoEm DateTime @default(now())
+
+  @@index([userId])
+  @@map("videos_do_zero")
+}

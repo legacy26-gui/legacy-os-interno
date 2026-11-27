@@ -8,6 +8,7 @@ import { anotar } from "./trilha";
 import { acharPessoaPeloNumero } from "./atender-privado";
 import { registrarFoto, tratarLegendaDaFoto, TEXTO_FOTO_RECEBIDA, TEXTO_VIDEO_RECEBIDO } from "./subir-anuncio";
 import { ehVideo } from "@/lib/meta/video";
+import { receberMidiaDoZero } from "./campanha-do-zero-whats";
 
 // Foto que chega no privado do robô: é o começo de "subir anúncio pelo WhatsApp".
 //
@@ -116,6 +117,13 @@ export async function receberFotoNoPrivado(a: {
     return { tipo: "falhou", erro: "formato" };
   }
 
+  // Campanha do zero aberta: a foto é ARTE de um carro (pelo nome na legenda), não foto de "subir anúncio".
+  const doZero = await receberMidiaDoZero(pessoa, { tipo: "foto", bytes: baixada.bytes, legenda: a.legenda ?? null });
+  if (doZero !== null) {
+    await responder(doZero);
+    return { tipo: "guardada", avisou: true, total: 1 };
+  }
+
   const quando = a.momento && Number.isFinite(a.momento) ? new Date(a.momento) : new Date();
   const r = await registrarFoto(pessoa, { messageId: a.messageId, mime: tipo === "png" ? "image/png" : "image/jpeg", bytes: baixada.bytes, quando });
   if (r.cheio) {
@@ -193,6 +201,11 @@ export async function receberVideoNoPrivado(a: {
   if (!ehVideo(baixado.bytes)) {
     await responder("🎬 Só aceito vídeo MP4 (o normal do celular). Manda de novo.");
     return { tipo: "falhou", erro: "formato" };
+  }
+  const doZero = await receberMidiaDoZero(pessoa, { tipo: "video", bytes: baixado.bytes, legenda: a.legenda ?? null });
+  if (doZero !== null) {
+    await responder(doZero);
+    return { tipo: "guardada", avisou: true, total: 1 };
   }
   const quando = a.momento && Number.isFinite(a.momento) ? new Date(a.momento) : new Date();
   const r = await registrarFoto(pessoa, { messageId: a.messageId, mime: "video/mp4", bytes: baixado.bytes, quando });

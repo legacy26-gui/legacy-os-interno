@@ -133,6 +133,17 @@ export interface Estado {
   messageId?: string | null;
   /** De onde veio o aviso, pro recado ao gestor. Padrão: "no grupo". */
   onde?: string;
+  /** Os parabéns já saíram (no aviso, antes da pergunta do valor): ao registrar, só confirma. */
+  jaParabenizou?: boolean;
+}
+
+/** Gasto e leads do carro, somando os anúncios dele. */
+async function numerosDoCarro(e: Pick<Estado, "loja" | "ids">) {
+  const vida = await prisma.metaLifetime.findMany({
+    where: { adAccountId: { in: e.loja.contas }, adId: { in: e.ids } },
+    select: { spendCents: true, leads: true },
+  });
+  return { gastoCents: vida.reduce((s, v) => s + v.spendCents, 0), leads: vida.reduce((s, v) => s + v.leads, 0) };
 }
 
 /**
@@ -191,6 +202,7 @@ export async function tratarVendaNoGrupo(a: {
       quem: pend.quem,
       agora,
       messageId: a.messageId,
+      jaParabenizou: true,
     });
     return { fim: true, ...fechado };
   };
@@ -316,6 +328,7 @@ async function registrarCarro(r: {
     quem: a.quem,
     agora,
     messageId: a.messageId,
+    jaParabenizou: !!pend,
   });
   return fechado;
 }
@@ -337,7 +350,8 @@ async function concluirOuPerguntar(e: Estado): Promise<{ recado: string; passo: 
   // por outro valor.
   const valorFinal = e.valorCents ?? e.precoDoAnuncioCents;
   if (e.origemLead === true && valorFinal !== null) {
-    const recado = await registrar(e, valorFinal, e.valorCents === null);
+    let recado = await registrar(e, valorFinal, e.valorCents === null);
+    if (e.jaParabenizou) recado = `✅ Venda do *${e.carro}* registrada no controle: ${dinheiro(valorFinal)}.`;
     await prisma.vendaAguardandoDados.deleteMany({ where: { grupoId: e.grupoId } });
     return { recado, passo: "venda-registrada" };
   }
@@ -366,14 +380,19 @@ async function concluirOuPerguntar(e: Estado): Promise<{ recado: string; passo: 
     "venda-perguntou",
     `${e.carro} · falta ${[e.valorCents === null ? "valor" : null, e.origemLead === null ? "origem" : null].filter(Boolean).join(" e ")}`,
   );
-  return {
-    recado: textoDaPergunta({
-      faltaValor: e.valorCents === null,
-      faltaOrigem: e.origemLead === null,
-      precoDoAnuncioCents: e.precoDoAnuncioCents,
-    }),
-    passo: "venda-perguntou",
-  };
+  const pergunta = textoDaPergunta({
+    faltaValor: e.valorCents === null,
+    faltaOrigem: e.origemLead === null,
+    precoDoAnuncioCents: e.precoDoAnuncioCents,
+  });
+  // Os parabéns (com o valor investido e os leads) saem JÁ no aviso — não esperam a resposta do valor (pedido do Guilherme).
+  if (e.jaParabenizou) return { recado: pergunta, passo: "venda-perguntou" };
+  const { gastoCents, leads } = await numerosDoCarro(e);
+  const [ano, mes] = diaDaCasa(e.agora).split("-").map(Number);
+  const vendasNoMes =
+    (await prisma.clientSale.count({ where: { clientId: e.loja.id, soldAt: { gte: new Date(Date.UTC(ano, mes - 1, 1)), lte: diaDaCasaComoData(e.agora) } } })) + 1;
+  const parabens = textoDeParabens({ loja: e.loja.companyName, vendasNoMes, gastoCents, leads });
+  return { recado: `${parabens}\n\n${pergunta}`, passo: "venda-perguntou" };
 }
 
 /** Grava no Controle de Vendas e devolve o parabéns. */
@@ -384,14 +403,7 @@ export async function registrar(
 ): Promise<string> {
   // O gasto é o TOTAL do carro, somando os anúncios dele (o Ka e o Ka "Cópia"),
   // pelo mesmo acumulado que o Copiloto usa pra responder "quanto gastou".
-  const vida = await prisma.metaLifetime.findMany({
-    where: { adAccountId: { in: e.loja.contas }, adId: { in: e.ids } },
-    select: { spendCents: true, leads: true },
-  });
-  const gastoCents = vida.reduce((s, v) => s + v.spendCents, 0);
-  // Quantos leads o carro trouxe, somando os anúncios dele: o gestor pediu os dois
-  // números juntos ("o custo total dos anúncios e quantos leads chegaram").
-  const leads = vida.reduce((s, v) => s + v.leads, 0);
+  const { gastoCents, leads } = await numerosDoCarro(e);
 
   const hoje = diaDaCasaComoData(e.agora);
   await prisma.clientSale.create({

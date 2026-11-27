@@ -17,6 +17,8 @@ export interface AvisoDeEntrega {
   motivo: "sem-gestor" | "sem-whatsapp" | "mesma-pessoa" | "falhou" | "sem-cliente" | null;
 }
 
+const NOME_DO_VIDEOMAKER = "Igor";
+
 /**
  * Avisa o gestor da loja que a entrega saiu. Nunca estoura (falha de envio vira `motivo`).
  * `quemMarcouId`: quem deu a baixa — o gestor não é avisado do que ele mesmo marcou.
@@ -39,7 +41,8 @@ export async function avisarGestorDaEntrega(
   const q = gravacao.quantidade;
   const texto =
     `🎬 *Vídeo novo — ${c?.companyName ?? gravacao.loja}*\n` +
-    `${primeiroNome(quemMarcou.name)} entregou o material da gravação (${q} ${q === 1 ? "carro" : "carros"}). ` +
+    // Quem entrega é sempre o videomaker (Igor), não quem deu a baixa no sistema.
+    `${NOME_DO_VIDEOMAKER} entregou o material da gravação (${q} ${q === 1 ? "carro" : "carros"}). ` +
     `Já dá pra subir nos anúncios. 🚗`;
   try {
     const r = await enviarTexto(soDigitos(g.whatsapp), texto);

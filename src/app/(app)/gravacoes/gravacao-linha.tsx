@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useState } from "react";
+import { useActionState, useEffect, useState, useTransition } from "react";
 import { Check, Pencil, Trash2, Video, X, Clock } from "lucide-react";
 import {
   updateGravacao,
@@ -137,6 +137,7 @@ function FormularioDeEdicao({
   );
 
   const temNaLista = podeEscolherLoja && lojas.length > 0;
+  const [apagando, startApagar] = useTransition();
   const [escolha, setEscolha] = useState(temNaLista && g.clientId ? g.clientId : OUTRA);
   const [data, setData] = useState(g.dataForm);
 
@@ -239,27 +240,27 @@ function FormularioDeEdicao({
 
         {/* Apagar fica aqui dentro, atrás do "corrigir", pra não existir um
             botão de lixeira à mão de distância na lista do dia a dia. */}
+        {/* Não pode ser um <form> aqui: esta linha já está dentro do formulário de corrigir, e formulário dentro de
+            formulário é ignorado pelo navegador — o clique em "Apagar" enviava a correção, não a exclusão. */}
         {g.podeApagar && (
-          <form
-            action={deleteGravacao.bind(null, g.id)}
-            className="ml-auto"
-            onSubmit={(e) => {
+          <button
+            type="button"
+            disabled={apagando}
+            onClick={() => {
               if (
                 !window.confirm(
                   `Apagar a gravação de "${g.loja}" (${g.quantidade} vídeo(s))?\n\nIsso não dá pra desfazer.`
                 )
-              ) {
-                e.preventDefault();
-              }
+              )
+                return;
+              startApagar(async () => {
+                await deleteGravacao(g.id);
+              });
             }}
+            className="ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-500/10 disabled:opacity-50"
           >
-            <button
-              type="submit"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-red-500 hover:bg-red-500/10"
-            >
-              <Trash2 size={13} /> Apagar
-            </button>
-          </form>
+            <Trash2 size={13} /> {apagando ? "Apagando…" : "Apagar"}
+          </button>
         )}
       </div>
     </form>

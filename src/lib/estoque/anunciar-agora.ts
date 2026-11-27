@@ -48,7 +48,7 @@ export interface ResultadoDoAnunciarAgora {
   loja?: string;
   adId?: string;
   linkDoGerenciador?: string;
-  formato?: "foto" | "carrossel";
+  formato?: "foto" | "carrossel" | "video";
   fotos?: number;
   puladas?: number;
   legenda?: string;

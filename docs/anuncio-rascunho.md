@@ -207,3 +207,8 @@ novo = duplica o molde (campanha/conjunto/anúncio-base), sempre **PAUSADO**. O 
 
 ⚠️ Campanha nova, edição de público e subir anúncio foram testados só contra uma Meta falsa. Na primeira vez de verdade, faça com uma
 loja de teste e confira no Gerenciador (tudo deve aparecer pausado).
+
+## Vídeo
+- Parte 4 virou **"Fotos ou vídeo"**: "🎬 Escolher vídeo (MP4/MOV)" sobe o vídeo na hora pra conta do conjunto escolhido (em pedaços, com %), e o navegador tira um quadro do vídeo pra **capa**. Com vídeo, o anúncio sai de **vídeo** (as fotos ficam de fora).
+- O anúncio-base continua sendo de foto/carrossel: do base vêm a página, o Instagram, o **botão** (o do WhatsApp continua do WhatsApp), a descrição, a mensagem pronta e o rastreamento (`montarSpecDeVideoDoRascunho`). Mesma conferência de "nada de Advantage+ a mais".
+- Espera a Meta processar o vídeo; se ela recusar o criativo por "processando", espera e tenta de novo.

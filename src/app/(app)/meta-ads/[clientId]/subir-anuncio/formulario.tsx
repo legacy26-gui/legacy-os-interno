@@ -2,7 +2,8 @@
 
 import { useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ExternalLink, ImagePlus, Loader2, Sparkles, Trash2, TriangleAlert, CheckCircle2 } from "lucide-react";
-import { conferirAnuncioBase, criarRascunho, gerarLegenda, subirFoto, type RespostaDoRascunho } from "@/lib/actions/rascunho";
+import { conferirAnuncioBase, contaDoConjuntoParaVideo, criarRascunho, gerarLegenda, subirFoto, type RespostaDoRascunho } from "@/lib/actions/rascunho";
+import { subirVideoPelaTela, type VideoSubido } from "@/lib/video-no-navegador";
 
 // O formulário de subir anúncio como rascunho.
 //
@@ -132,6 +133,10 @@ export function Formulario({
   const [doBaseAberto, setDoBaseAberto] = useState(false);
 
   const [fotos, setFotos] = useState<Foto[]>([]);
+  // Vídeo no lugar das fotos: sobe na hora pra conta do conjunto (em pedaços), com a capa tirada do próprio vídeo.
+  const [video, setVideo] = useState<(VideoSubido & { conjunto: string }) | null>(null);
+  const [subindoVideo, setSubindoVideo] = useState<number | null>(null);
+  const [erroVideo, setErroVideo] = useState<string | null>(null);
   const [avisoDeFoto, setAvisoDeFoto] = useState<string | null>(null);
   const [lendo, setLendo] = useState(false);
 
@@ -248,7 +253,9 @@ export function Formulario({
   const faltas: string[] = [];
   if (!conjuntoId) faltas.push("o conjunto");
   if (!baseId || base.erro || !base.formato) faltas.push("um anúncio base que dê pra duplicar");
-  if (fotos.length === 0) faltas.push("pelo menos uma foto");
+  const videoValido = !!video && video.conjunto === conjuntoId;
+  if (fotos.length === 0 && !videoValido) faltas.push("pelo menos uma foto (ou um vídeo)");
+  if (subindoVideo !== null) faltas.push("o vídeo terminar de subir");
   if (!nome.trim()) faltas.push("o nome do anúncio");
   if (!legenda.trim()) faltas.push("a legenda");
   if (baseTemTitulo && !titulo.trim()) faltas.push("o título");
@@ -301,7 +308,8 @@ export function Formulario({
         legenda: legenda.trim(),
         titulo: titulo.trim(),
         link: link.trim(),
-        hashes: comHash.map((f) => f.hash as string),
+        hashes: videoValido ? [] : comHash.map((f) => f.hash as string),
+        video: videoValido && video ? { videoId: video.videoId, capaHash: video.capaHash } : null,
       });
       setEnviando(null);
       if (!r.ok) {
@@ -316,6 +324,7 @@ export function Formulario({
       // Só limpa o que é do carro: campanha, conjunto e base ficam pro próximo.
       fotos.forEach((f) => URL.revokeObjectURL(f.previa));
       setFotos([]);
+      setVideo(null);
       setLegenda("");
       setLegendaDaIa(false);
       setAvisosLegenda([]);
@@ -505,7 +514,43 @@ export function Formulario({
 
       {/* 4. Fotos */}
       <section className="bg-surface border border-border rounded-xl p-4 flex flex-col gap-3">
-        <h2 className="font-semibold">4. Fotos</h2>
+        <h2 className="font-semibold">4. Fotos ou vídeo</h2>
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          {video && video.conjunto === conjuntoId ? (
+            <>
+              <span className="text-emerald-600 dark:text-emerald-400">🎬 Vídeo pronto: {video.nome} — o anúncio vai ser de vídeo (as fotos ficam de fora).</span>
+              <button type="button" onClick={() => setVideo(null)} className="underline text-xs">tirar vídeo</button>
+            </>
+          ) : subindoVideo !== null ? (
+            <span className="inline-flex items-center gap-1"><Loader2 size={14} className="animate-spin" /> Subindo vídeo… {subindoVideo}%</span>
+          ) : (
+            <label className={`inline-flex items-center gap-2 px-3.5 py-2 border border-border rounded-lg text-sm font-medium ${conjuntoId ? "cursor-pointer hover:bg-surface-muted" : "opacity-60"}`}>
+              🎬 Escolher vídeo (MP4/MOV)
+              <input
+                type="file"
+                accept="video/mp4,video/quicktime,.mp4,.mov"
+                disabled={!conjuntoId}
+                className="hidden"
+                aria-label="Vídeo do anúncio"
+                onChange={async (e) => {
+                  const arquivo = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!arquivo || !conjuntoId) return;
+                  setErroVideo(null);
+                  const conta = await contaDoConjuntoParaVideo(clientId, conjuntoId);
+                  if (!conta.ok || !conta.conta) return setErroVideo(conta.erro ?? "Não achei a conta do conjunto.");
+                  setSubindoVideo(0);
+                  const r = await subirVideoPelaTela({ clientId, contaMeta: conta.conta, arquivo, progresso: setSubindoVideo });
+                  setSubindoVideo(null);
+                  if (r.ok) setVideo({ ...r.video, conjunto: conjuntoId });
+                  else setErroVideo(r.erro);
+                }}
+              />
+            </label>
+          )}
+          {!conjuntoId && <span className="text-xs text-foreground-muted">Escolha o conjunto antes (o vídeo sobe na conta dele).</span>}
+        </div>
+        {erroVideo && <p className="text-sm text-red-500">{erroVideo}</p>}
         <p className="text-sm text-foreground-muted">
           {fotos.length <= 1 ? "Uma foto vira anúncio de foto única; duas ou mais viram carrossel (até 10), na ordem abaixo." : `${fotos.length} fotos: vai ser um carrossel, nesta ordem.`}
         </p>

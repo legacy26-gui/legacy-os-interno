@@ -6,6 +6,7 @@ import { clienteEDaCarteira } from "@/lib/carteira";
 import { escritaLiberada } from "@/lib/meta/escrever-na-graph";
 import {
   subirRascunho,
+  contaDoConjunto,
   lerBaseDoAnuncio,
   subirFotoDoRascunho,
   type AvisoDoConjunto,
@@ -33,7 +34,7 @@ export interface RespostaDoRascunho {
   ok: boolean;
   erro?: string;
   adId?: string;
-  formato?: "foto" | "carrossel";
+  formato?: "foto" | "carrossel" | "video";
   avisos?: AvisoDoConjunto[];
   linkDoGerenciador?: string;
   /** Conjunto criado nesta tentativa (mesmo se o anúncio falhou): a próxima tentativa sobe nele. */
@@ -86,6 +87,15 @@ export async function subirFoto(formData: FormData): Promise<{ ok: boolean; erro
   }, { ok: false });
 }
 
+/** A conta de anúncio do conjunto (o vídeo sobe nela antes de criar o anúncio). */
+export async function contaDoConjuntoParaVideo(clientId: string, adsetId: string): Promise<{ ok: boolean; erro?: string; conta?: string }> {
+  return semQuebrar<{ ok: boolean; erro?: string; conta?: string }>(async () => {
+    if (!(await podeNaLoja(clientId))) return { ok: false, erro: "Esta loja não está na sua carteira." };
+    const c = await contaDoConjunto(clientId, String(adsetId ?? ""));
+    return c ? { ok: true, conta: c.contaMeta } : { ok: false, erro: "Esse conjunto não é de uma conta desta loja." };
+  }, { ok: false });
+}
+
 /** Cria o anúncio PAUSADO, duplicando o base, com as fotos já enviadas. */
 export async function criarRascunho(entrada: {
   clientId: string;
@@ -96,6 +106,8 @@ export async function criarRascunho(entrada: {
   titulo: string;
   link: string;
   hashes: string[];
+  /** Vídeo (já na conta do conjunto) no lugar das fotos. */
+  video?: { videoId: string; capaHash?: string | null } | null;
   /** Duplicar o conjunto (adsetId é o molde) com este nome e orçamento diário (centavos, ou null = o do molde). */
   conjuntoNovo?: { nome: string; orcamentoCents: number | null; jaCriadoId?: string | null } | null;
 }): Promise<RespostaDoRascunho> {
@@ -114,6 +126,7 @@ export async function criarRascunho(entrada: {
       titulo: typeof entrada.titulo === "string" ? entrada.titulo : null,
       link: String(entrada.link ?? ""),
       hashes: Array.isArray(entrada.hashes) ? entrada.hashes.map(String) : [],
+      video: entrada.video?.videoId ? { videoId: String(entrada.video.videoId), capaHash: entrada.video.capaHash ? String(entrada.video.capaHash) : null } : null,
       pedidoPor: user.name,
       quemId: user.id,
       conjuntoNovo:

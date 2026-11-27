@@ -1,6 +1,7 @@
 import "server-only";
 
 import { prisma } from "@/lib/prisma";
+import { esperarVideo } from "./video";
 import { acharObjetoDaLoja } from "./mudar-status";
 import { buscarNaGraph } from "./cliente-graph";
 import { escreverNaGraph, escritaLiberada } from "./escrever-na-graph";
@@ -71,6 +72,8 @@ export interface PedidoDeRascunho {
   link: string;
   /** Códigos das fotos já enviadas (subirFotoDoRascunho). Uma = foto única; duas ou mais = carrossel. */
   hashes: string[];
+  /** Anúncio de VÍDEO no lugar das fotos: o vídeo já está na conta do conjunto (video.ts). Capa: hash (quadro) ou endereço. */
+  video?: { videoId: string; capaHash?: string | null; capaUrl?: string | null } | null;
   /** O conjunto acabou de ser duplicado por aqui (o aviso de "conjunto pausado" muda). */
   conjuntoNovo?: boolean;
   /**
@@ -87,7 +90,7 @@ export interface ResultadoDoRascunho {
   erro?: string;
   adId?: string;
   creativeId?: string;
-  formato?: "foto" | "carrossel";
+  formato?: "foto" | "carrossel" | "video";
   /** Coisas que o gestor precisa ver antes de publicar (conjunto fora do combinado etc.). */
   avisos: AvisoDoConjunto[];
   /** Sugestão de orçamento diário pra loja, pra comparar com o do conjunto. Nunca aplicada. */
@@ -271,6 +274,34 @@ export function montarSpecDoRascunho(
   }
 
   spec.link_data = ld;
+  return spec;
+}
+
+/**
+ * O `object_story_spec` do anúncio novo em VÍDEO, a partir do de foto/carrossel do base: mesma página, Instagram, botão
+ * (com o link trocado só se o link mudou), descrição e mensagem pronta; no lugar das fotos, o vídeo e a capa. Pura.
+ */
+export function montarSpecDeVideoDoRascunho(
+  specDoBase: Record<string, unknown>,
+  novo: { legenda: string; titulo: string | null; link: string; linkDoBase: string; videoId: string; capaHash?: string | null; capaUrl?: string | null },
+): Record<string, unknown> {
+  const spec = JSON.parse(JSON.stringify(specDoBase)) as Record<string, unknown>;
+  const antigo = objeto(spec.link_data) ?? {};
+  const cartoes = Array.isArray(antigo.child_attachments) ? (antigo.child_attachments as Record<string, unknown>[]) : [];
+  const botaoBase = objeto(antigo.call_to_action) ?? objeto(cartoes[0]?.call_to_action);
+  const botao: Record<string, unknown> = botaoBase ? JSON.parse(JSON.stringify(botaoBase)) : { type: "LEARN_MORE", value: { link: novo.link } };
+  const valor = objeto(botao.value);
+  if (valor && (novo.link !== novo.linkDoBase || typeof valor.link !== "string")) valor.link = novo.link;
+  else if (!valor) botao.value = { link: novo.link };
+  const vd: Record<string, unknown> = { video_id: novo.videoId, message: novo.legenda, call_to_action: botao };
+  if (novo.titulo) vd.title = novo.titulo;
+  const descricao = texto(antigo.description) || texto(cartoes[0]?.description);
+  if (descricao) vd.link_description = descricao;
+  if (novo.capaHash) vd.image_hash = novo.capaHash;
+  else if (novo.capaUrl) vd.image_url = novo.capaUrl;
+  if (antigo.page_welcome_message) vd.page_welcome_message = antigo.page_welcome_message;
+  delete spec.link_data;
+  spec.video_data = vd;
   return spec;
 }
 
@@ -535,7 +566,7 @@ export function tipoDeImagem(bytes: Buffer): "jpeg" | "png" | null {
 }
 
 /** Acha, no cadastro, o conjunto da loja e a conta Meta dele. `null` se não for da loja. */
-async function contaDoConjunto(clientId: string, adsetId: string) {
+export async function contaDoConjunto(clientId: string, adsetId: string) {
   const conjunto = await acharObjetoDaLoja(clientId, "conjunto", adsetId);
   if (!conjunto) return null;
   const c = await prisma.metaAdset.findFirst({
@@ -1025,7 +1056,8 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
   const recusa = (erro: string, extra: Partial<ResultadoDoRascunho> = {}): ResultadoDoRascunho => ({ ok: false, erro, ...vazio, ...extra });
 
   if (!escritaLiberada()) return recusa("O acesso de escrita na Meta ainda não está configurado no sistema.");
-  if (p.hashes.length === 0) return recusa("Manda pelo menos uma foto.");
+  const video = p.video && /^\d{5,30}$/.test(String(p.video.videoId)) ? p.video : null;
+  if (p.hashes.length === 0 && !video) return recusa("Manda pelo menos uma foto (ou um vídeo).");
   if (p.hashes.length > MAX_FOTOS) return recusa(`O carrossel aceita no máximo ${MAX_FOTOS} fotos.`);
   if (!p.hashes.every((h) => /^[A-Za-z0-9_]{6,64}$/.test(h))) return recusa("Código de foto inválido. Sobe as fotos de novo.");
   const legenda = p.legenda.trim();
@@ -1071,8 +1103,19 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
   if (avisoOrcamento && !p.conjuntoNovo) avisos.push(avisoOrcamento);
 
   // ── 3. O criativo: o do base, com o que é do carro trocado ──────────
-  const formato: "foto" | "carrossel" = p.hashes.length === 1 ? "foto" : "carrossel";
-  const spec = montarSpecDoRascunho(base.spec, { legenda, titulo, link, hashes: p.hashes, linkDoBase: base.link });
+  const formato: "foto" | "carrossel" | "video" = video ? "video" : p.hashes.length === 1 ? "foto" : "carrossel";
+  let spec: Record<string, unknown>;
+  if (video) {
+    // Espera a Meta processar (a capa da Meta é o plano B quando a tela não mandou o quadro).
+    const proc = await esperarVideo(video.videoId, video.capaHash ? 20_000 : 60_000);
+    if (proc.erro) return recusa(proc.erro);
+    const capaUrl = video.capaHash ? null : (video.capaUrl ?? proc.capa);
+    if (!video.capaHash && !capaUrl) return recusa("A Meta ainda não gerou a capa do vídeo. Tenta de novo em 1 minuto.");
+    if (!proc.pronto) avisos.push({ tipo: "conjunto", texto: "A Meta ainda está processando o vídeo: a prévia no Gerenciador pode demorar uns minutos." });
+    spec = montarSpecDeVideoDoRascunho(base.spec, { legenda, titulo, link, linkDoBase: base.link, videoId: video.videoId, capaHash: video.capaHash ?? null, capaUrl });
+  } else {
+    spec = montarSpecDoRascunho(base.spec, { legenda, titulo, link, hashes: p.hashes, linkDoBase: base.link });
+  }
   const camposDoCriativo: Record<string, string> = {
     name: `${nome.slice(0, 80)} — rascunho ${new Date().toISOString().slice(0, 10)}`,
     object_story_spec: JSON.stringify(spec),
@@ -1080,7 +1123,11 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
   if (base.urlTags) camposDoCriativo.url_tags = base.urlTags;
 
   // Igual ao base, sem nenhum recurso automático a mais (ver criarCriativoIgualAoBase).
-  const feito = await criarCriativoIgualAoBase(conta.contaMeta, camposDoCriativo, base);
+  let feito = await criarCriativoIgualAoBase(conta.contaMeta, camposDoCriativo, base);
+  if (!feito.ok && video && /process|not ready|encoding/i.test(feito.erro)) {
+    await esperarVideo(video.videoId, 45_000);
+    feito = await criarCriativoIgualAoBase(conta.contaMeta, camposDoCriativo, base);
+  }
   if (!feito.ok) return recusa(feito.erro, { avisos });
   const criativo = { dados: { id: feito.id } };
 
@@ -1130,7 +1177,7 @@ export async function criarRascunhoDeAnuncio(p: PedidoDeRascunho): Promise<Resul
       ok: true,
       origem: "criacao-rascunho",
       pedidoPor: p.pedidoPor,
-      pedidoTexto: `${formato} · ${p.hashes.length} foto(s) · conjunto ${conta.nome} · base ${base.nome} · conta ${conta.contaMeta}`.slice(0, 2000),
+      pedidoTexto: `${formato} · ${video ? `vídeo ${video.videoId}` : `${p.hashes.length} foto(s)`} · conjunto ${conta.nome} · base ${base.nome} · conta ${conta.contaMeta}`.slice(0, 2000),
     },
   });
 

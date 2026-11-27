@@ -430,6 +430,36 @@ export function entenderPedido(
   return { intencao: "desligar", ...acharAnuncios(texto, anuncios) };
 }
 
+
+// ── Ano e cor que a pessoa disse precisam bater ─────────────────────────
+//
+// "desativa o Sandero 2014 Branco" numa loja com Sandero 2011 branco, 2015 azul e 2011 preto: o robô pausou os três (e o
+// conjunto). Ano e cor não identificam o carro sozinhos, mas quando a pessoa os diz eles EXCLUEM: anúncio que fala de outro
+// ano (e não do pedido), ou de outra cor (e não da pedida), não é o carro. Sem ano/cor no anúncio, não exclui.
+const CORES = ["branco", "branca", "preto", "preta", "prata", "cinza", "vermelho", "vermelha", "azul", "verde", "amarelo", "amarela", "marrom", "bege", "dourado", "dourada", "vinho", "laranja", "grafite", "chumbo"];
+const corBase = (c: string) => c.replace(/a$/, "o").replace(/^azuo$/, "azul");
+function anosDe(t: string): Set<string> {
+  return new Set(achatar(t).match(/\b(19[89]\d|20[0-3]\d)\b/g) ?? []);
+}
+function coresDe(t: string): Set<string> {
+  const ps = achatar(t).split(/[^a-z]+/);
+  return new Set(ps.filter((p) => CORES.includes(p)).map(corBase));
+}
+function naoContradiz(pedido: string, a: AnuncioConhecido): boolean {
+  const doAnuncio = [a.nome, ...a.textos].join(" ");
+  const anosP = anosDe(pedido);
+  if (anosP.size) {
+    const anosA = anosDe(doAnuncio);
+    if (anosA.size && ![...anosP].some((x) => anosA.has(x))) return false;
+  }
+  const coresP = coresDe(pedido);
+  if (coresP.size) {
+    const coresA = coresDe(doAnuncio);
+    if (coresA.size && ![...coresP].some((x) => coresA.has(x))) return false;
+  }
+  return true;
+}
+
 /**
  * Acha os anúncios que combinam com um texto, SEM conferir se ele pede algo.
  *
@@ -444,7 +474,7 @@ function acharAnuncios(
 ): Achado {
   // O nome inteiro de um anúncio na frase: não há o que adivinhar.
   const pelNome = acharPeloNomeCompleto(texto, anuncios).carros;
-  if (pelNome.length === 1) {
+  if (pelNome.length === 1 && pelNome[0].anuncios.some((a) => naoContradiz(texto, a))) {
     return { candidatos: pelNome[0].anuncios, semDuvida: true, mesmoCarro: pelNome[0].anuncios };
   }
 
@@ -523,7 +553,7 @@ function acharAnuncios(
   });
 
   let comNota = notas.filter(
-    (n) => n.nota > 0 && (n.forteNoNome || n.forteNaLegenda),
+    (n) => n.nota > 0 && (n.forteNoNome || n.forteNaLegenda) && naoContradiz(texto, n.anuncio),
   );
   // Se alguém casou pelo nome, quem casou só pela legenda sai da frente: ele
   // sobraria pra engordar a pergunta "qual desses?" com o carro errado.

@@ -25,6 +25,7 @@ import { pedeSugestao, semRecomendacao } from "@/lib/copiloto/pede-sugestao";
 import { tratarVendaNoGrupo, venderOQueFoiTirado } from "@/lib/vendas/venda-por-lead";
 import { atenderGrupoFinanceiro, type DesfechoFinanceiro } from "@/lib/financeiro-ia/atender-financeiro";
 import { acharObjetoDaLoja, mudarStatus } from "@/lib/meta/mudar-status";
+import { religarNoGrupo } from "./religar-no-grupo";
 import {
   conjuntosNoAr,
   pausarConjuntosVazios,
@@ -338,6 +339,17 @@ export async function atenderMensagemDoGrupo(
     await anotar(m.messageId, m.grupoId, "pergunta-cancelada", loja.companyName);
     await responder(m.grupoId, "Ok, não tirei nenhum.", m.messageId);
     return { tipo: "perguntou", clientId: loja.id, quantos: 0 };
+  }
+
+  // "Ativa o Sandero 2015 azul": liga de volta o que o próprio robô pausou. Ver religar-no-grupo.ts.
+  if (!resposta) {
+    const quemReligou = [m.quem, m.telefone].filter(Boolean).join(" · ") || null;
+    const religou = await religarNoGrupo({ clientId: loja.id, texto: semAMarcacao(m.texto), quem: quemReligou });
+    if (religou) {
+      await anotar(m.messageId, m.grupoId, "religar", religou.slice(0, 300));
+      await responder(m.grupoId, religou, m.messageId);
+      return { tipo: "perguntou", clientId: loja.id, quantos: 0 };
+    }
   }
 
   const venda = resposta
